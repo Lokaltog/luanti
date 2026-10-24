@@ -139,6 +139,33 @@ vec4 fxTraceReflection(vec3 origin, vec3 dir)
 }
 #endif
 
+// The base texture's luminance, bilinear by hand (texelFetch), so the bend
+// it adds to refraction is smooth even when the sampler filters nearest
+// (pixel art keeps crisp texels; the light bent through it shouldn't step).
+float fxSmoothLum(vec2 uv)
+{
+#ifdef USE_ARRAY_TEXTURE
+	ivec2 sz = textureSize(baseTexture, 0).xy;
+#else
+	ivec2 sz = textureSize(baseTexture, 0);
+#endif
+	vec2 st = uv * vec2(sz) - 0.5;
+	vec2 f = fract(st);
+	ivec2 i0 = ivec2(floor(st));
+	float l[4];
+	for (int k = 0; k < 4; k++) {
+		ivec2 p = i0 + ivec2(k & 1, k >> 1);
+		p = ((p % sz) + sz) % sz; // tiles repeat
+#ifdef USE_ARRAY_TEXTURE
+		vec4 t = texelFetch(baseTexture, ivec3(p, int(varTexLayer)), 0);
+#else
+		vec4 t = texelFetch(baseTexture, p, 0);
+#endif
+		l[k] = dot(t.rgb, vec3(0.3, 0.6, 0.1)) * (1.0 - t.a * 0.5);
+	}
+	return mix(mix(l[0], l[1], f.x), mix(l[2], l[3], f.x), f.y);
+}
+
 // lit: the surface texture as lit by the engine, linear. base: raw texel.
 // Returns the surface's own light; `transmitted` gets what comes through.
 vec3 fxSurface(vec3 lit, vec4 base, out vec3 transmitted)
@@ -158,7 +185,7 @@ vec3 fxSurface(vec3 lit, vec4 base, out vec3 transmitted)
 
 	// The texture's own luminance bends light a little, so streaky glass
 	// textures distort without any pattern.
-	float lum = dot(base.rgb, vec3(0.3, 0.6, 0.1)) * (1.0 - base.a * 0.5);
+	float lum = fxSmoothLum(varTexCoord.st);
 	vec2 tex_bend = vec2(dFdx(lum), dFdy(lum)) * 0.15;
 
 	// Perspective-correct refraction offset: project a point pushed along the

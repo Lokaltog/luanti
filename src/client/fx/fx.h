@@ -167,6 +167,10 @@ bool handlesUnderwater(const ContentFeatures &f);
 /*
 	Drawing (render pipeline, ClientMap)
 */
+
+/// After ClientMap applied the filter settings: material maps get bilinear
+/// filtering of their own (fx_smooth_material_maps).
+void adjustFilters(video::SMaterial &material);
 void applyJitter(scene::ICameraSceneNode *camera, core::dimension2du target_size);
 void removeJitter(scene::ICameraSceneNode *camera);
 /// Start of ClientMap's transparent pass: copy the opaque colour + depth.

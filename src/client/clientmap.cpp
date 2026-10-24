@@ -1173,6 +1173,7 @@ void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 				layer.AnisotropicFilter = 0;
 			}
 
+			fx::adjustFilters(material);
 			if (is_transparent_pass)
 				fx::bindSceneCopy(material);
 			fx::bindLightVolume(material);

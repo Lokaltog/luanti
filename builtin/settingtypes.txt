@@ -972,6 +972,11 @@ fx_rim_light (Rim light) float 0.25 0.0 1.0
 #    texture pack. Changing it applies when you next join a world.
 fx_materials (Material maps) bool true
 
+#    Bilinear filtering for the material maps (_n, _s) even when Bilinear
+#    filtering is off, so relief and highlights are smooth while the albedo
+#    keeps crisp texels.
+fx_smooth_material_maps (Smooth material maps) bool true
+
 #    Strength of normal-mapped relief and baked AO from _n maps.
 fx_normal_strength (Normal map strength) float 1.0 0.0 2.0
 

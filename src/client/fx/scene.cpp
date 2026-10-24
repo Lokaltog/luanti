@@ -299,6 +299,18 @@ void bindLightVolume(video::SMaterial &material)
 	l.MagFilter = video::ETMAGF_LINEAR;
 }
 
+void adjustFilters(video::SMaterial &material)
+{
+	Renderer *r = renderer();
+	if (!r || !r->caps.materials || !r->params.smooth_material_maps)
+		return;
+	auto &m = material.TextureLayers[TEXTURE_LAYER_MATERIAL];
+	if (!m.Texture)
+		return;
+	m.MinFilter = video::ETMINF_LINEAR_MIPMAP_NEAREST;
+	m.MagFilter = video::ETMAGF_LINEAR;
+}
+
 bool handlesUnderwater(const ContentFeatures &f)
 {
 	const Caps &c = caps();
