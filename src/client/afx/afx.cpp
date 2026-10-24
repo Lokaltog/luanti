@@ -407,6 +407,8 @@ void updateMood(Client *client, ISoundManager *sound, v3f ear, float dtime, cons
 	const NodeDefManager *ndef = client->getNodeDefManager();
 	const u32 dnr = client->getEnv().getDayNightRatio();
 	MapNode n = map.getNode(floatToInt(ear * BS, BS));
+	if (n.getContent() == CONTENT_IGNORE)
+		return; // not loaded yet: no mood to speak of
 	MoodInputs in;
 	in.light = n.getContent() == CONTENT_IGNORE ? 0.5f :
 			n.getLightBlend(dnr, ndef->getLightingFlags(n)) / 15.f;
@@ -414,8 +416,10 @@ void updateMood(Client *client, ISoundManager *sound, v3f ear, float dtime, cons
 	in.homey = s_last_homey;
 	in.env = r.now;
 	s_mood.target = moodTarget(in);
+	// Start from calm, never from the loading screen's darkness; the mood
+	// glides in from there like it would on walking into the place.
 	if (!s_mood.primed) {
-		s_mood.smoother.reset(s_mood.target);
+		s_mood.smoother.reset(Mood{});
 		s_mood.primed = true;
 	}
 	s_mood.smoother.step(dtime, s_mood.target, p.smoothing);

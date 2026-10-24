@@ -26,7 +26,7 @@ def main(log, raw, out):
         t = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
         if "Audio: Global Initialized" in line and t_audio is None:
             t_audio = t
-        if "afxscene: start" in line:
+        if "afxscene: start" in line or "afxplay: start" in line:
             t_start = t
     x, rate = read_wav(raw)
     off = (t_start - t_audio).total_seconds() if t_audio and t_start else 0
