@@ -379,6 +379,9 @@ public:
 	//! Remove all render targets.
 	virtual void removeAllRenderTargets() = 0;
 
+	//! Currently bound render target, or nullptr for the back buffer.
+	virtual IRenderTarget *getCurrentRenderTarget() const = 0;
+
 	//! Blit contents of one render target to another one.
 	/** This is glBlitFramebuffer in OpenGL. */
 	virtual void blitRenderTarget(IRenderTarget *from, IRenderTarget *to) = 0;

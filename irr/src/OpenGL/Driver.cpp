@@ -651,6 +651,16 @@ void COpenGL3DriverBase::blitRenderTarget(IRenderTarget *from, IRenderTarget *to
 
 	COpenGL3RenderTarget *src = static_cast<COpenGL3RenderTarget *>(from);
 	COpenGL3RenderTarget *dst = static_cast<COpenGL3RenderTarget *>(to);
+
+	// Attachments are applied lazily when a target is bound. A target that
+	// was never bound (e.g. a fresh blit destination) has an empty FBO and
+	// the blit fails as incomplete, so flush pending attachments first.
+	for (COpenGL3RenderTarget *rt : {src, dst}) {
+		CacheHandler->setFBO(rt->getBufferID());
+		rt->update();
+	}
+	CacheHandler->setFBO(prev_fbo_id);
+
 	GL.BindFramebuffer(GL.READ_FRAMEBUFFER, src->getBufferID());
 	GL.BindFramebuffer(GL.DRAW_FRAMEBUFFER, dst->getBufferID());
 	GL.BlitFramebuffer(
