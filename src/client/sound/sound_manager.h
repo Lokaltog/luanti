@@ -10,6 +10,8 @@
 
 #include "playing_sound.h"
 #include "al_extensions.h"
+#include "efx.h"
+#include "client/afx/afx_smoother.h"
 #include "sound_constants.h"
 #include "sound_manager_messages.h"
 #include "sound_spec.h"
@@ -64,6 +66,20 @@ private:
 	// if true, all sounds will be directly paused after creation
 	bool m_is_paused = false;
 
+	// afx: environmental audio
+	std::unique_ptr<EfxRig> m_efx;
+	afx::Params m_afx_params;
+	afx::BusRules m_bus_rules;
+	std::shared_ptr<const afx::VoxelSnapshot> m_afx_snap;
+	afx::Smoother m_afx_smoother;
+	ListenerFrame m_listener_frame;
+	v3f m_listener_pos_node;
+	bool m_afx_active = false; // sources are routed through EFX
+	f32 m_afx_apply_timer = 0.0f;
+	f32 m_afx_occlusion_timer = 0.0f;
+	f32 m_afx_report_timer = 0.0f;
+	f32 m_afx_probe_ms = 0.0f;
+
 	// stuff for only-once / rate-limited warnings
 	std::unordered_set<std::string> m_warned_positional_stereo_sounds;
 	u64 m_next_lingering_sounds_print; // timestamp from porting::getTimeS()
@@ -103,11 +119,23 @@ private:
 
 	std::shared_ptr<PlayingSound> createPlayingSound(const std::string &sound_name,
 			bool loop, f32 volume, f32 pitch, f32 start_time,
-			const std::optional<std::pair<v3f, v3f>> &pos_vel_opt);
+			const std::optional<std::pair<v3f, v3f>> &pos_vel_opt,
+			afx::Bus bus = afx::Bus::Dry);
 
 	void playSoundGeneric(sound_handle_t id, const std::string &group_name, bool loop,
 			f32 volume, f32 fade, f32 pitch, bool use_local_fallback, f32 start_time,
 			const std::optional<std::pair<v3f, v3f>> &pos_vel_opt);
+
+	/* afx */
+
+	void setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> snap, const afx::Params &params);
+	void stepAcoustics(f32 dtime);
+	afx::Occlusion computeOcclusion(const PlayingSound &snd) const;
+	void applyMix(PlayingSound &snd);
+	/// Route a sound before it starts, so its first samples are already right.
+	void prepareSound(PlayingSound &snd);
+	/// Detach every source from EFX (afx turned off).
+	void deactivateAcoustics();
 
 	/**
 	 * Deletes sounds that are dead (=finished).

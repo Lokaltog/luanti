@@ -39,6 +39,8 @@ public:
 
 	unique_ptr_alcdevice  m_device;
 	unique_ptr_alccontext m_context;
+	// afx: aux sends per source the context granted (0 = no EFX)
+	int m_aux_sends = 0;
 
 public:
 	bool init();

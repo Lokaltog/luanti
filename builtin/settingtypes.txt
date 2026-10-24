@@ -957,6 +957,56 @@ sound_volume_unfocused (Volume when unfocused) float 0.3 0.0 1.0
 #    pause menu.
 mute_sound (Mute sound) bool false
 
+[**Environmental Audio (afx fork)]
+
+#    Reverb, echo, occlusion and outdoor muffling driven by the blocks around
+#    the player. Needs an OpenAL with EFX (OpenAL Soft).
+afx_enable (Enable environmental audio) bool true
+
+#    Seconds between acoustic probes. Parameters glide between probes, so
+#    slow probing still sounds smooth.
+afx_probe_interval (Probe interval) float 0.4 0.05 5.0
+
+#    Radius in nodes of the area analysed around the player.
+afx_probe_radius (Probe radius) int 32 8 64
+
+#    Rays cast per probe to measure the room.
+afx_rays (Probe rays) int 64 16 512
+
+#    Reverb amount. 0 turns reverb off.
+afx_reverb (Reverb) float 1.0 0.0 2.0
+
+#    Longest reverb decay in seconds (huge caverns).
+afx_max_decay (Max reverb decay) float 8.0 0.2 20.0
+
+#    Strength of echoes off far, hard surfaces (cliffs, cavern walls).
+afx_echo (Echo) float 1.0 0.0 2.0
+
+#    How much blocks between you and a sound muffle it.
+afx_occlusion (Occlusion) float 1.0 0.0 2.0
+
+#    How quickly outdoor sounds (rain, wind) fade as you go indoors or underground.
+afx_outdoor_muffle (Outdoor muffling) float 1.0 0.0 4.0
+
+#    Multiplies all transition times. Higher is slower and smoother.
+afx_smoothing (Smoothing) float 1.0 0.05 10.0
+
+#    Show acoustic state in the debug text (F5).
+afx_debug (Debug info) bool false
+
+#    Sounds left untouched (UI, music). Comma-separated globs on sound names.
+afx_dry_sounds (Dry sounds) string *music*,*_ui_*,*gui*,*btn*,*button*,*click*,*inventory*,*award*,*achievement*
+
+#    Non-positional sounds treated as outdoor ambience: muffled indoors and
+#    heard through doorways. Comma-separated globs. Names starting with
+#    afx_out_ always are.
+afx_outdoor_sounds (Outdoor sounds) string *rain*,*wind*,*weather*,*thunder*
+
+#    Non-positional sounds treated as indoor ambience (never muffled, lightly
+#    reverberant). Comma-separated globs. Names starting with afx_in_ always are.
+afx_indoor_sounds (Indoor sounds) string
+
+
 [*User Interfaces]
 
 #    Set the language. By default, the system language is used.

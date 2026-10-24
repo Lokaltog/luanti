@@ -4,6 +4,8 @@ if(USE_SOUND)
 	list(APPEND sound_SRCS
 		${CMAKE_CURRENT_SOURCE_DIR}/sound/al_extensions.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/sound/al_helpers.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/sound/efx.cpp
+		${CMAKE_CURRENT_SOURCE_DIR}/sound/sound_manager_afx.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/sound/ogg_file.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/sound/playing_sound.cpp
 		${CMAKE_CURRENT_SOURCE_DIR}/sound/proxy_sound_manager.cpp
@@ -30,6 +32,9 @@ set(client_SRCS
 	${sound_SRCS}
 	${CMAKE_CURRENT_SOURCE_DIR}/meshgen/collector.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/fx/fx.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/afx/afx_probe.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/afx/afx_mix.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/afx/afx.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/render/anaglyph.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/render/core.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/render/factory.cpp

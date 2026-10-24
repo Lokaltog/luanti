@@ -1,0 +1,170 @@
+// Luanti "afx" fork: environmental audio
+// SPDX-License-Identifier: LGPL-2.1-or-later
+//
+// Shared types between the main thread (which copies the map around the
+// listener into a VoxelSnapshot) and the sound thread (which analyses it and
+// drives OpenAL EFX). Nothing here touches OpenAL or the client, so the
+// analysis is unit-testable on synthetic worlds.
+
+#pragma once
+
+#include "irrlichttypes.h"
+#include "irr_v3d.h"
+#include <array>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace afx
+{
+
+/// Acoustic material of a voxel. Kept to a nibble (see VoxelSnapshot::cells).
+enum class Material : u8 {
+	Air = 0,     // passable: air, plants, torches, rails, flowers
+	Leaky,       // partial obstruction: fences, panes, doors, slabs, ladders
+	Foliage,     // leaves
+	Soft,        // wool, carpet, beds, hay
+	Snow,
+	Glass,
+	Wood,        // planks, logs, wooden blocks
+	Earth,       // dirt, sand, gravel, clay (porous)
+	Stone,       // stone, ores, bricks, metal, deepslate
+	Water,
+	Lava,
+	Count
+};
+
+constexpr int MATERIAL_COUNT = static_cast<int>(Material::Count);
+
+/// Per-material acoustic constants. Absorption is the Sabine coefficient
+/// (broadband, roughly 500 Hz-2 kHz), `hf` how much of the high band survives
+/// a reflection relative to the low band. The transmission costs drive the
+/// outdoor-path search: `pass` is the cost (in equivalent nodes of air) of
+/// sound crossing one voxel, `pass_hf` the extra high-frequency loss in nepers.
+struct MaterialProps {
+	const char *name;
+	float absorption;
+	float hf;
+	float pass;
+	float pass_hf;
+};
+
+const MaterialProps &props(Material m);
+
+/// Bits packed next to the material nibble.
+enum CellFlags : u8 {
+	CELL_SKY = 1 << 4,     // air with full daylight: open to the sky
+	CELL_UNLOADED = 1 << 5,// map not loaded here; treated as open air, not sky
+};
+
+inline Material cellMaterial(u8 cell) { return static_cast<Material>(cell & 0x0f); }
+inline bool cellSky(u8 cell) { return cell & CELL_SKY; }
+
+/// A cube of voxels around the listener, copied on the main thread.
+/// Immutable once published; shared with the sound thread by shared_ptr.
+struct VoxelSnapshot {
+	v3s16 origin;          // node position of cells[0]
+	s16 size = 0;          // edge length in nodes
+	std::vector<u8> cells; // size³, x fastest, then y, then z
+
+	bool contains(v3s16 p) const {
+		return p.X >= origin.X && p.Y >= origin.Y && p.Z >= origin.Z &&
+				p.X < origin.X + size && p.Y < origin.Y + size && p.Z < origin.Z + size;
+	}
+	u32 index(v3s16 p) const {
+		return (u32)(p.X - origin.X) + (u32)size * ((u32)(p.Y - origin.Y) +
+				(u32)size * (u32)(p.Z - origin.Z));
+	}
+	/// Out-of-range positions read as unloaded air.
+	u8 at(v3s16 p) const { return contains(p) ? cells[index(p)] : (u8)CELL_UNLOADED; }
+};
+
+/// Tuning, read from afx_* settings on the main thread and shipped with each
+/// snapshot so the sound thread never touches g_settings.
+struct Params {
+	bool enabled = true;         // afx_enable
+	float probe_interval = 0.4f; // afx_probe_interval, seconds
+	s16 probe_radius = 32;       // afx_probe_radius, nodes (snapshot is 2r³)
+	int rays = 64;               // afx_rays
+	float reverb = 1.0f;         // afx_reverb, wet multiplier
+	float max_decay = 8.0f;      // afx_max_decay, seconds
+	float echo = 1.0f;           // afx_echo
+	float occlusion = 1.0f;      // afx_occlusion
+	float outdoor_muffle = 1.0f; // afx_outdoor_muffle
+	float smoothing = 1.0f;      // afx_smoothing, scales all time constants
+	bool debug = false;          // afx_debug
+	// Bus routing by sound name, comma-separated globs (see afx_mix.h)
+	std::string dry_sounds =     // afx_dry_sounds
+		"*music*,*_ui_*,*gui*,*btn*,*button*,*click*,*inventory*,*award*,*achievement*";
+	std::string outdoor_sounds = // afx_outdoor_sounds
+		"*rain*,*wind*,*weather*,*thunder*";
+	std::string indoor_sounds;   // afx_indoor_sounds
+};
+
+/// What the probe concluded about the listener's surroundings. These are the
+/// *targets*; the sound thread smooths toward them between probes.
+struct Acoustics {
+	// Room
+	float enclosure = 0.f;     // 0 open sky .. 1 sealed
+	float mean_free_path = 0.f;// nodes, average ray length (open rays count max)
+	float absorption = 1.f;    // area-weighted average absorption (open = 1)
+	float hf = 1.f;            // average high-frequency reflectivity of hits
+
+	// Reverb (EAX semantics)
+	float wet = 0.f;           // overall reverb send, 0..1
+	float decay = 0.3f;        // RT60, seconds
+	float decay_hf_ratio = 1.f;// 0.1..2
+	float density = 1.f;       // 0..1, small rooms are dense
+	float diffusion = 1.f;     // 0..1, rough walls diffuse
+	float reflections_gain = 0.05f;
+	float reflections_delay = 0.007f; // seconds
+	float late_gain = 1.f;
+	float late_delay = 0.011f; // seconds
+	v3f reflections_pan;       // node space, |v| = focus 0..1
+
+	// Discrete echo off a far hard surface
+	float echo = 0.f;          // strength 0..1
+	float echo_delay = 0.1f;   // seconds, first tap
+	float echo_feedback = 0.f; // 0..1, flutter in parallel walls
+	float echo_damping = 0.5f; // 0..0.99
+	v3f echo_dir;              // node space, unit or zero
+
+	// Outdoors reaching the listener
+	float outdoor_gain = 1.f;  // 0..1
+	float outdoor_hf = 1.f;    // 0..1, low-pass gainhf
+	float outdoor_path = 0.f;  // nodes, length of the cheapest path to the sky
+	v3f outdoor_dir;           // node space, unit; zero when standing under the sky
+	float outdoor_focus = 0.f; // 0 wide/ambient .. 1 a single opening
+
+	// Listener medium
+	bool underwater = false;
+	bool in_lava = false;
+	float submerged = 0.f;     // 0..1, smoothed immersion (water or lava)
+};
+
+/// The sound thread's smoothed state, reported back for the debug HUD and for
+/// other client systems (the fx renderer can key exposure and fog on it).
+struct Report {
+	bool valid = false;
+	Acoustics now;    // smoothed values currently applied
+	float probe_ms = 0.f;
+	u32 sources = 0;
+	u32 occluded = 0; // positional sources with occlusion > 0.1
+	bool efx = false; // EFX available and in use
+};
+
+/// Analyse the snapshot from `ear` (node space, float). Pure function.
+Acoustics analyze(const VoxelSnapshot &snap, v3f ear, const Params &params);
+
+/// Fraction 0..1 of a direct path blocked between two points (node space),
+/// and the high-frequency loss along it. Pure function.
+struct Occlusion {
+	float amount = 0.f;  // 0 clear .. 1 fully blocked
+	float hf = 1.f;      // 0..1 gainhf multiplier
+};
+Occlusion occlusion(const VoxelSnapshot &snap, v3f from, v3f to);
+
+/// Unit directions on a Fibonacci sphere. Cached per count.
+const std::vector<v3f> &sphereDirections(int count);
+
+} // namespace afx

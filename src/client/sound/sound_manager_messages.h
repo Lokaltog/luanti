@@ -6,6 +6,8 @@
 
 #include "client/sound.h"
 #include "sound_spec.h"
+#include "client/afx/afx_types.h"
+#include <memory>
 #include <variant>
 
 namespace sound {
@@ -28,6 +30,9 @@ namespace sound_manager_messages_to_mgr {
 	struct UpdateSoundPosVel { sound_handle_t sound; v3f pos_; v3f vel_; };
 
 	struct PrintPlayingSounds{};
+
+	// afx: a fresh voxel snapshot around the listener, plus current settings
+	struct SetAcoustics { std::shared_ptr<const afx::VoxelSnapshot> snap; afx::Params params; };
 
 	struct PleaseStop {};
 }
@@ -53,11 +58,15 @@ using SoundManagerMsgToMgr = std::variant<
 
 		sound_manager_messages_to_mgr::PrintPlayingSounds,
 
+		sound_manager_messages_to_mgr::SetAcoustics,
+
 		sound_manager_messages_to_mgr::PleaseStop
 	>;
 
 namespace sound_manager_messages_to_proxy {
 	struct ReportRemovedSound { sound_handle_t id; };
+
+	struct ReportAcoustics { afx::Report report; };
 
 	struct Stopped {};
 }
@@ -66,6 +75,7 @@ using SoundManagerMsgToProxy = std::variant<
 		std::monostate,
 
 		sound_manager_messages_to_proxy::ReportRemovedSound,
+		sound_manager_messages_to_proxy::ReportAcoustics,
 
 		sound_manager_messages_to_proxy::Stopped
 	>;

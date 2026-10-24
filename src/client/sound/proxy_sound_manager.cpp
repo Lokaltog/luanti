@@ -19,6 +19,8 @@ ProxySoundManager::MsgResult ProxySoundManager::handleMsg(SoundManagerMsgToProxy
 				return MsgResult::Empty;
 			else if constexpr (std::is_same_v<T, ReportRemovedSound>)
 				reportRemovedSound(msg.id);
+			else if constexpr (std::is_same_v<T, ReportAcoustics>)
+				m_acoustic_report = msg.report;
 			else if constexpr (std::is_same_v<T, Stopped>)
 				return MsgResult::Stopped;
 
@@ -152,6 +154,18 @@ void ProxySoundManager::updateSoundPosVel(sound_handle_t sound, const v3f &pos_,
 void ProxySoundManager::printPlayingSounds()
 {
 	send(sound_manager_messages_to_mgr::PrintPlayingSounds{});
+}
+
+void ProxySoundManager::setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> snap,
+		const afx::Params &params)
+{
+	send(sound_manager_messages_to_mgr::SetAcoustics{std::move(snap), params});
+}
+
+bool ProxySoundManager::getAcousticReport(afx::Report &out) const
+{
+	out = m_acoustic_report;
+	return out.valid;
 }
 
 } // namespace sound

@@ -9,6 +9,7 @@
 #pragma once
 
 #include "sound_data.h"
+#include "client/afx/afx_mix.h"
 namespace sound { struct ALExtensions; }
 
 namespace sound {
@@ -34,11 +35,17 @@ class PlayingSound final
 	std::optional<FadeState> m_fade_state = std::nullopt;
 	u64 m_creation_time_s; // timestamp from porting::getTimeS()
 
+	// afx
+	afx::Bus m_bus;
+	v3f m_pos_node;            // node space, for occlusion
+	afx::Occlusion m_occ_target, m_occ;
+
 public:
 	PlayingSound(ALuint source_id, std::shared_ptr<ISoundDataOpen> data, bool loop,
 			f32 volume, f32 pitch, f32 start_time,
 			const std::optional<std::pair<v3f, v3f>> &pos_vel_opt,
-			const ALExtensions &exts [[maybe_unused]]);
+			const ALExtensions &exts [[maybe_unused]],
+			afx::Bus bus = afx::Bus::Dry);
 
 	~PlayingSound() noexcept
 	{
@@ -97,6 +104,20 @@ public:
 	std::string getLoggingName() const;
 
 	u64 getCreationTimeS() const { return m_creation_time_s; }
+
+	/* afx */
+
+	ALuint getSourceId() const { return m_source_id; }
+	afx::Bus getBus() const { return m_bus; }
+	bool isPositional() const { return m_is_positional; }
+	bool isStereo() const { return m_data && m_data->m_decode_info.is_stereo; }
+	v3f getPosNode() const { return m_pos_node; }
+	void setOcclusionTarget(const afx::Occlusion &o) { m_occ_target = o; }
+	/// For new sounds: no glide, or the first moments would play unoccluded.
+	void setOcclusionNow(const afx::Occlusion &o) { m_occ_target = m_occ = o; }
+	const afx::Occlusion &getOcclusion() const { return m_occ; }
+	/// Glide the occlusion toward its target (called every sound-thread step).
+	void stepOcclusion(f32 dtime, f32 tau);
 };
 
 } // namespace sound

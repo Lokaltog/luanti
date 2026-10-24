@@ -17,6 +17,8 @@ class ProxySoundManager final : public ISoundManager
 	OpenALSoundManager m_sound_manager;
 	// sound names from loadSoundData and loadSoundFile
 	std::unordered_set<std::string> m_known_sound_names;
+	// afx: last report from the sound thread
+	afx::Report m_acoustic_report;
 
 	void send(SoundManagerMsgToMgr msg)
 	{
@@ -57,6 +59,10 @@ public:
 	void updateSoundPosVel(sound_handle_t sound, const v3f &pos_, const v3f &vel_) override;
 
 	void printPlayingSounds() override;
+
+	void setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> snap,
+			const afx::Params &params) override;
+	bool getAcousticReport(afx::Report &out) const override;
 };
 
 } // namespace sound

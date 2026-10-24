@@ -8,6 +8,7 @@
 #include <csignal>
 #include "client/gameui.h"
 #include "client/fx/fx.h"
+#include "client/afx/afx.h"
 #include "client/inputhandler.h"
 #include "client/texturepaths.h"
 #include "client/keys.h"
@@ -391,6 +392,7 @@ Game::Game() :
 
 	readSettings();
 	fx::init();
+	afx::init();
 }
 
 
@@ -416,6 +418,7 @@ Game::~Game()
 
 	g_settings->deregisterAllChangedCallbacks(this);
 	fx::deinit();
+	afx::deinit();
 
 	if (m_rendering_engine)
 		m_rendering_engine->finalize();
@@ -2653,12 +2656,16 @@ void Game::updateSound(f32 dtime)
 	LocalPlayer *player = client->getEnv().getLocalPlayer();
 	ClientActiveObject *parent = player->getParent();
 	v3s16 camera_offset = camera->getOffset();
+	const v3f listener_pos = (1.0f/BS) * camera->getCameraNode()->getPosition()
+			+ intToFloat(camera_offset, 1.0f);
 	sound_manager->updateListener(
-			(1.0f/BS) * camera->getCameraNode()->getPosition()
-					+ intToFloat(camera_offset, 1.0f),
+			listener_pos,
 			(1.0f/BS) * (parent ? parent->getVelocity() : player->getSpeed()),
 			camera->getDirection(),
 			camera->getCameraNode()->getUpVector());
+
+	// afx: snapshot the blocks around the listener for the acoustic probe
+	afx::update(client, sound_manager.get(), listener_pos, dtime);
 
 	sound_volume_control(sound_manager.get(), device->isWindowActive());
 

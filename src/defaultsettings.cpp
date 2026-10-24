@@ -364,6 +364,23 @@ void set_default_settings()
 	settings->setDefault("fx_water_absorption", "0.18");
 	settings->setDefault("fx_caustics", "0.8");
 	settings->setDefault("fx_underwater_shafts", "0.6");
+	// afx fork (environmental audio)
+	settings->setDefault("afx_enable", "true");
+	settings->setDefault("afx_probe_interval", "0.4");
+	settings->setDefault("afx_probe_radius", "32");
+	settings->setDefault("afx_rays", "64");
+	settings->setDefault("afx_reverb", "1.0");
+	settings->setDefault("afx_max_decay", "8.0");
+	settings->setDefault("afx_echo", "1.0");
+	settings->setDefault("afx_occlusion", "1.0");
+	settings->setDefault("afx_outdoor_muffle", "1.0");
+	settings->setDefault("afx_smoothing", "1.0");
+	settings->setDefault("afx_debug", "false");
+	settings->setDefault("afx_dry_sounds",
+			"*music*,*_ui_*,*gui*,*btn*,*button*,*click*,*inventory*,*award*,*achievement*");
+	settings->setDefault("afx_outdoor_sounds", "*rain*,*wind*,*weather*,*thunder*");
+	settings->setDefault("afx_indoor_sounds", "");
+
 	settings->setDefault("enable_bloom_debug", "false");
 	settings->setDefault("enable_volumetric_lighting", "false");
 	settings->setDefault("enable_water_reflections", "false");

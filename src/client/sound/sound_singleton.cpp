@@ -7,6 +7,7 @@
 // Copyright (C) 2011 Giuseppe Bilotta <giuseppe.bilotta@gmail.com>
 
 #include "sound_singleton.h"
+#include "efx.h"
 
 namespace sound {
 
@@ -17,7 +18,10 @@ bool SoundManagerSingleton::init()
 		return false;
 	}
 
-	if (!(m_context = unique_ptr_alccontext(alcCreateContext(m_device.get(), nullptr)))) {
+	// afx: ask for aux sends (reverb + echo, with headroom). Drivers without
+	// EFX ignore the attribute.
+	if (!(m_context = unique_ptr_alccontext(alcCreateContext(m_device.get(),
+			EfxRig::contextAttributes())))) {
 		errorstream << "Audio: Global Initialization: Failed to create context" << std::endl;
 		return false;
 	}
@@ -28,6 +32,11 @@ bool SoundManagerSingleton::init()
 	}
 
 	alDistanceModel(AL_INVERSE_DISTANCE_CLAMPED);
+
+#if AFX_HAVE_EFX
+	if (alcIsExtensionPresent(m_device.get(), "ALC_EXT_EFX"))
+		alcGetIntegerv(m_device.get(), ALC_MAX_AUXILIARY_SENDS, 1, &m_aux_sends);
+#endif
 
 	// Speed of sound in nodes per second
 	// FIXME: This value assumes 1 node sidelength = 1 meter, and "normal" air.

@@ -11,12 +11,14 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <memory>
 
 #if !IS_CLIENT_BUILD
 #error Do not include in server builds
 #endif
 
 struct SoundSpec;
+namespace afx { struct VoxelSnapshot; struct Params; struct Report; }
 
 class SoundFallbackPathProvider
 {
@@ -131,6 +133,19 @@ public:
 	 * Prints all currently playing sounds, for debugging.
 	 */
 	virtual void printPlayingSounds() = 0;
+
+	/**
+	 * afx: hand the sound thread a fresh voxel snapshot around the listener
+	 * and the current afx_* settings. No-op without OpenAL.
+	 */
+	virtual void setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> snap,
+			const afx::Params &params) {}
+
+	/**
+	 * afx: latest smoothed acoustics, for the debug HUD and other client
+	 * systems. Returns false when nothing has been analysed yet.
+	 */
+	virtual bool getAcousticReport(afx::Report &out) const { return false; }
 
 	/**
 	 * Get and reset the list of sounds that were stopped.

@@ -135,7 +135,8 @@ std::string OpenALSoundManager::getOrLoadLoadedSoundNameFromGroup(const std::str
 
 std::shared_ptr<PlayingSound> OpenALSoundManager::createPlayingSound(
 		const std::string &sound_name, bool loop, f32 volume, f32 pitch,
-		f32 start_time, const std::optional<std::pair<v3f, v3f>> &pos_vel_opt)
+		f32 start_time, const std::optional<std::pair<v3f, v3f>> &pos_vel_opt,
+		afx::Bus bus)
 {
 	infostream << "OpenALSoundManager: Creating playing sound \"" << sound_name
 			<< "\"" << std::endl;
@@ -169,8 +170,9 @@ std::shared_ptr<PlayingSound> OpenALSoundManager::createPlayingSound(
 	}
 
 	auto sound = std::make_shared<PlayingSound>(source_id, std::move(lsnd), loop,
-			volume, pitch, start_time, pos_vel_opt, m_exts);
+			volume, pitch, start_time, pos_vel_opt, m_exts, bus);
 
+	prepareSound(*sound);
 	sound->play();
 
 	warn_if_al_error("createPlayingSound");
@@ -216,9 +218,13 @@ void OpenALSoundManager::playSoundGeneric(sound_handle_t id, const std::string &
 		start_time = 0.0f;
 	}
 
+	// afx: route by the group name the game asked for (the file name is a
+	// random pick from it)
+	afx::Bus bus = afx::classify(group_name, pos_vel_opt.has_value(), m_bus_rules);
+
 	// play it
 	std::shared_ptr<PlayingSound> sound = createPlayingSound(sound_name, loop,
-			volume, pitch, start_time, pos_vel_opt);
+			volume, pitch, start_time, pos_vel_opt, bus);
 	if (!sound) {
 		reportRemovedSound(id);
 		return;
@@ -323,12 +329,19 @@ OpenALSoundManager::OpenALSoundManager(SoundManagerSingleton *smg,
 {
 	SANITY_CHECK(!!m_fallback_path_provider);
 
+	m_efx = std::make_unique<EfxRig>(m_device, smg->m_aux_sends);
+	m_bus_rules = afx::BusRules::fromParams(m_afx_params);
+
 	infostream << "Audio: Initialized: OpenAL " << std::endl;
 }
 
 OpenALSoundManager::~OpenALSoundManager()
 {
 	infostream << "Audio: Deinitializing..." << std::endl;
+	// afx: sources must go before the effect slots they send to; deleting a
+	// slot that is still in use fails (and leaves the AL error flag set).
+	m_sounds_playing.clear();
+	m_efx.reset();
 }
 
 /* Interface */
@@ -357,6 +370,7 @@ void OpenALSoundManager::step(f32 dtime)
 
 	doFades(dtime);
 	stepStreams(dtime);
+	stepAcoustics(dtime);
 }
 
 void OpenALSoundManager::pauseAll()
@@ -385,6 +399,10 @@ void OpenALSoundManager::updateListener(const v3f &pos_, const v3f &vel_,
 	v3f at = swap_handedness(at_);
 	v3f up = swap_handedness(up_);
 	ALfloat orientation[6] = {at.X, at.Y, at.Z, up.X, up.Y, up.Z};
+
+	m_listener_pos_node = pos_;
+	m_listener_frame.at = at;
+	m_listener_frame.up = up;
 
 	alListener3f(AL_POSITION, pos.X, pos.Y, pos.Z);
 	alListener3f(AL_VELOCITY, vel.X, vel.Y, vel.Z);
@@ -542,6 +560,9 @@ void *OpenALSoundManager::run()
 
 		Result operator()(PrintPlayingSounds &&msg) {
 			mgr.printPlayingSounds(false); return Result::Ok; }
+
+		Result operator()(SetAcoustics &&msg) {
+			mgr.setAcoustics(std::move(msg.snap), msg.params); return Result::Ok; }
 
 		Result operator()(PleaseStop &&msg) {
 			return Result::StopRequested; }

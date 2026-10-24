@@ -19,13 +19,14 @@ namespace sound {
 PlayingSound::PlayingSound(ALuint source_id, std::shared_ptr<ISoundDataOpen> data,
 		bool loop, f32 volume, f32 pitch, f32 start_time,
 		const std::optional<std::pair<v3f, v3f>> &pos_vel_opt,
-		const ALExtensions &exts [[maybe_unused]])
+		const ALExtensions &exts [[maybe_unused]], afx::Bus bus)
 	:
 	m_source_id(source_id),
 	m_data(std::move(data)),
 	m_looping(loop),
 	m_is_positional(pos_vel_opt.has_value()),
-	m_creation_time_s(porting::getTimeS())
+	m_creation_time_s(porting::getTimeS()),
+	m_bus(bus)
 {
 	// Calculate actual start_time (see lua_api.txt for specs)
 	f32 len_seconds = m_data->m_decode_info.length_seconds;
@@ -101,8 +102,10 @@ PlayingSound::PlayingSound(ALuint source_id, std::shared_ptr<ISoundDataOpen> dat
 
 #ifdef AL_SOFT_direct_channels_remix
 		// Play directly on stereo output channels if possible. Improves sound quality.
+		// afx: outdoor beds are steered with stereo angles, which direct
+		// channels would bypass.
 		if (exts.have_ext_AL_SOFT_direct_channels_remix
-				&& m_data->m_decode_info.is_stereo) {
+				&& m_data->m_decode_info.is_stereo && m_bus != afx::Bus::Outdoor) {
 			alSourcei(m_source_id, AL_DIRECT_CHANNELS_SOFT, AL_REMIX_UNMATCHED_SOFT);
 			warn_if_al_error("PlayingSound::PlayingSound at setting AL_DIRECT_CHANNELS_SOFT");
 		}
@@ -236,8 +239,16 @@ void PlayingSound::updatePosVel(const v3f &pos, const v3f &vel) noexcept
 	// distance to clamp gain at <1 node distance avoids excessive volume when
 	// closer.
 	alSourcef(m_source_id, AL_REFERENCE_DISTANCE, 1.0f);
+	m_pos_node = swap_handedness(pos);
 
 	warn_if_al_error("PlayingSound::updatePosVel");
+}
+
+void PlayingSound::stepOcclusion(f32 dtime, f32 tau)
+{
+	f32 k = 1.0f - std::exp(-dtime / std::max(tau, 1e-3f));
+	m_occ.amount += (m_occ_target.amount - m_occ.amount) * k;
+	m_occ.hf += (m_occ_target.hf - m_occ.hf) * k;
 }
 
 void PlayingSound::setGain(f32 gain) noexcept

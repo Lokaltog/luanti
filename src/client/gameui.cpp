@@ -4,6 +4,7 @@
 // Copyright (C) 2018 nerzhul, Loic Blot <loic.blot@unix-experience.fr>
 
 #include "gameui.h"
+#include "client/afx/afx.h"
 #include <irrlicht_changes/static_text.h>
 #include <gettext.h>
 #include "gui/mainmenumanager.h"
@@ -146,6 +147,11 @@ void GameUI::update(const RunStats &stats, Client *client, MapDrawControl *draw_
 				os << ", param2: " << (u64) n.getParam2();
 			}
 		}
+
+		// afx fork: acoustic state (afx_debug)
+		std::string afx_line = afx::debugLine(client->getSoundManager());
+		if (!afx_line.empty())
+			os << "\n" << afx_line;
 
 		m_guitext2->setRelativePosition(core::rect<s32>(5, 5 + minimal_debug_height,
 				screensize.X, screensize.Y));
