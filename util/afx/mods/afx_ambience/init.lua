@@ -67,7 +67,7 @@ function afx_ambience.volume(k) return VOL[k] or 1 end
 
 local CATEGORY = {
 	{"^afx_out_", "beds"}, {"^afx_in_", "beds"},
-	{"^afx_rain_", "rain"}, {"^afx_gutter", "rain"}, {"^afx_drip_after", "rain"},
+	{"^afx_rain_", "rain"}, {"^afx_raindrop", "rain"}, {"^afx_gutter", "rain"}, {"^afx_drip_after", "rain"},
 	{"^afx_bird_", "birds"},
 	{"^afx_shore", "water"}, {"^afx_river", "water"}, {"^afx_waterfall", "water"},
 	{"^afx_plop", "water"}, {"^afx_bubbles", "water"}, {"^afx_frog", "water"},

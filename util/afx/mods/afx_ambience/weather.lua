@@ -117,9 +117,16 @@ local function rain_layer(ctx, wanted)
 					local q = vector.offset(c, 0, dy, 0)
 					if solid_top(q) then
 						if L.sky_open(vector.offset(q, 0, 1, 0)) then
-							afx_ambience.play("afx_drip", {pos = vector.offset(q, 0, 0.5, 0),
-								to_player = ctx.pname, gain = L.rand(0.15, 0.35),
-								pitch = L.rand(0.6, 0.9), max_hear_distance = 16}, true)
+							-- a real drop hitting it: soft on leaves and ground, a
+							-- tap on planks, stone and roofs
+							local nn = core.get_node(q).name
+							local soft = core.get_item_group(nn, "leaves") > 0 or
+									core.get_item_group(nn, "soil") > 0 or
+									core.get_item_group(nn, "dirt") > 0 or nn:find("grass") ~= nil
+							afx_ambience.play(soft and "afx_raindrop" or "afx_raindrop_hard",
+								{pos = vector.offset(q, 0, 0.5, 0), to_player = ctx.pname,
+								gain = L.rand(0.2, 0.45), pitch = L.rand(0.92, 1.12),
+								max_hear_distance = 16}, true)
 						end
 						break
 					end

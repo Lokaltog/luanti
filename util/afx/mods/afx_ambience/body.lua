@@ -118,17 +118,6 @@ A.register_tick(function(player, dtime)
 		st.brush_d = 0
 	end
 
-	-- Wet ground: a little squelch under each step outdoors after rain
-	local below = core.get_node(vector.round(vector.offset(pos, 0, -0.6, 0))).name
-	local wet = A.wetness and A.wetness(now, pname) or 0
-	st.wet_d = (st.wet_d or 0) + hspeed * dtime
-	if wet > 0.2 and hspeed > 1.2 and soil(below) and st.wet_d > 1.6 and
-			L.sky_open(vector.round(vector.offset(pos, 0, 1, 0))) then
-		st.wet_d = 0
-		afx_ambience.play("afx_plop", {pos = pos, to_player = pname,
-			gain = 0.1 + 0.15 * wet, pitch = L.rand(1.5, 1.9), max_hear_distance = 8}, true)
-	end
-
 	-- In your hand: a pocket clock ticks, a shell holds the sea
 	local item = player:get_wielded_item():get_name()
 	loop_to(pname, "tick", "afx_dry_tick", item:find("clock") and 0.5 or 0, 1, 2)
