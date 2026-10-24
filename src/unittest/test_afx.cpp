@@ -45,6 +45,9 @@ public:
 	void testHollowFloor();
 	void testScore();
 	void testDeafen();
+	void testRoomTone();
+	void testSourceSpace();
+	void testBuriedSilent();
 };
 
 static TestAfx g_test_instance;
@@ -67,6 +70,9 @@ void TestAfx::runTests(IGameDef *gamedef)
 	TEST(testHollowFloor);
 	TEST(testScore);
 	TEST(testDeafen);
+	TEST(testRoomTone);
+	TEST(testSourceSpace);
+	TEST(testBuriedSilent);
 }
 
 void TestAfx::testOpenField()
@@ -447,4 +453,119 @@ void TestAfx::testDeafen()
 	loud.duck = 1.f;
 	UASSERT(mixFor(Bus::Outdoor, loud, {}, p).direct_gain < 0.5f);
 	UASSERT(mixFor(Bus::World, loud, {}, p).direct_gain == 1.f);
+}
+
+void TestAfx::testRoomTone()
+{
+	Params p;
+	// silent under the sky
+	const RoomTone open = roomTone(openField().probe(v3f(0, 1.6f, 0)), p);
+	UASSERT(open.gain < 0.002f);
+
+	// a stone cavern rumbles: louder and lower than a wooden hut
+	const RoomTone cave = roomTone(stoneCave().probe(v3f(0, 0, 0)), p);
+	World hut = openField();
+	hut.fill({-4, 0, -4}, {4, 5, 4}, Material::Wood);
+	hut.fill({-3, 0, -3}, {3, 4, 3}, Material::Air);
+	hut.markSky();
+	const RoomTone wood = roomTone(hut.probe(v3f(0, 1.6f, 0)), p);
+	UASSERT(wood.gain > 0.01f);
+	UASSERT(cave.gain > wood.gain);
+	UASSERT(cave.pitch < wood.pitch);
+	// mostly the room ringing, not a noise in your ear
+	UASSERT(wood.mix.reverb_send > wood.mix.direct_gain);
+	UASSERT(wood.mix.direct_hf < 0.5f);
+
+	// a wool room is near silent; the setting scales it, 0 turns it off
+	World wool = openField();
+	wool.fill({-4, 0, -4}, {4, 5, 4}, Material::Soft);
+	wool.fill({-3, 0, -3}, {3, 4, 3}, Material::Air);
+	wool.markSky();
+	UASSERT(roomTone(wool.probe(v3f(0, 1.6f, 0)), p).gain < wood.gain * 0.6f);
+	p.roomtone = 0.f;
+	UASSERT(roomTone(hut.probe(v3f(0, 1.6f, 0)), p).gain == 0.f);
+}
+
+void TestAfx::testSourceSpace()
+{
+	// The listener in a dead little wool closet, a cavern beyond its door,
+	// a zombie in the cavern
+	World w;
+	w.fill({-32, -32, -32}, {31, 31, 31}, Material::Stone);
+	w.fill({-12, -6, 4}, {12, 8, 28}, Material::Air);
+	w.fill({-3, -1, -4}, {3, 3, 3}, Material::Soft);
+	w.fill({-2, 0, -3}, {2, 2, 2}, Material::Air);
+	w.fill({0, 0, 3}, {0, 1, 3}, Material::Air);
+	const Params p;
+	const v3f ear(0, 1.6f, -1);
+	const Acoustics here = w.probe(ear);
+	const SourceSpace far = analyzeSpace(w.snap, v3f(2, 0.5f, 18), p);
+	UASSERT(far.valid);
+	UASSERT(far.decay > here.decay * 2.f);
+	UASSERT(spaceContrast(far, here) > 0.5f);
+
+	// It ends up in the remote slot and feeds it
+	RemoteSpace r;
+	float bw = 0.f;
+	const SourceSpace near = analyzeSpace(w.snap, v3f(1, 0.5f, 0), p);
+	considerRemote(near, 1.f, v3f(1, 0, 0), here, r, bw);
+	UASSERT(r.level == 0.f); // the closet itself has nothing to carry
+	considerRemote(far, 0.5f, v3f(0, 0, 1), here, r, bw);
+	UASSERT(r.level > 0.3f);
+	UASSERT(r.decay == far.decay);
+	Occlusion o;
+	Mix m = mixFor(Bus::World, here, o, p);
+	carrySpace(m, far, r, here, o, p);
+	UASSERT(m.remote_send > 0.4f);
+	Mix mn = mixFor(Bus::World, here, o, p);
+	carrySpace(mn, near, r, here, o, p);
+	UASSERT(mn.remote_send < 0.05f);
+	Params off = p;
+	off.source_space = 0.f;
+	Mix mo = mixFor(Bus::World, here, o, off);
+	carrySpace(mo, far, r, here, o, off);
+	UASSERT(mo.remote_send == 0.f);
+
+	// Something under water sounds dull from up here
+	World pond = openField();
+	pond.fill({-6, -4, 4}, {6, -1, 14}, Material::Water);
+	pond.markSky();
+	const SourceSpace fish = analyzeSpace(pond.snap, v3f(0, -2.5f, 9), p);
+	UASSERT(fish.in_water);
+	const Acoustics bank = pond.probe(v3f(0, 1.6f, 0));
+	Mix mf = mixFor(Bus::World, bank, o, p);
+	carrySpace(mf, fish, RemoteSpace(), bank, o, p);
+	UASSERT(mf.direct_hf < 0.3f);
+}
+
+void TestAfx::testBuriedSilent()
+{
+	// A bird on the surface, the listener in a sealed pocket 8 nodes under
+	// it: nothing of it may reach the ear, not even through the room's reverb
+	World w = openField();
+	w.fill({-32, -32, -32}, {31, -1, 31}, Material::Stone);
+	w.fill({-1, -10, -1}, {1, -8, 1}, Material::Air);
+	w.markSky();
+	const v3f ear(0, -8.4f, 0), bird(6, 3, 4);
+	const Params p;
+	const Acoustics env = w.probe(ear);
+	const Occlusion o = occlusion(w.snap, ear, bird);
+	const Mix m = mixFor(Bus::World, env, o, p);
+	UASSERT(m.direct_gain < 0.01f);
+	UASSERT(m.reverb_send < 0.01f);
+	UASSERT(m.muffle_send < 0.01f);
+	UASSERT(m.echo_send < 0.01f);
+	// and the outdoor beds are gone too
+	const Mix bed = mixFor(Bus::Outdoor, env, Occlusion(), p);
+	UASSERT(bed.direct_gain < 0.01f && bed.muffle_send < 0.01f);
+
+	// Behind one plank wall: only the muffled path, a little
+	World hut = openField();
+	hut.fill({-4, 0, -4}, {4, 5, 4}, Material::Wood);
+	hut.fill({-3, 0, -3}, {3, 4, 3}, Material::Air);
+	hut.markSky();
+	const v3f in(0, 1.6f, 0), out(10, 1.5f, 0);
+	const Mix mh = mixFor(Bus::World, hut.probe(in), occlusion(hut.snap, in, out), p);
+	UASSERT(mh.direct_gain < 0.05f);
+	UASSERT(mh.muffle_send > 0.005f && mh.muffle_send < 0.2f);
 }

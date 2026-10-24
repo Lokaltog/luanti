@@ -89,7 +89,7 @@ local function rain_layer(ctx, wanted)
 		if not st.next_drop or now >= st.next_drop then
 			st.next_drop = now + L.rand(0.3, 1.2)
 			local p = vector.offset(ctx.ppos, L.rand(-5, 5), L.rand(0, 3), L.rand(-5, 5))
-			core.sound_play("afx_drip", {pos = p, to_player = ctx.pname,
+			afx_ambience.play("afx_drip", {pos = p, to_player = ctx.pname,
 				gain = L.rand(0.15, 0.4), pitch = L.rand(0.6, 0.9), max_hear_distance = 16}, true)
 		end
 	end
@@ -162,12 +162,12 @@ local function on_strike(pos, game_crack)
 		local pname = player:get_player_name()
 		if d < 160 then
 			if not game_crack then
-				core.sound_play("afx_thunder_near", {pos = pos, to_player = pname,
+				afx_ambience.play("afx_thunder_near", {pos = pos, to_player = pname,
 					gain = 1.0, max_hear_distance = 1000}, true)
 			end
 		else
 			-- Far strikes: just the roll, quieter with distance
-			core.sound_play("afx_thunder_far", {pos = pos, to_player = pname,
+			afx_ambience.play("afx_thunder_far", {pos = pos, to_player = pname,
 				gain = math.max(0.3, 1.2 - d / 800), max_hear_distance = 1200}, true)
 		end
 	end

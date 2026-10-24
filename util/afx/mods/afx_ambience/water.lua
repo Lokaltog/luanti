@@ -91,7 +91,7 @@ A.register_tick(function(player, dtime)
 
 	-- Falling into water: one big splash
 	if in_water and not st.was_in_water and vel.y < -3 then
-		core.sound_play("afx_plop", {pos = pos, to_player = pname,
+		afx_ambience.play("afx_plop", {pos = pos, to_player = pname,
 			gain = math.min(1, 0.4 + (-vel.y) / 15), pitch = L.rand(0.6, 0.75),
 			max_hear_distance = 24}, true)
 	end
@@ -100,7 +100,7 @@ A.register_tick(function(player, dtime)
 	local speed = math.sqrt(vel.x * vel.x + vel.z * vel.z)
 	if in_water and not is_water(head) and speed > 1 and st.wade_t > 0.55 then
 		st.wade_t = 0
-		core.sound_play("afx_plop", {pos = pos, to_player = pname,
+		afx_ambience.play("afx_plop", {pos = pos, to_player = pname,
 			gain = L.rand(0.15, 0.3), pitch = L.rand(0.95, 1.25), max_hear_distance = 12}, true)
 	end
 	st.was_in_water = in_water

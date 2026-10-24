@@ -36,6 +36,72 @@ local CFG = {
 	debug = setting_bool("afx_ambience_debug", false),
 }
 
+--[[ Per-layer volumes (the /afx mixer); live, saved as settings ]]
+
+local LAYERS = {
+	{"beds", "Background (wind, birds far off, crickets, waves)"},
+	{"rain", "Rain on roofs, windows, gutters"},
+	{"birds", "Birds"},
+	{"water", "Shores, rivers, splashes, frogs"},
+	{"places", "Fires, furnaces, drips, creaks, chains, clocks"},
+	{"body", "Rushing air, brushing plants, held items"},
+	{"thunder", "Thunder"},
+	{"chimes", "Wind chimes, bells"},
+	{"heart", "Heartbeat"},
+	{"drafts", "Drafts"},
+}
+afx_ambience.LAYERS = LAYERS
+
+local VOL = {}
+local function read_vol(k)
+	VOL[k] = setting_num("afx_ambience_vol_" .. k, 1)
+end
+for _, l in ipairs(LAYERS) do read_vol(l[1]) end
+
+function afx_ambience.set_volume(k, v)
+	VOL[k] = v
+	core.settings:set("afx_ambience_vol_" .. k, string.format("%.2f", v))
+end
+function afx_ambience.volume(k) return VOL[k] or 1 end
+
+local CATEGORY = {
+	{"^afx_out_", "beds"}, {"^afx_in_", "beds"},
+	{"^afx_rain_", "rain"}, {"^afx_gutter", "rain"}, {"^afx_drip_after", "rain"},
+	{"^afx_bird_", "birds"},
+	{"^afx_shore", "water"}, {"^afx_river", "water"}, {"^afx_waterfall", "water"},
+	{"^afx_plop", "water"}, {"^afx_bubbles", "water"}, {"^afx_frog", "water"},
+	{"^afx_thunder", "thunder"},
+	{"^afx_bowl", "chimes"}, {"^mcl_bells", "chimes"},
+	{"^afx_dry_heart", "heart"},
+	{"^afx_draft", "drafts"},
+	{"^afx_dry_rush", "body"}, {"^afx_leaf_rustle", "body"}, {"^afx_dry_tick", "body"},
+	{"^afx_dry_seashell", "body"},
+}
+local cat_cache = {}
+function afx_ambience.category(name)
+	local c = cat_cache[name]
+	if c == nil then
+		c = "places"
+		for _, m in ipairs(CATEGORY) do
+			if name:find(m[1]) then c = m[2] break end
+		end
+		cat_cache[name] = c
+	end
+	return c
+end
+
+-- Every sound this mod plays goes through here, scaled by its layer
+function afx_ambience.play(name, params, ephemeral)
+	local v = VOL[afx_ambience.category(name)] or 1
+	if v <= 0.001 then return nil end
+	params = params or {}
+	params.gain = (params.gain or 1) * v
+	return core.sound_play(name, params, ephemeral)
+end
+function afx_ambience.gain_for(name, gain)
+	return gain * (VOL[afx_ambience.category(name)] or 1)
+end
+
 local function log(msg)
 	if CFG.debug then
 		core.log("action", "[afx_ambience] " .. msg)
@@ -183,6 +249,7 @@ local FADE = 0.5 -- gain per second
 --                 gain=, fade=, range=}
 local function reconcile(pname, st, wanted)
 	for key, w in pairs(wanted) do
+		w.gain = afx_ambience.gain_for(w.sound, w.gain)
 		if w.gain < 0.01 then wanted[key] = nil end
 	end
 	for key, e in pairs(st.emitters) do
@@ -350,17 +417,38 @@ local function has(name, words)
 	return false
 end
 
+-- Sea level, for telling the sea from a cave lake or a pond up a hill
+local WATER_LEVEL = tonumber(core.get_mapgen_setting and core.get_mapgen_setting("water_level") or "") or 1
+
 -- What kind of place, 0..1 each, from the biome name and the nodes around.
-local function place(ppos)
+local function place(ppos, under_sky)
 	-- (called above ground only: bed_targets returns early underground)
 	local p = {forest = 0, meadow = 0, jungle = 0, coast = 0, cold = 0, dry = 0, swamp = 0}
 	local bd = CFG.use_biomes and core.get_biome_data and core.get_biome_data(ppos)
 	local bname = bd and core.get_biome_name(bd.biome) or ""
 	bname = bname:lower()
-	if has(bname, {"jungle", "bamboo"}) then p.jungle = 1
+	-- Mineclonia/VoxeLibre name the layers of a biome: Forest_ocean is the
+	-- sea bed off a forest (and the rock under it), Forest_underground the
+	-- caves below. Only the surface is the place you're in.
+	local near_sea = under_sky and ppos.y >= WATER_LEVEL - 3 and ppos.y <= WATER_LEVEL + 12
+	local layer = bname:match("_(deep_ocean)$") or bname:match("_(ocean)$") or
+			bname:match("_(underground)$") or bname:match("_(beach)$") or bname:match("_(shore)$")
+	if layer then bname = bname:sub(1, #bname - #layer - 1) end
+	if (layer == "beach" or layer == "shore") and near_sea then
+		p.coast = 0.7
+	elseif (layer == "ocean" or layer == "deep_ocean") and near_sea then
+		p.coast = 0.8
+	elseif layer == "underground" or layer == "ocean" or layer == "deep_ocean" then
+		-- below the surface: no birds' biome to speak of
+		bname = ""
+	end
+	if bname == "" then
+		p.meadow = 0
+	elseif has(bname, {"jungle", "bamboo"}) then p.jungle = 1
 	elseif has(bname, {"forest", "taiga", "birch", "grove", "roofed"}) then p.forest = 0.7
 	elseif has(bname, {"desert", "mesa", "badlands", "savanna"}) then p.dry = 1
-	elseif has(bname, {"ocean", "beach", "shore", "coast"}) then p.coast = 0.7
+	elseif has(bname, {"ocean", "beach", "shore", "coast"}) then
+		if near_sea then p.coast = math.max(p.coast, 0.7) end
 	elseif has(bname, {"ice", "snow", "frozen", "cold"}) then p.cold = 1
 	elseif has(bname, {"swamp", "mangrove", "marsh"}) then p.swamp = 1
 	else p.meadow = 0.8 end
@@ -369,11 +457,18 @@ local function place(ppos)
 	-- open water makes it a shore, flowers make it a meadow.
 	local leaves = count(ppos, 14, -4, 16, {"group:leaves"})
 	p.forest = math.max(p.forest, math.min(1, leaves / 120))
-	local water = 0
-	if ppos.y > -8 then
-		water = count(ppos, 14, -6, 1, {"group:water"})
+	-- The sea: a wide sheet of water at sea level, open to the sky. A cave
+	-- lake, a river or a pond on a hill is not the coast.
+	if near_sea then
+		local r = 22
+		local surface = #core.find_nodes_in_area(
+				{x = ppos.x - r, y = WATER_LEVEL - 1, z = ppos.z - r},
+				{x = ppos.x + r, y = WATER_LEVEL - 1, z = ppos.z + r}, {"group:water"})
+		p.coast = math.max(p.coast, math.min(1, (surface - 250) / 600))
+		if surface < 60 then p.coast = 0 end -- the biome map says sea, the eye says no
+	else
+		p.coast = 0
 	end
-	p.coast = math.max(p.coast, math.min(1, (water - 40) / 300))
 	local flowers = count(ppos, 10, -3, 3, {"group:flower"})
 	p.meadow = math.max(p.meadow, math.min(1, flowers / 12))
 	return p
@@ -388,11 +483,13 @@ local function bed_targets(ctx, wanted)
 	-- Where daylight never reaches, none of this would be audible: free the
 	-- voices (the engine would muffle them to nothing anyway)
 	local ear = vector.round(vector.offset(ppos, 0, 1.6, 0))
-	local dl = core.get_node_light(ear, 0.5)
-	if dl and dl <= 3 and not sky_open(ear) then
+	-- sunlight only: a torch-lit cave is still a cave
+	local dl = core.get_natural_light and core.get_natural_light(ear, 0.5) or
+			core.get_node_light(ear, 0.5)
+	if dl and dl <= 3 and not ctx.under_sky then
 		return
 	end
-	local p = place(ppos)
+	local p = place(ppos, ctx.under_sky or (dl or 0) >= 8)
 	-- Higher and more exposed is windier; floating islands howl
 	local height = math.max(0, math.min(1, (ppos.y - 40) / 60))
 	local calm_birds = (raining > 0 or snowing > 0) and 0 or (ctx.birds_back or 1)
@@ -521,7 +618,7 @@ local function maybe_bird(pname, st, ppos, now, raining)
 	end
 	if not spot then return end
 	local sound = night and pick(NIGHT_BIRDS) or (dawn and pick(SONGBIRDS) or pick(DAY_BIRDS))
-	core.sound_play(sound, {pos = spot, to_player = pname, gain = rand(0.35, 0.8),
+	afx_ambience.play(sound, {pos = spot, to_player = pname, gain = rand(0.35, 0.8),
 		pitch = rand(0.92, 1.08), max_hear_distance = 40}, true)
 	log(pname .. ": " .. sound .. " at " .. core.pos_to_string(spot))
 end
@@ -531,7 +628,7 @@ local function maybe_drip(pname, st, ppos, now)
 	st.next_drip = now + rand(1.2, 6)
 	local ear = vector.round(vector.offset(ppos, 0, 1.6, 0))
 	-- Only where daylight never reaches (a cave, not a cellar with a door)
-	local day_light = core.get_node_light(ear, 0.5)
+	local day_light = (core.get_natural_light or core.get_node_light)(ear, 0.5)
 	if not day_light or day_light > 3 then return end
 	-- Water seeps through the rock where there's water above it: drips fall
 	-- from the ceiling right under a lake, a river, an aquifer. A dry cave
@@ -573,7 +670,7 @@ local function maybe_drip(pname, st, ppos, now)
 		end
 	end
 	if not spot then return end
-	core.sound_play("afx_drip", {pos = spot, to_player = pname,
+	afx_ambience.play("afx_drip", {pos = spot, to_player = pname,
 		gain = rand(0.2, 0.6), pitch = rand(0.85, 1.15), max_hear_distance = 24}, true)
 end
 
@@ -592,6 +689,16 @@ afx_ambience.lib = {
 	GAME_HAS_WATER_LAVA = GAME_HAS_WATER_LAVA,
 }
 
+core.register_on_mods_loaded(function()
+	afx_ambience.add_report(function()
+		local function list(t) return #t .. " " .. table.concat(t, " ", 1, math.min(#t, 6)) end
+		return {"furnaces (lit): " .. list(FURNACE_NODES), "fires/campfires: " .. list(HOT_NODES),
+			"bee nests: " .. list(BEE_NODES),
+			"game plays its own water/lava: " .. tostring(GAME_HAS_WATER_LAVA),
+			"game plays its own fire: " .. tostring(GAME_HAS_FIRE)}
+	end)
+end)
+
 local function dimension(pos)
 	local w = rawget(_G, "mcl_worlds")
 	if w and w.pos_to_dimension then
@@ -601,7 +708,8 @@ local function dimension(pos)
 end
 
 local modpath = core.get_modpath(core.get_current_modname())
-for _, f in ipairs({"weather.lua", "water.lua", "life.lua", "places.lua", "body.lua", "cinema.lua"}) do
+for _, f in ipairs({"mixer.lua", "weather.lua", "water.lua", "life.lua", "places.lua", "body.lua",
+		"cinema.lua"}) do
 	dofile(modpath .. "/" .. f)
 end
 
@@ -634,7 +742,7 @@ core.register_globalstep(function(dtime)
 			tod = tod, day = math.max(0, math.min(1, (0.32 - math.abs(tod - 0.5)) / 0.05)),
 			rain = afx_ambience.rain_at(ppos), snow = afx_ambience.snow_at(ppos),
 			dimension = dimension(ppos), under_sky = sky_open(ear),
-			daylight = core.get_node_light(ear, 0.5) or 0,
+			daylight = (core.get_natural_light or core.get_node_light)(ear, 0.5) or 0,
 		}
 		ctx.underground = ctx.daylight <= 3 and not ctx.under_sky
 		local wanted = {}
@@ -653,7 +761,7 @@ core.register_globalstep(function(dtime)
 		end
 		underwater_bed(player, wanted)
 		reconcile(pname, st, wanted)
-		maybe_bird(pname, st, ppos, now, ctx.rain + ctx.snow)
+		if not ctx.underground then maybe_bird(pname, st, ppos, now, ctx.rain + ctx.snow) end
 		maybe_drip(pname, st, ppos, now)
 	end
 end)

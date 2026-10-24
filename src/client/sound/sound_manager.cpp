@@ -379,6 +379,7 @@ OpenALSoundManager::~OpenALSoundManager()
 	// slot that is still in use fails (and leaves the AL error flag set).
 	m_sounds_playing.clear();
 	m_internal_sounds.clear();
+	m_roomtone.reset();
 	m_efx.reset();
 }
 
@@ -419,6 +420,10 @@ void OpenALSoundManager::pauseAll()
 		PlayingSound &snd = *snd_p.second;
 		snd.pause();
 	}
+	for (auto &snd : m_internal_sounds)
+		snd->pause();
+	if (m_roomtone)
+		m_roomtone->pause();
 	m_is_paused = true;
 }
 
@@ -428,6 +433,10 @@ void OpenALSoundManager::resumeAll()
 		PlayingSound &snd = *snd_p.second;
 		snd.resume();
 	}
+	for (auto &snd : m_internal_sounds)
+		snd->resume();
+	if (m_roomtone)
+		m_roomtone->resume();
 	m_is_paused = false;
 }
 

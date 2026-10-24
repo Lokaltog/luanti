@@ -80,6 +80,13 @@ private:
 	bool m_afx_field_valid = false;
 	f32 m_duck = 0.0f, m_deafen = 0.0f, m_deafen_hold = 0.0f, m_ring_cooldown = 0.0f;
 	std::vector<std::shared_ptr<PlayingSound>> m_internal_sounds; // the ear ring
+	// the build's own voice: a faint looping tone through the room's reverb
+	std::shared_ptr<PlayingSound> m_roomtone;
+	f32 m_roomtone_retry = 0.0f;
+	void stepRoomTone(f32 dtime);
+	// the far space sources sit in (send 5), glided
+	afx::RemoteSpace m_remote, m_remote_target;
+	void stepSourceSpaces(f32 dtime, bool recast);
 	void noteImpact(const std::string &group, f32 gain,
 			const std::optional<std::pair<v3f, v3f>> &pos_vel);
 	void stepImpacts(f32 dtime);

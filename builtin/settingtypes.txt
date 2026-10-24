@@ -1004,6 +1004,15 @@ afx_score_replaces_music (Score replaces game music) bool true
 #    picked twice in a row. 0 = off.
 afx_variation (Sound variation) float 1.0 0.0 2.0
 
+#    The faint presence of an enclosed space: a hut hums warm and quiet, a
+#    stone hall breathes, a cavern rumbles low. Silent under the sky.
+afx_roomtone (Room tone) float 1.0 0.0 2.0
+
+#    Sounds carry the space they are in: a zombie in a cavern rings with the
+#    cavern even while you stand in a dead room, and things under water sound
+#    dull from above.
+afx_source_space (Sounds carry their own space) float 1.0 0.0 2.0
+
 #    Pitch shift of moving sound sources (minecarts, mobs). 0 = off.
 afx_doppler (Doppler) float 0.5 0.0 2.0
 

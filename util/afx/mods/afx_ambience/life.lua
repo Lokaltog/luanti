@@ -22,7 +22,7 @@ local function flush(pos, pname)
 	if A.rain_at(pos) > 0 then return end
 	last_flush[pname] = now
 
-	core.sound_play("afx_leaf_rustle", {pos = pos, to_player = pname, gain = 0.8,
+	afx_ambience.play("afx_leaf_rustle", {pos = pos, to_player = pname, gain = 0.8,
 		pitch = L.rand(0.9, 1.1), max_hear_distance = 24}, true)
 	-- two to four birds, off and away, up and outward from the tree
 	local n = math.random(2, 4)
@@ -31,10 +31,10 @@ local function flush(pos, pname)
 		core.after(0.08 + i * L.rand(0.08, 0.2), function()
 			local p = vector.add(pos, vector.multiply(away, 2 + i * 1.5))
 			p = vector.offset(p, L.rand(-1.5, 1.5), 1 + i * 0.8, L.rand(-1.5, 1.5))
-			core.sound_play(L.pick(ALARM), {pos = p, to_player = pname,
+			afx_ambience.play(L.pick(ALARM), {pos = p, to_player = pname,
 				gain = L.rand(0.5, 0.8), pitch = L.rand(1.05, 1.25), max_hear_distance = 32}, true)
 			if i == 1 then
-				core.sound_play("afx_leaf_rustle", {pos = p, to_player = pname, gain = 0.5,
+				afx_ambience.play("afx_leaf_rustle", {pos = p, to_player = pname, gain = 0.5,
 					pitch = 1.2, max_hear_distance = 20}, true)
 			end
 		end)
@@ -85,7 +85,7 @@ A.register_layer(function(ctx, wanted)
 			local p = L.pick(shore)
 			if vector.distance(p, ctx.ppos) < 8 then
 				core.after(i * L.rand(0.1, 0.35), function()
-					core.sound_play("afx_plop", {pos = p, to_player = ctx.pname,
+					afx_ambience.play("afx_plop", {pos = p, to_player = ctx.pname,
 						gain = L.rand(0.25, 0.5), pitch = L.rand(1.1, 1.5), max_hear_distance = 16}, true)
 				end)
 			end
@@ -99,7 +99,7 @@ A.register_layer(function(ctx, wanted)
 		for _ = 1, 4 do
 			local p = L.pick(shore)
 			if vector.distance(p, ctx.ppos) > 6 then
-				core.sound_play("afx_frog", {pos = p, to_player = ctx.pname,
+				afx_ambience.play("afx_frog", {pos = p, to_player = ctx.pname,
 					gain = L.rand(0.3, 0.7), pitch = L.rand(0.85, 1.15), max_hear_distance = 32}, true)
 				break
 			end

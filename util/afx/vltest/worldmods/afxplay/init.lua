@@ -123,7 +123,44 @@ local function run(steps, i)
 	core.after(s.wait, run, steps, i + 1)
 end
 
+-- Muffling check: a sealed plank house in the forest, then sealed pockets
+-- dug at 4, 8, 14 and 22 nodes under the forest floor.
+local function pocket(c, r)
+	for x = -r, r do for y = 0, 2 do for z = -r, r do
+		core.set_node(vector.offset(c, x, y, z), {name = "air"})
+	end end end
+end
+
+local function house(c)
+	for x = -4, 4 do for y = -1, 5 do for z = -4, 4 do
+		local edge = math.abs(x) == 4 or math.abs(z) == 4 or y == -1 or y == 5
+		core.set_node(vector.offset(c, x, y, z),
+			{name = edge and "mcl_core:wood" or "air"})
+	end end end
+end
+
+local function muffle_tour()
+	say("start")
+	local f = SPOTS.forest
+	run({
+		{log = "forest floor, outdoors", wait = 20, fn = function()
+			weather("none"); core.set_timeofday(0.5); go(f) end},
+		{log = "sealed plank house", wait = 20, fn = function()
+			local c = vector.offset(f, 0, 0, 12)
+			house(c); go(vector.offset(c, 0, 0, 0)) end},
+		{log = "pocket 4 down", wait = 20, fn = function()
+			local c = vector.offset(f, 0, -6, 0); pocket(c, 1); go(c) end},
+		{log = "pocket 8 down", wait = 20, fn = function()
+			local c = vector.offset(f, 0, -10, 0); pocket(c, 1); go(c) end},
+		{log = "pocket 14 down", wait = 20, fn = function()
+			local c = vector.offset(f, 0, -16, 0); pocket(c, 1); go(c) end},
+		{log = "pocket 22 down", wait = 20, fn = function()
+			local c = vector.offset(f, 0, -24, 0); pocket(c, 1); go(c) end},
+	})
+end
+
 local function tour()
+	if core.settings:get("afxplay_mode") == "muffle" then return muffle_tour() end
 	say("start")
 	run({
 		{log = "forest, noon", wait = 16, fn = function()

@@ -274,6 +274,20 @@ function BUILD.nextdoor(b)
 	b.fill(v(0, 0, 1), v(0, 1, 1), "air")          -- its door to the cavern
 end
 
+function BUILD.voices(b)
+	b.fill(v(MIN.x, -30, MIN.z), v(MAX.x, -2, MAX.z), "basenodes:stone")
+	b.fill(v(MIN.x, -1, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	-- a sealed wooden hut off to the west
+	b.fill(v(-29, 0, -25), v(-19, 5, -15), "afxscene:planks")
+	b.fill(v(-28, 0, -24), v(-20, 4, -16), "air")
+	-- a rocky hill to the north with a deep cave in it, its mouth facing us
+	b.fill(v(-14, 0, 12), v(14, 14, 44), "basenodes:stone")
+	b.fill(v(-9, 0, 18), v(9, 11, 40), "air")
+	b.fill(v(-2, 0, 12), v(2, 3, 18), "air")
+	-- a pond to the east, with something in it
+	b.fill(v(8, -5, -8), v(18, -1, 2), "basenodes:water_source")
+end
+
 function BUILD.bridge(b)
 	b.fill(v(MIN.x, -20, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:stone")
 	b.fill(v(-30, -1, -1), v(-30, -1, 1), "basenodes:stone")
@@ -584,6 +598,44 @@ TIMELINE.nextdoor = {
 	{fn = tap, wait = 1.2}, {fn = tap, wait = 3},
 }
 
+local function growl(pos, n)
+	for i = 0, n - 1 do
+		core.after(i * 3.2, function()
+			core.sound_play("afxscene_growl", {pos = pos, gain = 1.0, max_hear_distance = 48}, true)
+		end)
+	end
+end
+
+TIMELINE.voices = {
+	{fn = function() afx_ambience.lib.player_state(player_name).next_timber = 0 end,
+		wait = 10, log = "a sealed wooden hut, nothing playing"},
+	{fn = function() P():set_pos(v(0, 0, 30)) end, wait = 8, log = "inside the stone cave"},
+	{fn = function() P():set_pos(v(0, 0, 0)) end, wait = 3, log = "outside, open meadow"},
+	{fn = function() growl(v(0, 0.5, 27), 3) end, wait = 10,
+		log = "a zombie deep in the cave (source space on)"},
+	{fn = function() core.settings:set("afx_source_space", "0") end, wait = 1},
+	{fn = function() growl(v(0, 0.5, 27), 3) end, wait = 10, log = "the same, source space off"},
+	{fn = function() core.settings:set("afx_source_space", "1") end, wait = 1},
+	{fn = function() growl(v(13, -3.5, -3), 3) end, wait = 10, log = "something in the pond"},
+	{fn = function() core.settings:set("afx_source_space", "0") end, wait = 1},
+	{fn = function() growl(v(13, -3.5, -3), 3) end, wait = 10, log = "the pond, source space off"},
+	{fn = function()
+		core.settings:set("afx_source_space", "1")
+		-- exercise the mixer and the report
+		local ok, msg = core.registered_chatcommands.afx.func(player_name, "")
+		core.log("action", "afxscene: /afx -> " .. tostring(ok))
+		for _, cb in ipairs(core.registered_on_player_receive_fields) do
+			cb(P(), "afx_ambience:mixer", {e_afx_reverb = "CHG:150", v_birds = "CHG:40",
+				afx_ambience_follower = "true"})
+		end
+		core.log("action", "afxscene: mixer -> reverb " .. core.settings:get("afx_reverb") ..
+			" birds " .. afx_ambience.volume("birds") ..
+			" follower " .. tostring(core.settings:get_bool("afx_ambience_follower")))
+		ok, msg = core.registered_chatcommands.afx_report.func(player_name, "")
+		core.log("action", "afxscene: /afx_report -> " .. tostring(msg))
+	end, wait = 1, log = "mixer"},
+}
+
 TIMELINE.bridge = {
 	{walk = v(-8, 0, 0), speed = 2, steps = "default_hard_footstep", log = "on rock"},
 	{walk = v(6, 0, 0), speed = 2, steps = "default_wood_footstep", log = "on the bridge"},
@@ -654,7 +706,7 @@ TIMELINE.cinema = {
 }
 
 local START = {
-	cinema = v(0, 0, 0),
+	cinema = v(0, 0, 0), voices = v(-24, 0, -20),
 	details = v(-24, 0, 0),
 	corner = v(-16, 0, 0), nextdoor = v(0, 0, -4), bridge = v(-16, 0, 0), draft = v(0, 0, 0),
 	steps = v(0, 0, 0),

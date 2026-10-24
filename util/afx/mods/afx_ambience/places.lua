@@ -93,7 +93,7 @@ local function structures(ctx, wanted)
 	if #timber >= 3 and now >= (st.next_creak or 0) then
 		st.next_creak = now + L.rand(6, 22)
 		local p = L.pick(timber)
-		core.sound_play("afx_creak", {pos = p, to_player = ctx.pname,
+		afx_ambience.play("afx_creak", {pos = p, to_player = ctx.pname,
 			gain = L.rand(0.3, 0.7), pitch = L.rand(0.85, 1.1), max_hear_distance = 24}, true)
 	end
 
@@ -104,7 +104,7 @@ local function structures(ctx, wanted)
 	if anchor and now >= (st.next_chain or 0) then
 		st.next_chain = now + L.rand(12, 35)
 		local p = vector.offset(anchor, L.rand(-4, 4), L.rand(0, 3), L.rand(-4, 4))
-		core.sound_play("afx_chains", {pos = p, to_player = ctx.pname,
+		afx_ambience.play("afx_chains", {pos = p, to_player = ctx.pname,
 			gain = L.rand(0.25, 0.5), pitch = L.rand(0.8, 1.0), max_hear_distance = 20}, true)
 	end
 end
@@ -121,7 +121,7 @@ local function other_worlds(ctx, wanted)
 			st.next_chime = now + L.rand(10, 30)
 			local a = L.rand(0, 2 * math.pi)
 			local p = vector.offset(ctx.ppos, math.cos(a) * 24, L.rand(4, 14), math.sin(a) * 24)
-			core.sound_play("afx_end_chime", {pos = p, to_player = ctx.pname,
+			afx_ambience.play("afx_end_chime", {pos = p, to_player = ctx.pname,
 				gain = L.rand(0.3, 0.6), pitch = L.rand(0.8, 1.2), max_hear_distance = 64}, true)
 		end
 	end
@@ -149,10 +149,10 @@ local function ring(pos, pname, strokes)
 	for i = 0, strokes - 1 do
 		core.after(i * 2.4, function()
 			if BELL_SOUND then
-				core.sound_play(BELL_SOUND, {pos = pos, to_player = pname, gain = 0.9,
+				afx_ambience.play(BELL_SOUND, {pos = pos, to_player = pname, gain = 0.9,
 					max_hear_distance = 120}, true)
 			else
-				core.sound_play("afx_bowl", {pos = pos, to_player = pname, gain = 0.8,
+				afx_ambience.play("afx_bowl", {pos = pos, to_player = pname, gain = 0.8,
 					pitch = 0.5, max_hear_distance = 120}, true)
 			end
 		end)
@@ -193,13 +193,13 @@ A.register_layer(function(ctx, wanted)
 	local far = vector.offset(ctx.ppos, math.cos(a) * L.rand(16, 26), L.rand(-6, 10),
 		math.sin(a) * L.rand(16, 26))
 	if math.random() < 0.6 then
-		core.sound_play("afx_rock_groan", {pos = far, to_player = ctx.pname,
+		afx_ambience.play("afx_rock_groan", {pos = far, to_player = ctx.pname,
 			gain = L.rand(0.5, 0.9), pitch = L.rand(0.8, 1.05), max_hear_distance = 60}, true)
 	else
 		-- a small rockfall somewhere in the dark
 		for i = 0, math.random(4, 8) do
 			core.after(i * L.rand(0.08, 0.2), function()
-				core.sound_play(GRAVEL, {pos = vector.offset(far, 0, -i * 0.3, 0),
+				afx_ambience.play(GRAVEL, {pos = vector.offset(far, 0, -i * 0.3, 0),
 					to_player = ctx.pname, gain = L.rand(0.3, 0.7) * (1 - i / 10),
 					pitch = L.rand(0.7, 1.0), max_hear_distance = 40}, true)
 			end)
@@ -229,7 +229,7 @@ core.register_node("afx_ambience:wind_chime", {
 		-- a tap rings it
 		for i = 0, 2 do
 			core.after(i * 0.18, function()
-				core.sound_play("afx_bowl", {pos = pos, gain = 0.35,
+				afx_ambience.play("afx_bowl", {pos = pos, gain = 0.35,
 					pitch = 2 * SCALE[math.random(#SCALE)], max_hear_distance = 24}, true)
 			end)
 		end
@@ -279,7 +279,7 @@ A.register_layer(function(ctx, wanted)
 			local notes = math.floor(math.max(0, (wind - 0.9) * 5) + math.random() * 0.55)
 			for _ = 1, notes do
 				core.after(L.rand(0, 1), function()
-					core.sound_play("afx_bowl", {pos = p, to_player = ctx.pname,
+					afx_ambience.play("afx_bowl", {pos = p, to_player = ctx.pname,
 						gain = L.rand(0.08, 0.15) * math.min(1.6, wind),
 						pitch = 2 * SCALE[math.random(#SCALE)], max_hear_distance = 28}, true)
 				end)
@@ -290,9 +290,65 @@ A.register_layer(function(ctx, wanted)
 	if #LANTERNS > 0 and wind > 1.05 then
 		for _, p in ipairs(core.find_nodes_in_area(lo, hi, LANTERNS)) do
 			if exposed(p) and math.random() < (wind - 1) * 0.6 then
-				core.sound_play("afx_creak", {pos = p, to_player = ctx.pname,
+				afx_ambience.play("afx_creak", {pos = p, to_player = ctx.pname,
 					gain = L.rand(0.08, 0.16), pitch = L.rand(1.6, 2.0), max_hear_distance = 16}, true)
 			end
 		end
 	end
+end)
+
+--[[ The build settles: a wooden house creaks now and then, more as it
+cools in the evening and when the wind leans on it. (The engine gives every
+room its own faint tone; this is the timber talking.) ]]
+
+A.register_layer(function(ctx, wanted)
+	if ctx.under_sky or ctx.underground or ctx.dimension ~= "overworld" then return end
+	local st = ctx.st
+	if ctx.now < (st.next_timber or ctx.now) then return end
+	if not st.next_timber then
+		st.next_timber = ctx.now + L.rand(15, 40)
+		return
+	end
+	local wood = core.find_nodes_in_area(vector.offset(ctx.ear, -5, -2, -5),
+			vector.offset(ctx.ear, 5, 5, 5), {"group:wood", "group:tree"})
+	if #wood < 30 then
+		st.next_timber = ctx.now + 10
+		return
+	end
+	-- evening cooling and gusts make it talk more
+	local cooling = (ctx.tod > 0.74 and ctx.tod < 0.9) and 2 or 1
+	local wind = math.max(1, (ctx.wind or 0.8) * 1.2)
+	st.next_timber = ctx.now + L.rand(30, 100) / (cooling * wind)
+	-- somewhere above or in the walls, not under your feet
+	local p
+	for _ = 1, 6 do
+		local c = L.pick(wood)
+		if c.y >= ctx.ear.y - 1 then p = c break end
+	end
+	if not p then return end
+	local deep = math.random() < 0.6
+	afx_ambience.play("afx_creak", {pos = p, to_player = ctx.pname,
+		gain = deep and L.rand(0.05, 0.09) or L.rand(0.03, 0.05),
+		pitch = deep and L.rand(0.55, 0.8) or L.rand(1.3, 1.7), max_hear_distance = 12}, true)
+	-- the settle sometimes answers itself a moment later, elsewhere
+	if math.random() < 0.3 then
+		local q = L.pick(wood)
+		core.after(L.rand(0.6, 2.2), function()
+			afx_ambience.play("afx_creak", {pos = q, to_player = ctx.pname,
+				gain = L.rand(0.02, 0.04), pitch = L.rand(0.9, 1.4), max_hear_distance = 10}, true)
+		end)
+	end
+end)
+
+-- what /afx_report shows from here
+core.register_on_mods_loaded(function()
+	if not afx_ambience.add_report then return end
+	afx_ambience.add_report(function()
+		local function list(t) return #t .. " " .. table.concat(t, " ", 1, math.min(#t, 6)) end
+		return {
+			"home nodes: " .. list(HOME), "rails: " .. list(RAILS), "timber: " .. list(TIMBER),
+			"spawners: " .. list(SPAWNERS), "mossy: " .. list(MOSSY), "bells: " .. list(BELLS),
+			"bell sound: " .. tostring(BELL_SOUND), "lanterns: " .. list(LANTERNS),
+		}
+	end)
 end)

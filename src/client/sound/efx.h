@@ -54,6 +54,10 @@ public:
 	void applySource(ALuint source, const afx::Mix &mix, bool positional, bool stereo,
 			const afx::Acoustics &env, const ListenerFrame &frame);
 
+	/// The far space a source sits in (send 5): its tail, panned toward it.
+	void applyRemote(const afx::RemoteSpace &r, const ListenerFrame &frame);
+	bool hasRemote() const { return m_remote_slot != 0; }
+
 	/// Disconnect a source from all sends and filters (afx disabled).
 	void clearSource(ALuint source);
 
@@ -91,6 +95,11 @@ private:
 	ALuint m_nb_effect = 0, m_nb_slot = 0;
 	// the cavity under a hollow floor: a short, low, boomy ring
 	ALuint m_hollow_effect = 0, m_hollow_slot = 0;
+	// where a source is: a cave's tail on a zombie in it, while you stand
+	// somewhere dead
+	ALuint m_remote_effect = 0, m_remote_slot = 0;
+	float m_rm_last_decay = -1.f, m_rm_last_hf = -1.f;
+	v3f m_rm_last_pan;
 	float m_nb_last_decay = -1.f, m_nb_last_hf = -1.f;
 	v3f m_nb_last_pan;
 	ALuint m_filter = 0; // scratch: filter params are copied when attached

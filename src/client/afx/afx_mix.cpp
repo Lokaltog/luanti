@@ -109,6 +109,18 @@ Variation vary(float u1, float u2, float u3, float u4, float amount)
 	return v;
 }
 
+/// OpenAL's low-pass is only a shelf above 5 kHz, which leaves birdsong and
+/// rain bright however low gainhf goes. So a dull path is split: the bright
+/// share stays direct, the rest goes through the steep muffle EQ.
+static void dullen(Mix &m, float gain, float hf)
+{
+	hf = std::clamp(hf, 0.f, 1.f);
+	gain = std::clamp(gain, 0.f, 1.f);
+	m.direct_gain = gain * (0.1f + 0.9f * hf);
+	m.direct_hf = hf;
+	m.muffle_send = std::min(1.f, m.muffle_send + 0.8f * gain * (1.f - hf));
+}
+
 Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &params,
 		bool footstep)
 {
@@ -119,23 +131,25 @@ Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &pa
 	switch (bus) {
 	case Bus::World: {
 		float o = std::clamp(occ.amount * params.occlusion, 0.f, 1.f);
-		m.direct_gain = 1.f - 0.97f * o;
-		m.direct_hf = std::pow(std::clamp(occ.hf, 0.f, 1.f), params.occlusion);
-		// What makes it through the blocker, muffled like a neighbour's party
-		m.muffle_send = o * std::clamp(occ.wall, 0.f, 1.f);
+		// What makes it through the blocker, muffled like a neighbour's party.
+		// Nothing else does: rock between you and a bird is silence.
+		const float through = std::clamp(occ.wall, 0.f, 1.f);
+		float clear = 1.f - o;
+		float hf = std::pow(std::clamp(occ.hf, 0.f, 1.f), params.occlusion);
+		m.muffle_send = o * through;
 		// Around the corner: heard from the opening (the engine moves the
 		// source there), duller for the bend
 		const float p = std::clamp(occ.path, 0.f, 1.f);
 		if (p > 0.f) {
-			m.direct_gain = lerpf(m.direct_gain, occ.path_gain, p);
-			m.direct_hf = lerpf(m.direct_hf, occ.path_hf, p);
+			clear = lerpf(clear, occ.path_gain, p);
+			hf = lerpf(hf, occ.path_hf, p);
 			m.muffle_send *= 1.f - 0.6f * p;
-			o *= 1.f - p;
 		}
-		// A source behind a wall excites less of the listener's room.
-		m.reverb_send = 1.f - 0.6f * o;
-		m.reverb_hf = m.direct_hf;
-		m.echo_send = 1.f - o;
+		dullen(m, clear, hf);
+		// The listener's room only rings with what reaches it
+		m.reverb_send = std::min(1.f, clear + m.muffle_send);
+		m.reverb_hf = hf;
+		m.echo_send = clear;
 		break;
 	}
 	case Bus::Local:
@@ -147,9 +161,8 @@ Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &pa
 		}
 		break;
 	case Bus::Outdoor:
-		m.direct_gain = env.outdoor_gain;
-		m.direct_hf = env.outdoor_hf;
 		m.muffle_send = env.outdoor_wall;
+		dullen(m, env.outdoor_gain, env.outdoor_hf);
 		// Outdoor sound coming into a cave rings in it.
 		m.reverb_send = (env.outdoor_gain + 0.5f * env.outdoor_wall) * env.enclosure * 0.7f;
 		m.reverb_hf = env.outdoor_hf;
@@ -195,6 +208,88 @@ Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &pa
 		m.echo_send *= 1.f - s;
 	}
 	return m;
+}
+
+static float smoothstep(float a, float b, float x)
+{
+	const float t = std::clamp((x - a) / (b - a), 0.f, 1.f);
+	return t * t * (3.f - 2.f * t);
+}
+
+float spaceContrast(const SourceSpace &s, const Acoustics &env)
+{
+	if (!s.valid)
+		return 0.f;
+	// How much a space rings: its reverb level, for tails of a second and
+	// more. Outdoors has a long faint tail that colours nothing; inside, the
+	// listener's own room already carries what is like it.
+	const float there = std::clamp(s.wet * 1.6f, 0.f, 1.f) * std::clamp(s.decay / 1.5f, 0.f, 1.f);
+	const float here = std::clamp(env.wet, 0.f, 1.f) * std::clamp(env.enclosure, 0.f, 1.f) *
+			std::clamp(env.decay / 1.5f, 0.f, 1.f);
+	return std::clamp((there - here) / 0.5f, 0.f, 1.f);
+}
+
+void considerRemote(const SourceSpace &s, float reach, v3f dir, const Acoustics &env,
+		RemoteSpace &best, float &best_w)
+{
+	const float w = spaceContrast(s, env) * std::clamp(reach, 0.f, 1.f);
+	if (w <= best_w || w < 0.02f)
+		return;
+	best_w = w;
+	// big caverns read as only half enclosed from inside; their tails are long
+	best.level = std::clamp(s.wet * 1.6f, 0.f, 1.f);
+	best.decay = s.decay;
+	best.hf_ratio = s.hf_ratio;
+	best.dir = dir;
+}
+
+void carrySpace(Mix &m, const SourceSpace &s, const RemoteSpace &r, const Acoustics &env,
+		const Occlusion &occ, const Params &params)
+{
+	if (!s.valid || params.source_space <= 0.f || !params.enabled)
+		return;
+	const float k = std::min(1.f, params.source_space);
+	const float dry = 1.f - std::clamp(env.submerged, 0.f, 1.f);
+	// Something under the surface while you're in the air: dull and close
+	// to the water, its splashes thud.
+	if (s.in_water) {
+		const float w = k * dry;
+		m.direct_hf *= lerpf(1.f, 0.15f, w);
+		m.direct_gain *= lerpf(1.f, 0.6f, w);
+		m.reverb_hf *= lerpf(1.f, 0.3f, w);
+		m.echo_send *= 1.f - 0.7f * w;
+	}
+	if (r.level <= 0.f)
+		return;
+	// The slot plays one space; sources in a space like it feed it
+	const float ratio = std::max(s.decay, 0.05f) / std::max(r.decay, 0.05f);
+	const float similar = std::exp(-2.f * std::fabs(std::log(ratio)));
+	const float o = std::clamp(occ.amount * params.occlusion, 0.f, 1.f) * (1.f - occ.path);
+	m.remote_send = params.source_space * spaceContrast(s, env) * similar *
+			(1.f - 0.5f * o) * dry * (1.f - std::clamp(env.deafen, 0.f, 1.f));
+	m.remote_send = std::clamp(m.remote_send, 0.f, 1.f);
+}
+
+RoomTone roomTone(const Acoustics &env, const Params &params)
+{
+	RoomTone t;
+	if (!params.enabled || params.roomtone <= 0.f)
+		return t;
+	const float enclosed = smoothstep(0.55f, 0.95f, env.enclosure);
+	const float hard = std::clamp(1.f - env.absorption, 0.f, 1.f);
+	const float size = std::clamp(env.mean_free_path / 14.f, 0.f, 1.f);
+	t.gain = params.roomtone * 0.09f * enclosed * (0.1f + 0.9f * hard * hard) * (0.55f + 0.45f * size);
+	t.gain *= 1.f - std::clamp(env.submerged, 0.f, 1.f);
+	t.gain *= 1.f - 0.7f * std::clamp(env.duck, 0.f, 1.f);
+	t.gain *= 1.f - std::clamp(env.deafen, 0.f, 1.f);
+	// a cavern is a low rumble, a cupboard a faint hiss of air
+	t.pitch = std::clamp(1.25f - 0.55f * size, 0.6f, 1.25f);
+	// barely any of it direct: it is the room ringing, so through the room
+	t.mix.direct_gain = 0.3f;
+	t.mix.direct_hf = 0.08f + 0.25f * std::clamp(env.hf, 0.f, 1.f);
+	t.mix.reverb_send = 1.f;
+	t.mix.reverb_hf = 0.3f + 0.5f * std::clamp(env.hf, 0.f, 1.f);
+	return t;
 }
 
 } // namespace afx

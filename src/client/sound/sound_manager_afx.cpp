@@ -82,6 +82,9 @@ void OpenALSoundManager::deactivateAcoustics()
 	m_efx->applyEnvironment(neutral, m_listener_frame);
 	for (auto &[id, snd] : m_sounds_playing)
 		m_efx->clearSource(snd->getSourceId());
+	m_roomtone.reset();
+	m_remote = m_remote_target = afx::RemoteSpace();
+	m_efx->applyRemote(m_remote, m_listener_frame);
 	m_afx_active = false;
 	m_afx_snap.reset();
 	m_afx_smoother = afx::Smoother();
@@ -172,6 +175,8 @@ void OpenALSoundManager::applyMix(PlayingSound &snd)
 	env.deafen = m_deafen;
 	afx::Mix mix = afx::mixFor(snd.getBus(), env, snd.getOcclusion(), m_afx_params,
 			snd.isFootstep());
+	if (snd.getBus() == afx::Bus::World)
+		afx::carrySpace(mix, snd.getSpace(), m_remote, env, snd.getOcclusion(), m_afx_params);
 	if (snd.getBus() == afx::Bus::Dry)
 		m_efx->clearSource(snd.getSourceId());
 	else
@@ -183,9 +188,109 @@ void OpenALSoundManager::prepareSound(PlayingSound &snd)
 {
 	if (!m_afx_active)
 		return;
-	if (snd.getBus() == afx::Bus::World)
+	if (snd.getBus() == afx::Bus::World) {
 		snd.setOcclusionNow(computeOcclusion(snd));
+		if (m_afx_snap && m_afx_params.source_space > 0.0f && snd.isPositional() &&
+				(snd.getPosNode() - m_listener_pos_node).getLengthSQ() > 25.0f)
+			snd.setSpace(afx::analyzeSpace(*m_afx_snap, snd.getPosNode(), m_afx_params));
+	}
+	{
+		if (m_afx_params.debug) {
+			const afx::Occlusion &o = snd.getOcclusion();
+			afx::Acoustics env = m_afx_smoother.current();
+			afx::Mix mix = afx::mixFor(snd.getBus(), env, o, m_afx_params, false);
+			infostream << "afx src " << snd.getLoggingName() << " bus " << (int)snd.getBus() << " d "
+					<< (snd.getPosNode() - m_listener_pos_node).getLength()
+					<< " occ " << o.amount << " hf " << o.hf << " wall " << o.wall
+					<< " path " << o.path << " pg " << o.path_gain
+					<< " -> direct " << mix.direct_gain << " hf " << mix.direct_hf
+					<< " muffle " << mix.muffle_send << " rev " << mix.reverb_send << std::endl;
+		}
+	}
 	applyMix(snd);
+}
+
+void OpenALSoundManager::stepSourceSpaces(f32 dtime, bool recast)
+{
+	const afx::Acoustics &env = m_afx_smoother.current();
+	if (recast) {
+		// Look again at the spaces of sources that moved, a few per recast
+		int budget = 4;
+		afx::RemoteSpace best;
+		f32 best_w = 0.0f;
+		for (auto &[id, snd] : m_sounds_playing) {
+			if (snd->getBus() != afx::Bus::World || !snd->isPositional())
+				continue;
+			const v3f d = snd->getPosNode() - m_listener_pos_node;
+			const bool far = d.getLengthSQ() > 25.0f;
+			// Close by, it's in our room: nothing of its own to carry
+			if (!far || m_afx_params.source_space <= 0.0f) {
+				if (snd->getSpace().valid)
+					snd->setSpace(afx::SourceSpace());
+				continue;
+			}
+			if (snd->spaceStale(AFX_OCCLUSION_INTERVAL) && budget > 0 && m_afx_snap) {
+				budget--;
+				snd->setSpace(afx::analyzeSpace(*m_afx_snap, snd->getPosNode(), m_afx_params));
+			}
+			// how much of it reaches us: the inverse-distance law, roughly
+			const afx::Occlusion &o = snd->getOcclusion();
+			const f32 reach = std::min(1.0f, 8.0f / std::max(1.0f, d.getLength())) *
+					(1.0f - 0.6f * o.amount * (1.0f - o.path)) * std::min(1.0f, snd->getGain() * 2.0f);
+			afx::considerRemote(snd->getSpace(), reach, v3f(d).normalize(), env, best, best_w);
+		}
+		if (m_afx_params.source_space <= 0.0f)
+			best = afx::RemoteSpace();
+		// Keep playing the last space while its tail rings out
+		if (best.level <= 0.0f) {
+			m_remote_target.level = 0.0f;
+		} else {
+			m_remote_target = best;
+		}
+	}
+	// Glide: the level fades, the space itself switches only while quiet
+	const f32 k = 1.0f - std::exp(-dtime / (0.4f * m_afx_params.smoothing));
+	m_remote.level += (m_remote_target.level - m_remote.level) * k;
+	if (m_remote.level < 0.05f || m_remote_target.level <= 0.0f ||
+			std::fabs(m_remote_target.decay - m_remote.decay) < 0.5f * m_remote.decay) {
+		m_remote.decay += (m_remote_target.decay - m_remote.decay) * k;
+		m_remote.hf_ratio += (m_remote_target.hf_ratio - m_remote.hf_ratio) * k;
+	} else {
+		// a different space: duck the old one first
+		m_remote.level *= 1.0f - k;
+	}
+	if (m_remote_target.dir.getLengthSQ() > 0.0f) {
+		v3f dir = m_remote.dir + (m_remote_target.dir - m_remote.dir) * k;
+		if (dir.getLengthSQ() > 1e-6f)
+			m_remote.dir = dir.normalize();
+	}
+}
+
+void OpenALSoundManager::stepRoomTone(f32 dtime)
+{
+	afx::Acoustics env = m_afx_smoother.current();
+	env.duck = m_duck;
+	env.deafen = m_deafen;
+	const afx::RoomTone t = afx::roomTone(env, m_afx_params);
+	if (!m_roomtone) {
+		m_roomtone_retry -= dtime;
+		if (t.gain < 0.002f || m_roomtone_retry > 0.0f || m_is_paused)
+			return;
+		m_roomtone_retry = 10.0f; // missing sound: don't look every frame
+		const std::string name = getLoadedSoundNameFromGroup("afx_roomtone");
+		if (name.empty())
+			return;
+		// Bus::Indoor so the start-up mix is sane; the real mix is set here
+		m_roomtone = createPlayingSound(name, true, 0.0f, t.pitch, 0.0f, std::nullopt,
+				afx::Bus::Indoor);
+		if (!m_roomtone)
+			return;
+		if (m_roomtone->isStreaming())
+			m_sounds_streaming_next_bigstep.push_back(m_roomtone);
+	}
+	m_roomtone->setGain(t.gain);
+	m_roomtone->setPitch(t.pitch);
+	m_efx->applySource(m_roomtone->getSourceId(), t.mix, false, false, env, m_listener_frame);
 }
 
 void OpenALSoundManager::stepAcoustics(f32 dtime)
@@ -203,6 +308,8 @@ void OpenALSoundManager::stepAcoustics(f32 dtime)
 		m_afx_occlusion_timer = AFX_OCCLUSION_INTERVAL;
 		m_afx_field_valid = false;
 	}
+
+	stepSourceSpaces(dtime, recast);
 
 	u32 occluded = 0, routed = 0;
 	for (auto &[id, snd] : m_sounds_playing) {
@@ -223,8 +330,35 @@ void OpenALSoundManager::stepAcoustics(f32 dtime)
 		afx::Acoustics env = m_afx_smoother.current();
 		env.deafen = m_deafen;
 		m_efx->applyEnvironment(env, m_listener_frame);
+		m_efx->applyRemote(m_remote, m_listener_frame);
 		for (auto &[id, snd] : m_sounds_playing)
 			applyMix(*snd);
+		stepRoomTone(AFX_APPLY_INTERVAL);
+	}
+
+	if (m_afx_params.debug) {
+		static f32 dbg_timer = 0.0f;
+		dbg_timer -= dtime;
+		if (dbg_timer <= 0.0f) {
+			dbg_timer = 2.0f;
+			afx::Acoustics env = m_afx_smoother.current();
+			for (auto &[id, snd] : m_sounds_playing) {
+				const f32 g = snd->getGain();
+				if (g < 0.02f)
+					continue;
+				afx::Mix mix = afx::mixFor(snd->getBus(), env, snd->getOcclusion(), m_afx_params,
+						snd->isFootstep());
+				if (snd->getBus() == afx::Bus::World)
+					afx::carrySpace(mix, snd->getSpace(), m_remote, env, snd->getOcclusion(),
+							m_afx_params);
+				infostream << "afx mix " << snd->getLoggingName() << " " << afx::busName(snd->getBus())
+						<< " gain " << g << " direct " << mix.direct_gain << " hf " << mix.direct_hf
+						<< " muffle " << mix.muffle_send << " rev " << mix.reverb_send
+						<< " remote " << mix.remote_send << std::endl;
+			}
+			infostream << "afx remote level " << m_remote.level << " decay " << m_remote.decay
+					<< " | roomtone " << (m_roomtone ? m_roomtone->getGain() : 0.0f) << std::endl;
+		}
 	}
 
 	m_afx_report_timer -= dtime;

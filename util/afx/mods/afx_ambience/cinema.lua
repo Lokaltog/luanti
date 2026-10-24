@@ -5,8 +5,9 @@
 local A = afx_ambience
 local L = A.lib
 
-local FOLLOWER = core.settings:get_bool("afx_ambience_follower") == true
-local TREASURE = core.settings:get_bool("afx_ambience_treasure") == true
+-- read live, so the /afx mixer can switch them
+local function FOLLOWER() return core.settings:get_bool("afx_ambience_follower") == true end
+local function TREASURE() return core.settings:get_bool("afx_ambience_treasure") == true end
 
 --[[ Heartbeat: low health, or something hostile near you in the dark ]]
 
@@ -42,7 +43,7 @@ A.register_tick(function(player, dtime)
 	end
 	local b = beats[pname]
 	if intensity > 0.05 then
-		local gain = 0.25 + 0.5 * intensity
+		local gain = A.gain_for("afx_dry_heart", 0.25 + 0.5 * intensity)
 		local pitch = 1.0 + 0.6 * intensity -- 60 to 96 beats a minute
 		if not b then
 			local h = core.sound_play("afx_dry_heart", {to_player = pname, loop = true,
@@ -77,8 +78,9 @@ local function footstep_of(pos)
 	return fs
 end
 
-if FOLLOWER then
+do
 	A.register_tick(function(player, dtime)
+		if not FOLLOWER() then return end
 		local st = L.player_state(player:get_player_name())
 		local now = core.get_us_time() / 1e6
 		local pos = player:get_pos()
@@ -105,7 +107,7 @@ if FOLLOWER then
 			local name = footstep_of(pos)
 			if name then
 				core.after(0.25, function()
-					core.sound_play(name, {pos = p, to_player = player:get_player_name(),
+					afx_ambience.play(name, {pos = p, to_player = player:get_player_name(),
 						gain = 0.45, pitch = L.rand(0.85, 0.95), max_hear_distance = 16}, true)
 				end)
 			end
@@ -125,9 +127,9 @@ core.register_on_mods_loaded(function()
 	end
 end)
 
-if TREASURE then
+do
 	A.register_layer(function(ctx, wanted)
-		if #RARE == 0 or not ctx.underground then return end
+		if not TREASURE() or #RARE == 0 or not ctx.underground then return end
 		local st, now = ctx.st, ctx.now
 		if now < (st.next_glint or 0) then return end
 		local ore = core.find_nodes_in_area(vector.subtract(ctx.ppos, 5),
@@ -135,7 +137,14 @@ if TREASURE then
 		if #ore == 0 then return end
 		st.next_glint = now + L.rand(3, 7)
 		local p = ore[math.random(#ore)]
-		core.sound_play("afx_bowl", {pos = p, to_player = ctx.pname, gain = 0.12,
+		afx_ambience.play("afx_bowl", {pos = p, to_player = ctx.pname, gain = 0.12,
 			pitch = L.rand(3.6, 4.0), max_hear_distance = 8}, true)
 	end)
 end
+
+core.register_on_mods_loaded(function()
+	if not afx_ambience.add_report then return end
+	afx_ambience.add_report(function()
+		return {"rare ores: " .. #RARE .. " " .. table.concat(RARE, " ", 1, math.min(#RARE, 6))}
+	end)
+end)

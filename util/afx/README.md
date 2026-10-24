@@ -149,6 +149,36 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
 - **Opt-in:** `afx_ambience_follower`: deep in the dark, now and then for 20 s, footsteps a beat behind yours that stop when you stop. `afx_ambience_treasure`: rare ore within 5 nodes glints faintly through the rock.
 - Scenario `cinema`.
 
+## Round 8: real muffling, coasts, mixer, room tone, sources carry their space
+
+- **Muffling fix (engine).** Two leaks let the outdoors through walls and rock:
+  - An occluded source still excited the listener's room reverb at 40 %.
+  - OpenAL's per-source low-pass is only a high shelf above 5 kHz, so birdsong and rain stayed bright however low `gainhf` went.
+  - Now the room only rings with what actually arrives. A dull path is split into a bright direct share, and the rest goes through the steep muffle EQ (`dullen` in afx_mix.cpp).
+  - VoxeLibre forest check (`tour.sh … voxelibre afxplay_mode=muffle`):
+    - outdoors -20 dB;
+    - a sealed plank house -60 dB, faint and dull;
+    - a sealed pocket 4 nodes under the forest floor: silent (before the fix, all three measured the same).
+- **Coasts (mod).**
+  - Mineclonia/VoxeLibre name biome layers `X_ocean`/`X_underground`, which made every cave and low valley a "coast". The suffix is now read as a layer.
+  - Gulls and waves need a sheet of water at sea level within 22 nodes, near sea level, in daylight.
+  - Torch light no longer counts as daylight anywhere in the mod (`get_natural_light`).
+- **`/afx` mixer.**
+  - Live sliders for the engine settings and the mod's layer volumes (`afx_ambience_vol_<layer>`), saved on close.
+  - Toggles for the follower and the treasure shimmer.
+  - `/afx_report` lists what the mod found in the game: mods, biome here, the node underfoot and its footstep, entities, node groups nearby, and the detected home, bell, lantern, furnace and ore nodes. It also writes `afx_report.txt` in the world.
+- **Room tone (`afx_roomtone`, engine).**
+  - One looping low noise source (`afx_roomtone`) is mostly sent into the room's own reverb. Its level follows enclosure × hardness × size, and its pitch drops with size.
+  - Result: a hut hums faintly, a stone hall breathes, a cavern rumbles. It is silent under the sky.
+  - The mod adds settling creaks in wooden rooms, more in the evening and in wind.
+- **Sources carry their space (`afx_source_space`, engine).**
+  - Positional sources more than 5 nodes away get a coarse look at their own surroundings (24 rays, cached, re-looked at when they move, 4 per recast).
+  - The most prominent space that rings more than the listener's own plays in a sixth EFX slot (send 5), panned toward it. Sources in a similar space feed it.
+  - Example: a zombie in the cave ahead rings with the cave while you stand in the meadow.
+  - Sources under water are dull from above.
+  - Scenario: `voices`.
+- With `afx_debug`, the log shows each new sound's occlusion and mix, every loop's mix every 2 s, and the remote slot and room tone levels.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

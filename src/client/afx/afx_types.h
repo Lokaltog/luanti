@@ -122,6 +122,8 @@ struct Params {
 	float variation = 1.0f;      // afx_variation, pitch/level variety of short sounds
 	float score = 0.8f;          // afx_score, level of the mood-driven score (0 = off)
 	bool score_replaces_music = true; // afx_score_replaces_music
+	float roomtone = 1.0f;       // afx_roomtone, the room's own faint presence
+	float source_space = 1.0f;   // afx_source_space, sounds carry their own surroundings
 	bool debug = false;          // afx_debug
 	// Bus routing by sound name, comma-separated globs (see afx_mix.h)
 	std::string dry_sounds =     // afx_dry_sounds
@@ -252,6 +254,29 @@ void buildAirField(const VoxelSnapshot &snap, v3f ear, s16 radius, AirField &out
 /// open air, where it turns toward the ear, and how much it loses bending.
 void routeAround(const VoxelSnapshot &snap, const AirField &field, v3f ear, v3f src,
 		Occlusion &occ);
+
+/// The space around a sound's source, not the listener: a zombie in the
+/// cavern below rings with the cavern even while you stand in a dead hut.
+struct SourceSpace {
+	bool valid = false;
+	float wet = 0.f;
+	float decay = 0.3f;
+	float hf_ratio = 1.f;
+	float enclosure = 0.f;
+	bool in_water = false;   // the source is under water (a drowned, a fish)
+};
+
+/// A coarse look at the space around `pos`: few rays, short reach.
+SourceSpace analyzeSpace(const VoxelSnapshot &snap, v3f pos, const Params &params);
+
+/// The far space everyone's hearing right now (send 5): the most prominent
+/// source space that rings longer than the listener's room.
+struct RemoteSpace {
+	float level = 0.f;     // 0..1 slot gain
+	float decay = 1.f;
+	float hf_ratio = 1.f;
+	v3f dir;               // node space, unit or zero: toward the source
+};
 
 /// Unit directions on a Fibonacci sphere. Cached per count.
 const std::vector<v3f> &sphereDirections(int count);

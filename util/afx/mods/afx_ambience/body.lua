@@ -9,6 +9,7 @@ local L = A.lib
 local loops = {}
 
 local function loop_to(pname, key, sound, gain, pitch, fade)
+	gain = A.gain_for(sound, gain)
 	loops[pname] = loops[pname] or {}
 	local l = loops[pname][key]
 	if gain < 0.01 then
@@ -80,7 +81,7 @@ A.register_tick(function(player, dtime)
 	end
 	if core.get_item_group(head, "water") > 0 then
 		if st.last_breath and breath < st.last_breath then
-			core.sound_play("afx_bubbles", {pos = vector.offset(pos, 0, 1.8, 0), to_player = pname,
+			afx_ambience.play("afx_bubbles", {pos = vector.offset(pos, 0, 1.8, 0), to_player = pname,
 				gain = breath <= 3 and 0.7 or 0.4, pitch = L.rand(0.9, 1.15),
 				max_hear_distance = 8}, true)
 		end
@@ -94,7 +95,7 @@ A.register_tick(function(player, dtime)
 	st.brush_t = (st.brush_t or 0) + dtime
 	if depth > 0 and hspeed > 1.2 and st.brush_t > math.max(0.25, 1.4 / hspeed) then
 		st.brush_t = 0
-		core.sound_play("afx_leaf_rustle", {pos = vector.offset(pos, 0, 0.6 * depth, 0),
+		afx_ambience.play("afx_leaf_rustle", {pos = vector.offset(pos, 0, 0.6 * depth, 0),
 			to_player = pname, gain = math.min(0.6, 0.12 * depth * hspeed),
 			pitch = L.rand(1.05, 1.35), max_hear_distance = 10}, true)
 	end
@@ -106,7 +107,7 @@ A.register_tick(function(player, dtime)
 	if wet > 0.2 and hspeed > 1.2 and walkable(below) and st.wet_d > 1.6 and
 			L.sky_open(vector.round(vector.offset(pos, 0, 1, 0))) then
 		st.wet_d = 0
-		core.sound_play("afx_plop", {pos = pos, to_player = pname,
+		afx_ambience.play("afx_plop", {pos = pos, to_player = pname,
 			gain = 0.1 + 0.15 * wet, pitch = L.rand(1.5, 1.9), max_hear_distance = 8}, true)
 	end
 

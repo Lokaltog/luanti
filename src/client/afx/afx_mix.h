@@ -35,6 +35,7 @@ struct Mix {
 	float muffle_send = 0.f;  // through the "behind a wall" EQ
 	float neighbor_send = 0.f;// into the next room's reverb
 	float hollow_send = 0.f;  // into the cavity under the floor (footsteps)
+	float remote_send = 0.f;  // into the far space a source sits in (send 5)
 	bool spatial_bed = false; // outdoor bed: pan toward the opening
 };
 
@@ -74,5 +75,33 @@ constexpr float VARY_MAX_SECONDS = 2.5f;
 /// `footstep`: the player's own steps (hollow floors boom).
 Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &params,
 		bool footstep = false);
+
+/// How much longer a source's own space rings than the listener's room,
+/// weighted by how wet it is: 0 = nothing to carry, 1 = a cathedral heard
+/// from a closet.
+float spaceContrast(const SourceSpace &s, const Acoustics &env);
+
+/// Pick what the remote slot plays this recast: the source space with the
+/// most contrast, weighted by how loud the source reaches the ear (`reach`,
+/// 0..1). Call per candidate; keeps the best in `best`/`best_w`.
+void considerRemote(const SourceSpace &s, float reach, v3f dir, const Acoustics &env,
+		RemoteSpace &best, float &best_w);
+
+/// A World source carries its own surroundings: the far cave's tail on a
+/// zombie in it (through send 5, if its space is like the one the slot
+/// plays), and water's dullness on something under the surface. Applied on
+/// top of mixFor.
+void carrySpace(Mix &m, const SourceSpace &s, const RemoteSpace &r, const Acoustics &env,
+		const Occlusion &occ, const Params &params);
+
+/// The build's own voice: every enclosed space has a faint presence (air,
+/// distant settling, the room ringing with nothing), stronger in hard rooms
+/// and caves, absent under the sky. Drives one looping noise source.
+struct RoomTone {
+	float gain = 0.f;   // AL_GAIN for the tone
+	float pitch = 1.f;  // bigger spaces sound lower
+	Mix mix;            // mostly through the room's own reverb
+};
+RoomTone roomTone(const Acoustics &env, const Params &params);
 
 } // namespace afx

@@ -397,6 +397,24 @@ static float floorHollowness(const VoxelSnapshot &snap, v3s16 ear_cell);
 
 static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &params, bool full);
 
+SourceSpace analyzeSpace(const VoxelSnapshot &snap, v3f pos, const Params &params)
+{
+	SourceSpace out;
+	if (snap.size <= 0 || !snap.contains(floorNode(pos)))
+		return out;
+	Params sub = params;
+	sub.rays = 24;
+	sub.probe_radius = std::min<s16>(params.probe_radius, 18);
+	const Acoustics a = analyzeCore(snap, pos, sub, false);
+	out.valid = true;
+	out.wet = a.wet;
+	out.decay = a.decay;
+	out.hf_ratio = a.decay_hf_ratio;
+	out.enclosure = a.enclosure;
+	out.in_water = a.underwater;
+	return out;
+}
+
 Acoustics analyze(const VoxelSnapshot &snap, v3f ear, const Params &params)
 {
 	return analyzeCore(snap, ear, params, true);

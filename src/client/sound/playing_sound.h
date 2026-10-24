@@ -40,6 +40,9 @@ class PlayingSound final
 	bool m_footstep = false;
 	v3f m_pos_node;            // node space, for occlusion
 	afx::Occlusion m_occ_target, m_occ;
+	afx::SourceSpace m_space;  // the surroundings it sits in
+	v3f m_space_pos{1e9f, 1e9f, 1e9f};
+	f32 m_space_age = 0.0f;
 
 public:
 	PlayingSound(ALuint source_id, std::shared_ptr<ISoundDataOpen> data, bool loop,
@@ -119,6 +122,19 @@ public:
 	/// For new sounds: no glide, or the first moments would play unoccluded.
 	void setOcclusionNow(const afx::Occlusion &o) { m_occ_target = m_occ = o; }
 	const afx::Occlusion &getOcclusion() const { return m_occ; }
+	const afx::SourceSpace &getSpace() const { return m_space; }
+	/// Does the source's own space need looking at again? (moved, or stale)
+	bool spaceStale(f32 dtime)
+	{
+		m_space_age += dtime;
+		return m_space_age > 3.0f || (m_pos_node - m_space_pos).getLengthSQ() > 2.25f;
+	}
+	void setSpace(const afx::SourceSpace &s)
+	{
+		m_space = s;
+		m_space_pos = m_pos_node;
+		m_space_age = 0.0f;
+	}
 	/// Glide the occlusion toward its target (called every sound-thread step).
 	void stepOcclusion(f32 dtime, f32 tau);
 };
