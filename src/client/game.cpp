@@ -3737,6 +3737,33 @@ void Game::drawScene(ProfilerGraph *graph, RunStats *stats)
 	// Must be called immediately before endScene() to capture the rendered frame
 	this->client->takeScreenshotIfRequested();
 
+	/*
+		fx: fx_auto_screenshot = <path> saves one frame after
+		fx_auto_screenshot_delay seconds and quits. Used by util/fx/*.sh for
+		repeatable A/B shots on any display (no X/Wayland grabber needed).
+	*/
+	{
+		static const std::string auto_shot = g_settings->get("fx_auto_screenshot");
+		static const u64 start_ms = porting::getTimeMs();
+		static bool done = false;
+		if (!auto_shot.empty() && !done) {
+			this->m_game_ui->m_flags.show_hud = false;
+			this->m_game_ui->m_flags.show_chat = false;
+			const float delay = g_settings->getFloat("fx_auto_screenshot_delay");
+			if (porting::getTimeMs() - start_ms > (u64)(delay * 1000.f)) {
+				done = true;
+				if (video::IImage *img = this->driver->createScreenShot()) {
+					if (this->driver->writeImageToFile(img, auto_shot.c_str()))
+						actionstream << "fx: auto screenshot written to " << auto_shot << std::endl;
+					else
+						errorstream << "fx: could not write " << auto_shot << std::endl;
+					img->drop();
+				}
+				g_gamecallback->exitToOS();
+			}
+		}
+	}
+
 	this->driver->endScene();
 
 	stats->drawtime = tt_draw.stop(true);

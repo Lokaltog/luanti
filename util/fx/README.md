@@ -63,8 +63,21 @@ Nodes not listed get their color from their texture's glowing pixels.
 
 ## Tooling
 
-- `nix develop` gives a dev shell. `nix run .#client` runs the fork.
-- `util/fx/abshot.sh out.png fx_enable=false` takes a repeatable screenshot of the test scene in `util/fx/testworld`. Set `USE_XVFB=1` to render off-screen on Mesa.
+`devenv shell` (or direnv with the bundled `.envrc`) gives you these commands. `fx-help` lists them.
+
+| Command | What it does |
+| --- | --- |
+| `fx-build` | Incremental build: RelWithDebInfo, RUN_IN_PLACE, ccache. Configures on the first run. |
+| `fx-run` | Runs with `util/fx/dev.conf` (hot reload on). In-game settings persist in `.devenv/luanti.conf`. Set `FX_TEXTURE_PACK=…` to load a pack. |
+| `fx-play <world>` | Opens a world from `~/.minetest/worlds` directly. Your games and mods are found through `LUANTI_*_PATH`. |
+| `fx-upstream` | Same as `fx-run` with `fx_enable = false`, for A/B |
+| `fx-smoke` / `devenv test` | Headless smoke test on Mesa: every config and debug view must render without shader or GL errors |
+| `fx-shots [dir]` | A/B screenshots of the test scene on your GPU |
+| `fx-renderdoc` | Frame capture |
+
+The scripts behind these are `util/fx/abshot.sh` and `util/fx/smoketest.sh`. The client saves screenshots itself (`fx_auto_screenshot = <path>`, after `fx_auto_screenshot_delay` seconds) and quits, so they work on X11, Wayland or headless.
+
+`flake.nix` also works: `nix develop` gives a shell, `nix run .#client` runs the fork.
 
 ## Known gaps
 
@@ -75,4 +88,4 @@ Nodes not listed get their color from their texture's glowing pixels.
 - Underwater detection uses the node at the camera. Caustics and shafts also apply to anything seen above the surface while submerged.
 - Hue can bleed through thin walls (T1 by design). The M4 RGB light volume fixes this.
 - `fx_debug_view`, `fx_colored_light` and `fx_hdr_composite` are shader defines. Change them and either restart or save a shader file with hot reload on.
-- The flake has not been built on NixOS yet. If `pkgs.luanti`'s recipe drifts from master's CMake options, adjust `cmakeFlags`.
+- The flake and devenv have not been run on NixOS yet. If `pkgs.luanti`'s recipe drifts from master's CMake options, adjust the flake's `cmakeFlags`.

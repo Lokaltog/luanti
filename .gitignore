@@ -142,3 +142,10 @@ lib/irrlichtmt
 
 # Generated mod storage database
 client/mod_storage.sqlite
+
+# fx fork dev tooling
+/shots/
+/.devenv/
+/.devenv.flake.nix
+/.direnv/
+/compile_commands.json

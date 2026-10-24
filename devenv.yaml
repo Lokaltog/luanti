@@ -1,0 +1,4 @@
+# devenv (https://devenv.sh) for the fx fork. `devenv shell`, then `fx-help`.
+inputs:
+  nixpkgs:
+    url: github:cachix/devenv-nixpkgs/rolling
