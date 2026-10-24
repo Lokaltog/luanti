@@ -1,4 +1,4 @@
-# afx fork: environmental audio (M1 EFX plumbing + M2 probe)
+# afx fork: environmental audio
 
 A patch queue on top of the fx branch. Client-only, like fx: no map, protocol or node-definition changes. Every effect sits behind an `afx_*` setting (Settings → Audio → Environmental Audio).
 
@@ -48,18 +48,30 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
 | `afx_smoothing` | 1.0 | multiplies every glide time |
 | `afx_debug` | false | F5 line, and logs it every 2 s |
 
+## Round 2: muffling, doors, echo, content
+
+- **Two outdoor paths.** The sky search runs on two layers. The *open* path goes only through porous voxels (air, leaves, fences, water) and stays airy, with a mild low-pass. The *wall* path crosses solids and is sent to an EFX equalizer slot that acts as a steep "behind a wall" low-pass: about -10 dB at 700 Hz and -36 dB above 4 kHz. Occluded positional sources use the same muffled path for whatever gets through the blocker. Gains are `exp(-cost/6)`. A plank wall lets about -26 dB through, stone about -58 dB.
+- **Thin nodes.** Collision boxes, rotated by param2, are sampled per (content, param2). A node that covers only one axis is stored as "thin" (cell bits 6-7) and blocks only travel along that axis. A shut door seals the doorway, while the same door swung open, or a slab you're walking over, doesn't block.
+- **Echo.** A single echo now rides on the EAX early reflections, which carry a delay and a direction (verified by the loopback test). The echo slot only adds flutter between parallel walls. Echo is scaled by (1 - enclosure)², so caverns give reverb, not slap-back.
+- **Content mod** `util/afx/mods/afx_ambience` (Mineclonia/VoxeLibre aware, works anywhere):
+  - Rain on the roof above you, by material, and on nearby windows exposed to the sky.
+  - Birds from real leaves at exponentially spaced intervals (`afx_ambience_bird_interval`, mean 25 s, owls at night).
+  - Lava bubbling at lava surfaces.
+  - Drips from cave ceilings.
+  - Real recordings, built by `import_sounds.py`. Credits are in the mod.
+  - `/afx_rain <0..1|off>` forces rain for testing.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.
 - `--test-module TestAfxEfx` renders through a real OpenAL Soft loopback device and measures the output. It checks the reverb tail, muffling, and that echo and bed steering land on the correct side.
 - `AFX_RENDER_DIR=/tmp/afx bin/luanti --run-unittests --test-module AfxRender` writes listening clips (placeholder sounds through the real pipeline).
-- `USE_XVFB=1 util/afx/tour.sh /tmp/tour` runs the real client headless through six stations of `util/afx/testworld`. It records what the player hears via OpenAL Soft's wave backend and prints a per-station table.
+- `USE_XVFB=1 util/afx/tour.sh /tmp/afx <scenario>` records a scripted scenario in the real client, with afx_ambience running, through OpenAL Soft's wave backend. Scenarios: `hut_rain`, `tunnel_wind`, `forest`, `cavern`, `cliff`. It writes .wav, .mp3 and the client log with acoustic state every 2 s. Add `afx_enable=false` for an A/B baseline.
 
 Measured in the engine: snapshot 0.7–1.2 ms on the main thread, probe 0.0–0.3 ms on the sound thread.
 
 ## Known gaps / next
 
-- Doors are classed as "leaky" whether open or closed: a node's content ID doesn't say which.
 - Rain-on-roof by material, procedural wind, the tension scalar and the Lua content layer (birds in leaves, insects, lava, drips) are the next milestones.
 - Stereo outdoor beds need `AL_EXT_STEREO_ANGLES`, and mono beds use `AL_EXT_SOURCE_RADIUS`. Both are in OpenAL Soft.
 - Echo distance is capped at about 35 nodes (the EFX echo delay limit is 0.207 s).

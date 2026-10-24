@@ -1,8 +1,9 @@
 // Luanti "afx" fork: environmental audio
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// OpenAL EFX plumbing: one EAX reverb slot (the room the listener is in) and
-// one echo slot, plus per-source low-pass filters and aux sends. Lives on the
+// OpenAL EFX plumbing: one EAX reverb slot (the room the listener is in), one
+// echo slot and one "behind a wall" equalizer slot, plus per-source low-pass
+// filters and aux sends. Lives on the
 // sound thread. All levels go through filters, never AL_GAIN, so the engine's
 // own fades keep working.
 
@@ -83,7 +84,8 @@ private:
 #endif
 
 	ALuint m_reverb_effect = 0, m_echo_effect = 0;
-	ALuint m_reverb_slot = 0, m_echo_slot = 0;
+	ALuint m_muffle_effect = 0;
+	ALuint m_reverb_slot = 0, m_echo_slot = 0, m_muffle_slot = 0;
 	ALuint m_filter = 0; // scratch: filter params are copied when attached
 
 	// Last values pushed to the effects, to skip redundant reloads

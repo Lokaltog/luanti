@@ -33,6 +33,19 @@ struct World {
 		}
 	}
 
+	/// Thin nodes (doors, panes) blocking travel along one axis (0 x, 1 y, 2 z)
+	void fillThin(v3s16 a, v3s16 b, Material m, int axis)
+	{
+		fill(a, b, m);
+		for (s16 z = std::min(a.Z, b.Z); z <= std::max(a.Z, b.Z); z++)
+		for (s16 y = std::min(a.Y, b.Y); y <= std::max(a.Y, b.Y); y++)
+		for (s16 x = std::min(a.X, b.X); x <= std::max(a.X, b.X); x++) {
+			v3s16 p(x, y, z);
+			if (snap.contains(p))
+				snap.cells[snap.index(p)] = makeThin(m, axis);
+		}
+	}
+
 	/// Sunlight: air with nothing solid above it, like the engine's day bank.
 	void markSky()
 	{
@@ -42,8 +55,11 @@ struct World {
 			for (s16 y = s - 1; y >= 0; y--) {
 				v3s16 p = snap.origin + v3s16(x, y, z);
 				u8 &c = snap.cells[snap.index(p)];
-				if (cellMaterial(c) != Material::Air)
+				if (cellMaterial(c) != Material::Air &&
+						cellMaterial(c) != Material::Foliage)
 					break;
+				if (cellMaterial(c) != Material::Air)
+					continue;
 				c |= CELL_SKY;
 			}
 		}

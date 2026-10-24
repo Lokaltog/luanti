@@ -55,10 +55,35 @@ const MaterialProps &props(Material m);
 enum CellFlags : u8 {
 	CELL_SKY = 1 << 4,     // air with full daylight: open to the sky
 	CELL_UNLOADED = 1 << 5,// map not loaded here; treated as open air, not sky
+	// Bits 6-7: thin nodes (doors, panes, trapdoors). 0 = full voxel, else
+	// 1/2/3 = blocks only travel along X/Y/Z. A closed door blocks the
+	// doorway; the same door swung open blocks nothing on the way through.
+	CELL_THIN_SHIFT = 6,
+	CELL_THIN_MASK = 3 << 6,
 };
 
 inline Material cellMaterial(u8 cell) { return static_cast<Material>(cell & 0x0f); }
 inline bool cellSky(u8 cell) { return cell & CELL_SKY; }
+/// -1 for a full voxel, else the axis (0 x, 1 y, 2 z) the thin node blocks.
+inline int cellThinAxis(u8 cell) { return ((cell & CELL_THIN_MASK) >> CELL_THIN_SHIFT) - 1; }
+inline u8 makeThin(Material m, int axis) { return (u8)m | (u8)((axis + 1) << CELL_THIN_SHIFT); }
+
+/// Does this voxel stop sound travelling along `axis`?
+inline bool cellBlocks(u8 cell, int axis)
+{
+	if (cellMaterial(cell) == Material::Air)
+		return false;
+	int t = cellThinAxis(cell);
+	return t < 0 || t == axis;
+}
+
+/// Materials that sound passes through as "air" (with a cost) rather than
+/// being transmitted through a solid wall: leaves, fences, water.
+inline bool materialPorous(Material m)
+{
+	return m == Material::Air || m == Material::Leaky || m == Material::Foliage ||
+			m == Material::Water;
+}
 
 /// A cube of voxels around the listener, copied on the main thread.
 /// Immutable once published; shared with the sound thread by shared_ptr.
@@ -87,7 +112,7 @@ struct Params {
 	s16 probe_radius = 32;       // afx_probe_radius, nodes (snapshot is 2r³)
 	int rays = 64;               // afx_rays
 	float reverb = 1.0f;         // afx_reverb, wet multiplier
-	float max_decay = 8.0f;      // afx_max_decay, seconds
+	float max_decay = 5.0f;      // afx_max_decay, seconds
 	float echo = 1.0f;           // afx_echo
 	float occlusion = 1.0f;      // afx_occlusion
 	float outdoor_muffle = 1.0f; // afx_outdoor_muffle
@@ -129,10 +154,14 @@ struct Acoustics {
 	float echo_damping = 0.5f; // 0..0.99
 	v3f echo_dir;              // node space, unit or zero
 
-	// Outdoors reaching the listener
-	float outdoor_gain = 1.f;  // 0..1
-	float outdoor_hf = 1.f;    // 0..1, low-pass gainhf
-	float outdoor_path = 0.f;  // nodes, length of the cheapest path to the sky
+	// Outdoors reaching the listener, by two paths. The open path goes
+	// through air (doorways, cave mouths, leaves) and stays airy; the wall
+	// path is transmitted through solids and gets the steep "behind a wall"
+	// muffling.
+	float outdoor_gain = 1.f;  // 0..1, open path
+	float outdoor_hf = 1.f;    // 0..1, open path low-pass gainhf
+	float outdoor_wall = 0.f;  // 0..1, wall path
+	float outdoor_path = 0.f;  // nodes, cost of the cheapest open path
 	v3f outdoor_dir;           // node space, unit; zero when standing under the sky
 	float outdoor_focus = 0.f; // 0 wide/ambient .. 1 a single opening
 
@@ -160,7 +189,8 @@ Acoustics analyze(const VoxelSnapshot &snap, v3f ear, const Params &params);
 /// and the high-frequency loss along it. Pure function.
 struct Occlusion {
 	float amount = 0.f;  // 0 clear .. 1 fully blocked
-	float hf = 1.f;      // 0..1 gainhf multiplier
+	float hf = 1.f;      // 0..1 gainhf multiplier on the direct path
+	float wall = 0.f;    // 0..1 what gets through the blocker (muffled path)
 };
 Occlusion occlusion(const VoxelSnapshot &snap, v3f from, v3f to);
 

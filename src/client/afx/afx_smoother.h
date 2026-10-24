@@ -85,6 +85,7 @@ public:
 
 		glide(c.outdoor_gain, t.outdoor_gain, 0.35f, 0.7f);
 		glide(c.outdoor_hf, t.outdoor_hf, 0.35f, 0.7f);
+		glide(c.outdoor_wall, t.outdoor_wall, 0.35f, 0.7f);
 		glide(c.outdoor_path, t.outdoor_path, 0.5f, 0.5f);
 		glide(c.outdoor_focus, t.outdoor_focus, 0.5f, 0.4f);
 		glide_dir(c.outdoor_dir, t.outdoor_dir, 0.4f);

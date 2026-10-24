@@ -32,6 +32,7 @@ struct Mix {
 	float reverb_send = 0.f;
 	float reverb_hf = 1.f;
 	float echo_send = 0.f;
+	float muffle_send = 0.f;  // through the "behind a wall" EQ
 	bool spatial_bed = false; // outdoor bed: pan toward the opening
 };
 

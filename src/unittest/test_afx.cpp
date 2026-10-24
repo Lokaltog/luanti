@@ -30,6 +30,7 @@ public:
 	void testTunnelMouth();
 	void testCliffEcho();
 	void testOcclusion();
+	void testDoor();
 	void testUnderwater();
 	void testSmoother();
 };
@@ -44,6 +45,7 @@ void TestAfx::runTests(IGameDef *gamedef)
 	TEST(testTunnelMouth);
 	TEST(testCliffEcho);
 	TEST(testOcclusion);
+	TEST(testDoor);
 	TEST(testUnderwater);
 	TEST(testSmoother);
 }
@@ -69,7 +71,29 @@ void TestAfx::testStoneCave()
 	UASSERT(a.wet > 0.6f);
 	UASSERT(a.outdoor_gain < 0.02f);
 	UASSERT(a.decay_hf_ratio > 1.0f); // stone keeps its highs
-	UASSERT(a.echo < 0.2f); // too small for a distinct echo
+	UASSERT(a.echo < 0.05f); // enclosed: the walls are reverb, not echo
+}
+
+void TestAfx::testDoor()
+{
+	auto hutWith = [](int door) { // 0 gap, 1 closed door, 2 door swung open
+		World w = openField();
+		w.fill({-4, 0, -4}, {4, 5, 4}, Material::Wood);
+		w.fill({-3, 0, -3}, {3, 4, 3}, Material::Air);
+		if (door == 0)
+			w.fill({0, 0, -4}, {0, 1, -4}, Material::Air);
+		else
+			w.fillThin({0, 0, -4}, {0, 1, -4}, Material::Wood, door == 1 ? 2 : 0);
+		w.markSky();
+		return w.probe(v3f(0, 1.6f, 0));
+	};
+	Acoustics gap = hutWith(0), closed = hutWith(1), swung = hutWith(2);
+	UASSERT(gap.outdoor_gain > 0.2f);
+	UASSERT(gap.outdoor_dir.Z < -0.7f);
+	UASSERT(swung.outdoor_gain > 0.2f);
+	UASSERT(closed.outdoor_gain < 0.01f);
+	// a door is the thin spot of the wall
+	UASSERT(closed.outdoor_wall > 0.04f);
 }
 
 void TestAfx::testWoodHut()
@@ -85,9 +109,9 @@ void TestAfx::testWoodHut()
 	UASSERT(hut.enclosure > 0.9f);
 	UASSERT(hut.decay < cave.decay * 0.5f);
 	UASSERT(hut.wet < cave.wet * 0.6f);
-	// Outdoors comes through one wall: present but muffled, mostly lows.
-	UASSERT(hut.outdoor_gain > 0.1f && hut.outdoor_gain < 0.4f);
-	UASSERT(hut.outdoor_hf < 0.3f);
+	// No opening: outdoors only comes through the planks, on the muffled path
+	UASSERT(hut.outdoor_gain < 0.01f);
+	UASSERT(hut.outdoor_wall > 0.02f && hut.outdoor_wall < 0.3f);
 	UASSERT(hut.decay_hf_ratio < cave.decay_hf_ratio);
 }
 
@@ -106,7 +130,8 @@ void TestAfx::testTunnelMouth()
 	UASSERT(near.outdoor_dir.X > 0.8f);
 	UASSERT(deep.outdoor_gain < near.outdoor_gain);
 	UASSERT(deep.outdoor_hf < near.outdoor_hf);
-	UASSERT(deep.outdoor_gain > 0.05f && deep.outdoor_gain < 0.4f);
+	UASSERT(deep.outdoor_gain > 0.01f && deep.outdoor_gain < 0.15f);
+	UASSERT(deep.outdoor_wall < 0.01f); // a hill of stone transmits nothing
 	UASSERT(deep.outdoor_focus > 0.5f);
 	UASSERT(std::fabs(deep.outdoor_path - 24.f) < 4.f);
 }
@@ -123,6 +148,9 @@ void TestAfx::testCliffEcho()
 	UASSERT(a.echo_dir.Z > 0.8f);
 	UASSERT(std::fabs(a.echo_delay - 2.f * 20.f / 343.f) < 0.03f);
 	UASSERT(a.outdoor_gain == 1.f);
+	// carried on the early reflections, from the cliff's direction
+	UASSERT(std::fabs(a.reflections_delay - 2.f * 20.f / 343.f) < 0.03f);
+	UASSERT(a.reflections_pan.Z > 0.6f);
 
 	// No cliff, no echo
 	UASSERT(openField().probe(v3f(0, 1.6f, 0)).echo < 0.05f);
@@ -144,6 +172,7 @@ void TestAfx::testOcclusion()
 	Occlusion full = occlusion(wall.snap, ear, src);
 	UASSERT(full.amount > 0.99f);
 	UASSERT(full.hf < 0.01f);
+	UASSERT(full.wall < 0.001f);
 	UASSERT(pillar.amount > 0.3f);
 
 	World hedge = openField();

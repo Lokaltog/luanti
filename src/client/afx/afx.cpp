@@ -16,6 +16,7 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <unordered_map>
 
 namespace afx
 {
@@ -124,10 +125,10 @@ Material classifyNode(const ContentFeatures &f)
 			f.drawtype == NDT_GLASSLIKE_FRAMED_OPTIONAL || nameHas(name, {"glass", "ice"}))
 		return Material::Glass;
 
-	// Thin or holey shapes let sound through: fences, panes, bars, doors.
+	// Holey shapes let sound through. Doors, panes and trapdoors are not
+	// here: their collision boxes decide (see thinCode), open or shut.
 	if (f.drawtype == NDT_FENCELIKE ||
-			nameHas(name, {"fence", "pane", "bars", "door", "gate", "ladder", "lantern",
-					"chain", "scaffold", "rail"}))
+			nameHas(name, {"fence", "bars", "ladder", "lantern", "chain", "scaffold", "rail"}))
 		return Material::Leaky;
 
 	if (group("wood") || group("tree") || group("planks") || group("axey") ||
@@ -147,6 +148,8 @@ struct MaterialTable {
 	const NodeDefManager *ndef = nullptr;
 	u32 size = 0;
 	std::vector<u8> mat;
+	std::vector<bool> shaped; // needs its collision boxes looked at
+	std::unordered_map<u32, u8> thin; // (content << 8 | param2) -> cell bits
 
 	void refresh(const NodeDefManager *n)
 	{
@@ -155,8 +158,17 @@ struct MaterialTable {
 		ndef = n;
 		size = n->size();
 		mat.assign(size, (u8)Material::Air);
-		for (u32 c = 0; c < size; c++)
-			mat[c] = (u8)classifyNode(n->get((content_t)c));
+		shaped.assign(size, false);
+		thin.clear();
+		for (u32 c = 0; c < size; c++) {
+			const ContentFeatures &f = n->get((content_t)c);
+			Material m = classifyNode(f);
+			mat[c] = (u8)m;
+			const bool boxy = f.drawtype == NDT_NODEBOX || f.drawtype == NDT_MESH ||
+					!f.collision_box.fixed.empty();
+			shaped[c] = boxy && f.walkable && m != Material::Air && m != Material::Leaky &&
+					m != Material::Water && m != Material::Lava;
+		}
 	}
 
 	Material operator()(content_t c) const
@@ -165,13 +177,56 @@ struct MaterialTable {
 	}
 };
 MaterialTable s_materials;
+
+/// Is the node's footprint, seen along `axis`, mostly covered? Samples a
+/// 5x5 grid over the face (boxes are in BS units, centred on the node).
+bool coversAxis(const std::vector<aabb3f> &boxes, int axis)
+{
+	const int u = (axis + 1) % 3, v = (axis + 2) % 3;
+	int covered = 0;
+	for (int i = 0; i < 5; i++)
+	for (int j = 0; j < 5; j++) {
+		float pu = (-0.4f + 0.2f * i) * BS, pv = (-0.4f + 0.2f * j) * BS;
+		for (const auto &b : boxes) {
+			const float mn[3] = {b.MinEdge.X, b.MinEdge.Y, b.MinEdge.Z};
+			const float mx[3] = {b.MaxEdge.X, b.MaxEdge.Y, b.MaxEdge.Z};
+			if (pu >= mn[u] && pu <= mx[u] && pv >= mn[v] && pv <= mx[v]) {
+				covered++;
+				break;
+			}
+		}
+	}
+	return covered >= 18; // ~70 %
+}
+
+/// Cell bits for a shaped node: full, thin along one axis, or passable.
+u8 shapeCell(const NodeDefManager *ndef, MapNode n, Material m)
+{
+	const ContentFeatures &f = ndef->get(n);
+	// Connected nodeboxes (panes, walls) depend on neighbours; a pane in a
+	// window is a wall either way.
+	if (f.collision_box.type == NODEBOX_CONNECTED || f.node_box.type == NODEBOX_CONNECTED)
+		return (u8)m;
+	std::vector<aabb3f> boxes;
+	n.getCollisionBoxes(ndef, &boxes);
+	int axes = 0, last = -1;
+	for (int a = 0; a < 3; a++) {
+		if (coversAxis(boxes, a)) {
+			axes++;
+			last = a;
+		}
+	}
+	if (axes == 0)
+		return (u8)Material::Leaky; // posts, lanterns: sound goes round
+	if (axes == 1)
+		return makeThin(m, last);   // door, pane, trapdoor, slab
+	return (u8)m;
+}
 }
 
 /*
 	Snapshot
 */
-
-static constexpr u8 TMP_SUNLIT = 1 << 6;
 
 std::shared_ptr<VoxelSnapshot> buildSnapshot(Client *client, v3s16 center, s16 radius)
 {
@@ -185,6 +240,8 @@ std::shared_ptr<VoxelSnapshot> buildSnapshot(Client *client, v3s16 center, s16 r
 	snap->origin = center - v3s16(radius, radius, radius);
 	const s16 size = snap->size;
 	snap->cells.assign((size_t)size * size * size, (u8)CELL_UNLOADED);
+	thread_local std::vector<bool> sunlit;
+	sunlit.assign(snap->cells.size(), false);
 
 	const v3s16 lo = snap->origin;
 	const v3s16 hi = lo + v3s16(size - 1, size - 1, size - 1);
@@ -213,9 +270,16 @@ std::shared_ptr<VoxelSnapshot> buildSnapshot(Client *client, v3s16 center, s16 r
 					continue;
 				Material m = s_materials(c);
 				u8 cell = (u8)m;
+				if (s_materials.shaped[c]) {
+					u32 key = ((u32)c << 8) | n.getParam2();
+					auto it = s_materials.thin.find(key);
+					if (it == s_materials.thin.end())
+						it = s_materials.thin.emplace(key, shapeCell(ndef, n, m)).first;
+					cell = it->second;
+				}
 				if (m == Material::Air &&
 						n.getLight(LIGHTBANK_DAY, ndef->getLightingFlags(c)) == LIGHT_SUN)
-					cell |= TMP_SUNLIT;
+					sunlit[i] = true;
 				snap->cells[i] = cell;
 			}
 		}
@@ -233,12 +297,12 @@ std::shared_ptr<VoxelSnapshot> buildSnapshot(Client *client, v3s16 center, s16 r
 				continue;
 			Material m = cellMaterial(cell);
 			if (m == Material::Air) {
-				if (open && (cell & TMP_SUNLIT))
+				if (open && sunlit[snap->index(lo + v3s16(x, y, z))])
 					cell |= CELL_SKY;
-			} else if (m != Material::Foliage && m != Material::Leaky) {
-				open = false;
+			} else if (m != Material::Foliage && m != Material::Leaky &&
+					cellBlocks(cell, 1)) {
+				open = false; // a roof, a floor, a closed trapdoor
 			}
-			cell &= ~TMP_SUNLIT;
 		}
 	}
 	return snap;
@@ -303,7 +367,7 @@ std::string debugLine(ISoundManager *sound)
 		<< " | echo " << a.echo;
 	if (a.echo > 0.05f)
 		os << " @" << (int)(a.echo_delay * 1000.f) << "ms";
-	os << " | out " << a.outdoor_gain << " hf " << a.outdoor_hf
+	os << " | out " << a.outdoor_gain << " hf " << a.outdoor_hf << " wall " << a.outdoor_wall
 		<< " path " << std::setprecision(0) << a.outdoor_path
 		<< std::setprecision(2) << " focus " << a.outdoor_focus;
 	if (a.submerged > 0.01f)

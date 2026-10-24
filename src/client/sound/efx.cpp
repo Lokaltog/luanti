@@ -90,6 +90,27 @@ EfxRig::EfxRig(ALCdevice *device, int sends) : m_sends(sends)
 		alAuxiliaryEffectSlotf(m_echo_slot, AL_EFFECTSLOT_GAIN, 0.f);
 	}
 
+	if (m_sends >= 3) {
+		// Behind a wall: a steep low-pass the per-source shelf filter can't
+		// do. Lows through, -10 dB at 700 Hz, -18 dB around 2.5 kHz, and the
+		// high shelf stacks another -18 dB on top.
+		alGenEffects(1, &m_muffle_effect);
+		alEffecti(m_muffle_effect, AL_EFFECT_TYPE, AL_EFFECT_EQUALIZER);
+		alEffectf(m_muffle_effect, AL_EQUALIZER_LOW_GAIN, 1.6f);
+		alEffectf(m_muffle_effect, AL_EQUALIZER_LOW_CUTOFF, 180.f);
+		alEffectf(m_muffle_effect, AL_EQUALIZER_MID1_GAIN, 0.32f);
+		alEffectf(m_muffle_effect, AL_EQUALIZER_MID1_CENTER, 700.f);
+		alEffectf(m_muffle_effect, AL_EQUALIZER_MID1_WIDTH, 1.0f);
+		alEffectf(m_muffle_effect, AL_EQUALIZER_MID2_GAIN, 0.126f);
+		alEffectf(m_muffle_effect, AL_EQUALIZER_MID2_CENTER, 2500.f);
+		alEffectf(m_muffle_effect, AL_EQUALIZER_MID2_WIDTH, 1.0f);
+		alEffectf(m_muffle_effect, AL_EQUALIZER_HIGH_GAIN, 0.126f);
+		alEffectf(m_muffle_effect, AL_EQUALIZER_HIGH_CUTOFF, 4000.f);
+		alGenAuxiliaryEffectSlots(1, &m_muffle_slot);
+		alAuxiliaryEffectSloti(m_muffle_slot, AL_EFFECTSLOT_EFFECT, m_muffle_effect);
+		alAuxiliaryEffectSlotf(m_muffle_slot, AL_EFFECTSLOT_GAIN, 1.f);
+	}
+
 	alGenFilters(1, &m_filter);
 	alFilteri(m_filter, AL_FILTER_TYPE, AL_FILTER_LOWPASS);
 
@@ -113,6 +134,10 @@ EfxRig::~EfxRig()
 		alDeleteAuxiliaryEffectSlots(1, &m_reverb_slot);
 	if (m_echo_slot)
 		alDeleteAuxiliaryEffectSlots(1, &m_echo_slot);
+	if (m_muffle_slot)
+		alDeleteAuxiliaryEffectSlots(1, &m_muffle_slot);
+	if (m_muffle_effect)
+		alDeleteEffects(1, &m_muffle_effect);
 	if (m_reverb_effect)
 		alDeleteEffects(1, &m_reverb_effect);
 	if (m_echo_effect)
@@ -136,7 +161,7 @@ void EfxRig::applyEnvironment(const afx::Acoustics &env, const ListenerFrame &fr
 	alAuxiliaryEffectSlotf(m_reverb_slot, AL_EFFECTSLOT_GAIN, clampf(env.wet, 0.f, 1.f));
 	if (m_echo_slot)
 		alAuxiliaryEffectSlotf(m_echo_slot, AL_EFFECTSLOT_GAIN,
-				clampf(env.echo * 0.8f, 0.f, 1.f));
+				clampf(env.echo * env.echo_feedback * 2.f, 0.f, 1.f)); // flutter only
 
 	// Pans are listener-relative and change as the player turns, so they are
 	// recomputed every apply; the rest only reloads on real change.
@@ -164,7 +189,7 @@ void EfxRig::applyEnvironment(const afx::Acoustics &env, const ListenerFrame &fr
 			const ALuint e = m_reverb_effect;
 			alEffectf(e, AL_EAXREVERB_DENSITY, clampf(lerpf(env.density, 1.f, s), 0.f, 1.f));
 			alEffectf(e, AL_EAXREVERB_DIFFUSION, clampf(env.diffusion, 0.f, 1.f));
-			alEffectf(e, AL_EAXREVERB_GAIN, 0.45f);
+			alEffectf(e, AL_EAXREVERB_GAIN, 0.32f);
 			alEffectf(e, AL_EAXREVERB_GAINHF, gainhf);
 			alEffectf(e, AL_EAXREVERB_GAINLF, 1.f);
 			alEffectf(e, AL_EAXREVERB_DECAY_TIME, decay);
@@ -186,7 +211,7 @@ void EfxRig::applyEnvironment(const afx::Acoustics &env, const ListenerFrame &fr
 			const ALuint e = m_reverb_effect;
 			alEffectf(e, AL_REVERB_DENSITY, clampf(env.density, 0.f, 1.f));
 			alEffectf(e, AL_REVERB_DIFFUSION, clampf(env.diffusion, 0.f, 1.f));
-			alEffectf(e, AL_REVERB_GAIN, 0.45f);
+			alEffectf(e, AL_REVERB_GAIN, 0.32f);
 			alEffectf(e, AL_REVERB_GAINHF, gainhf);
 			alEffectf(e, AL_REVERB_DECAY_TIME, decay);
 			alEffectf(e, AL_REVERB_DECAY_HFRATIO, clampf(env.decay_hf_ratio, 0.1f, 2.f));
@@ -214,10 +239,10 @@ void EfxRig::applyEnvironment(const afx::Acoustics &env, const ListenerFrame &fr
 	if (echo_dirty) {
 		const ALuint e = m_echo_effect;
 		const float t = clampf(env.echo_delay, 0.f, 0.207f);
-		// First tap at the wall's round trip, the second at twice that (the
-		// bounce back off the listener's side), panned apart toward the wall.
+		// One tap at the wall's round trip (no ping-pong), panned toward it;
+		// feedback only for parallel walls.
 		alEffectf(e, AL_ECHO_DELAY, t);
-		alEffectf(e, AL_ECHO_LRDELAY, clampf(t, 0.f, 0.404f));
+		alEffectf(e, AL_ECHO_LRDELAY, 0.f);
 		alEffectf(e, AL_ECHO_DAMPING, clampf(env.echo_damping, 0.f, 0.99f));
 		alEffectf(e, AL_ECHO_FEEDBACK, clampf(env.echo_feedback, 0.f, 1.f));
 		alEffectf(e, AL_ECHO_SPREAD, clampf(-echo_local.X, -1.f, 1.f));
@@ -261,6 +286,15 @@ void EfxRig::applySource(ALuint src, const afx::Mix &mix, bool positional, bool 
 		}
 	}
 
+	if (m_muffle_slot) {
+		if (mix.muffle_send > 1e-3f) {
+			setLowpass(mix.muffle_send, 0.5f);
+			alSource3i(src, AL_AUXILIARY_SEND_FILTER, m_muffle_slot, 2, m_filter);
+		} else {
+			alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 2, AL_FILTER_NULL);
+		}
+	}
+
 	if (positional)
 		alSourcef(src, AL_AIR_ABSORPTION_FACTOR, 3.f);
 
@@ -298,6 +332,8 @@ void EfxRig::clearSource(ALuint src)
 	alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 0, AL_FILTER_NULL);
 	if (m_echo_slot)
 		alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 1, AL_FILTER_NULL);
+	if (m_muffle_slot)
+		alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 2, AL_FILTER_NULL);
 }
 
 #endif

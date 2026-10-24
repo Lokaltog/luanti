@@ -370,7 +370,7 @@ void set_default_settings()
 	settings->setDefault("afx_probe_radius", "32");
 	settings->setDefault("afx_rays", "64");
 	settings->setDefault("afx_reverb", "1.0");
-	settings->setDefault("afx_max_decay", "8.0");
+	settings->setDefault("afx_max_decay", "5.0");
 	settings->setDefault("afx_echo", "1.0");
 	settings->setDefault("afx_occlusion", "1.0");
 	settings->setDefault("afx_outdoor_muffle", "1.0");

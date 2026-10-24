@@ -977,7 +977,7 @@ afx_rays (Probe rays) int 64 16 512
 afx_reverb (Reverb) float 1.0 0.0 2.0
 
 #    Longest reverb decay in seconds (huge caverns).
-afx_max_decay (Max reverb decay) float 8.0 0.2 20.0
+afx_max_decay (Max reverb decay) float 5.0 0.2 20.0
 
 #    Strength of echoes off far, hard surfaces (cliffs, cavern walls).
 afx_echo (Echo) float 1.0 0.0 2.0

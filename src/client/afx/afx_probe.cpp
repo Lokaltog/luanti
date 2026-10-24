@@ -24,20 +24,26 @@
 namespace afx
 {
 
+// Transmission costs are in "nodes of air": a path's gain is exp(-cost / 6),
+// so a plank wall (18) lets about -26 dB through and stone (40) about -58 dB.
 static const MaterialProps MATERIALS[MATERIAL_COUNT] = {
 	//  name       absorb  hf    pass  pass_hf
-	{"air",        0.00f, 1.00f,  1.0f, 0.035f},
+	{"air",        0.00f, 1.00f,  1.0f, 0.10f},
 	{"leaky",      0.30f, 0.80f,  3.0f, 0.40f},
 	{"foliage",    0.50f, 0.35f,  2.5f, 0.35f},
-	{"soft",       0.70f, 0.20f, 12.0f, 2.50f},
-	{"snow",       0.60f, 0.30f, 14.0f, 2.50f},
-	{"glass",      0.04f, 0.95f,  8.0f, 1.60f},
-	{"wood",       0.25f, 0.60f, 16.0f, 2.00f},
-	{"earth",      0.12f, 0.60f, 24.0f, 2.50f},
-	{"stone",      0.07f, 0.90f, 30.0f, 3.00f},
+	{"soft",       0.70f, 0.20f, 16.0f, 3.00f},
+	{"snow",       0.60f, 0.30f, 16.0f, 3.00f},
+	{"glass",      0.04f, 0.95f, 14.0f, 2.00f},
+	{"wood",       0.25f, 0.60f, 18.0f, 2.50f},
+	{"earth",      0.12f, 0.60f, 30.0f, 3.00f},
+	{"stone",      0.09f, 0.90f, 40.0f, 3.50f},
 	{"water",      0.03f, 0.90f,  6.0f, 1.50f},
-	{"lava",       0.10f, 0.60f, 30.0f, 3.00f},
+	{"lava",       0.10f, 0.60f, 40.0f, 3.50f},
 };
+
+/// Doors, panes and trapdoors are thinner than a voxel.
+static constexpr float THIN_PASS = 0.6f;
+static constexpr float PATH_LAMBDA = 6.f; // nodes of air per e-fold of gain
 
 const MaterialProps &props(Material m)
 {
@@ -77,9 +83,10 @@ const std::vector<v3f> &sphereDirections(int count)
 
 /*
 	Voxel traversal (Amanatides & Woo). Node centers are at integer
-	coordinates, so voxel boundaries sit at .5. Calls `visit(cell_pos, t)`
+	coordinates, so voxel boundaries sit at .5. Calls `visit(cell_pos, t, axis)`
 	for every voxel entered after the starting one, where t is the distance
-	travelled; stops when visit returns false or t exceeds max_t.
+	travelled and axis the one crossed to enter it; stops when visit returns
+	false or t exceeds max_t.
 */
 template <typename F>
 static void traverse(v3f from, v3f dir, float max_t, F &&visit)
@@ -113,7 +120,7 @@ static void traverse(v3f from, v3f dir, float max_t, F &&visit)
 			return;
 		*c[a] += step[a];
 		t_max[a] += t_delta[a];
-		if (!visit(cell, t))
+		if (!visit(cell, t, a))
 			return;
 	}
 }
@@ -137,12 +144,12 @@ struct RayHit {
 static RayHit castRay(const VoxelSnapshot &snap, v3f ear, v3f dir, float max_t)
 {
 	RayHit r{dir, max_t, Material::Air, false, false};
-	traverse(ear, dir, max_t, [&](v3s16 p, float t) {
+	traverse(ear, dir, max_t, [&](v3s16 p, float t, int axis) {
 		u8 cell = snap.at(p);
 		if (cell & CELL_UNLOADED)
 			return false; // out of the snapshot: treat as open
 		Material m = cellMaterial(cell);
-		if (m == Material::Air) {
+		if (!cellBlocks(cell, axis)) {
 			r.sky |= cellSky(cell);
 			return true;
 		}
@@ -155,7 +162,10 @@ static RayHit castRay(const VoxelSnapshot &snap, v3f ear, v3f dir, float max_t)
 }
 
 /*
-	Outdoor path: Dial's algorithm (bucket-queue Dijkstra) over the snapshot.
+	Outdoor paths: Dial's algorithm (bucket-queue Dijkstra) over the snapshot,
+	on two layers. Layer 0 has only gone through porous voxels (air, leaves,
+	fences, water); entering a solid moves the search to layer 1. Reaching
+	sky on layer 0 is the open path (a doorway), on layer 1 the wall path.
 	Costs are in quarter nodes so integer buckets stay exact enough.
 */
 
@@ -170,8 +180,9 @@ struct PathResult {
 };
 
 struct PathScratch {
-	std::vector<u16> dist;
-	std::vector<u8> parent;     // 0 = unvisited, 1..6 = came from axis dir, 7 = start
+	std::vector<u16> dist;    // 2 layers
+	std::vector<u8> parent;   // 0 unvisited, 7 start, else bits 0-2: 1..6 came along
+	                          // NEIGHBORS[k-1], bit 3: predecessor's layer
 	std::vector<float> hf;
 	std::vector<std::vector<u32>> buckets;
 };
@@ -180,23 +191,43 @@ struct PathScratch {
 
 static constexpr int COST_SCALE = 4;
 static constexpr int PATH_LIMIT_NODES = 64;
-static constexpr u32 PATH_POP_BUDGET = 120000;
+static constexpr u32 PATH_POP_BUDGET = 200000;
 
 static const v3s16 NEIGHBORS[6] = {
 	{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1},
 };
 
-static PathResult findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear)
+/// Cost of entering `cell` moving along `axis`, and whether that is through
+/// a solid (moves the search to the wall layer).
+static float passCost(u8 cell, int axis, bool &solid, float &hf)
 {
-	PathResult res;
+	Material m = cellMaterial(cell);
+	const MaterialProps &mp = props(m);
+	int thin = cellThinAxis(cell);
+	if (m != Material::Air && thin >= 0 && thin != axis) {
+		// A thin node edge-on (an open door): like air
+		solid = false;
+		hf = props(Material::Air).pass_hf;
+		return props(Material::Air).pass;
+	}
+	solid = !materialPorous(m);
+	const float k = thin >= 0 ? THIN_PASS : 1.f;
+	hf = mp.pass_hf * k;
+	return mp.pass * k;
+}
+
+static void findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear,
+		PathResult &open, PathResult &wall)
+{
+	open = wall = PathResult();
 	if (!snap.contains(start))
-		return res;
+		return;
 
 	thread_local PathScratch s;
-	const size_t n = snap.cells.size();
-	s.dist.assign(n, 0xffff);
-	s.parent.assign(n, 0);
-	s.hf.assign(n, 0.f);
+	const u32 n = (u32)snap.cells.size();
+	s.dist.assign(2 * (size_t)n, 0xffff);
+	s.parent.assign(2 * (size_t)n, 0);
+	s.hf.assign(2 * (size_t)n, 0.f);
 
 	int max_edge = 0;
 	for (const auto &m : MATERIALS)
@@ -207,20 +238,22 @@ static PathResult findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear)
 		b.clear();
 
 	const int limit = PATH_LIMIT_NODES * COST_SCALE;
-	u32 si = snap.index(start);
+	const u32 si = snap.index(start);
 	s.dist[si] = 0;
 	s.parent[si] = 7;
 	s.buckets[0].push_back(si);
 	size_t pending = 1;
 	u32 pops = 0;
-	u32 found_idx = U32_MAX;
+	u32 found[2] = {U32_MAX, U32_MAX};
 
 	auto pos_of = [&](u32 i) {
+		i %= n;
 		s16 x = i % snap.size, y = (i / snap.size) % snap.size, z = i / (snap.size * snap.size);
 		return snap.origin + v3s16(x, y, z);
 	};
 
-	for (int cost = 0; pending > 0 && cost <= limit && found_idx == U32_MAX; cost++) {
+	for (int cost = 0; pending > 0 && cost <= limit &&
+			(found[0] == U32_MAX || found[1] == U32_MAX); cost++) {
 		auto &bucket = s.buckets[cost % nb];
 		while (!bucket.empty()) {
 			u32 i = bucket.back();
@@ -232,57 +265,64 @@ static PathResult findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear)
 				pending = 0;
 				break;
 			}
-			if (cellSky(snap.cells[i])) {
-				found_idx = i;
-				break;
+			const u32 layer = i / n;
+			const u32 ci = i % n;
+			if (cellSky(snap.cells[ci])) {
+				if (found[layer] == U32_MAX)
+					found[layer] = i;
+				continue; // don't expand past the sky
 			}
 			v3s16 p = pos_of(i);
 			for (int k = 0; k < 6; k++) {
 				v3s16 q = p + NEIGHBORS[k];
 				if (!snap.contains(q))
 					continue;
-				u32 qi = snap.index(q);
-				u8 cell = snap.cells[qi];
-				const MaterialProps &mp = props(cellMaterial(cell));
-				int nc = cost + (int)std::lround(mp.pass * COST_SCALE);
+				u32 qc = snap.index(q);
+				bool solid;
+				float hf;
+				float pc = passCost(snap.cells[qc], k / 2, solid, hf);
+				u32 ql = (layer == 1 || solid) ? 1 : 0;
+				u32 qi = qc + ql * n;
+				int nc = cost + (int)std::lround(pc * COST_SCALE);
 				if (nc > limit || nc >= s.dist[qi])
 					continue;
 				s.dist[qi] = nc;
-				s.parent[qi] = k + 1;
-				s.hf[qi] = s.hf[i] + mp.pass_hf;
+				s.parent[qi] = (u8)((k + 1) | (layer << 3));
+				s.hf[qi] = s.hf[i] + hf;
 				s.buckets[nc % nb].push_back(qi);
 				pending++;
 			}
 		}
 	}
 
-	if (found_idx == U32_MAX)
-		return res;
+	for (int layer = 0; layer < 2; layer++) {
+		u32 f = found[layer];
+		if (f == U32_MAX)
+			continue;
+		PathResult &res = layer == 0 ? open : wall;
+		res.found = true;
+		res.cost = s.dist[f] / (float)COST_SCALE;
+		res.hf_loss = s.hf[f];
 
-	res.found = true;
-	res.cost = s.dist[found_idx] / (float)COST_SCALE;
-	res.hf_loss = s.hf[found_idx];
-
-	// Walk back to the ear. The direction sound arrives from is where the path
-	// is a few nodes out, which points at the doorway rather than the sky.
-	std::vector<v3s16> path;
-	u32 i = found_idx;
-	while (s.parent[i] != 7 && path.size() < 4096) {
-		v3s16 p = pos_of(i);
-		path.push_back(p);
-		p -= NEIGHBORS[s.parent[i] - 1];
-		i = snap.index(p);
+		// Walk back to the ear. The direction sound arrives from is where the
+		// path is a few nodes out: the doorway rather than the sky.
+		std::vector<v3s16> path;
+		u32 i = f;
+		while (s.parent[i] != 7 && path.size() < 4096) {
+			v3s16 p = pos_of(i);
+			path.push_back(p);
+			const u8 par = s.parent[i];
+			v3s16 prev = p - NEIGHBORS[(par & 7) - 1];
+			i = snap.index(prev) + (u32)(par >> 3) * n;
+		}
+		res.steps = (float)path.size();
+		if (!path.empty()) {
+			size_t k = path.size() > 5 ? path.size() - 5 : 0;
+			v3f d = intToFloat(path[k], 1.f) - ear;
+			if (d.getLengthSQ() > 1e-4f)
+				res.dir = d.normalize();
+		}
 	}
-	res.steps = (float)path.size();
-	if (!path.empty()) {
-		// path is target..first step; pick the point ~5 voxels from the ear
-		size_t k = path.size() > 5 ? path.size() - 5 : 0;
-		v3f to = intToFloat(path[k], 1.f);
-		v3f d = to - ear;
-		if (d.getLengthSQ() > 1e-4f)
-			res.dir = d.normalize();
-	}
-	return res;
 }
 
 /*
@@ -447,10 +487,10 @@ Acoustics analyze(const VoxelSnapshot &snap, v3f ear, const Params &params)
 	out.late_delay = clampf(hit_d_avg / SPEED_OF_SOUND, 0.f, 0.1f);
 
 	// Dead rooms (wool, leaves) hold little reverberant energy; stone holds most.
-	const float liveness = std::pow(1.f - hit_abs_avg, 3.f);
+	const float liveness = std::pow(1.f - hit_abs_avg, 4.f);
 	out.reflections_gain = clampf((0.05f + out.enclosure * (1.f - hit_abs_avg)) *
 			clampf(6.f / std::max(1.f, hit_d_avg), 0.2f, 1.5f), 0.f, 3.16f);
-	out.late_gain = clampf(1.6f * (1.f - hit_abs_avg), 0.2f, 3.f);
+	out.late_gain = clampf(1.2f * (1.f - hit_abs_avg), 0.2f, 3.f);
 	out.wet = clampf(params.reverb * lerpf(0.3f, 1.f, out.enclosure) * liveness, 0.f, 1.f);
 	if (pan_w > 0) {
 		v3f p = pan / pan_w;
@@ -460,41 +500,66 @@ Acoustics analyze(const VoxelSnapshot &snap, v3f ear, const Params &params)
 	// Echo
 	EchoCluster echo = findEcho(rays);
 	if (echo.weight > 0) {
+		// A distinct echo needs open air around the listener (a cliff, a
+		// canyon). Inside a cavern the same surfaces are the reverb.
+		const float openness = (1.f - out.enclosure) * (1.f - out.enclosure);
 		float strength = clampf((echo.weight - 0.02f) / 0.08f, 0.f, 1.f) *
-				clampf(25.f / echo.dist, 0.4f, 1.f);
+				clampf(25.f / echo.dist, 0.4f, 1.f) * openness;
 		out.echo = clampf(strength * params.echo, 0.f, 1.f);
 		out.echo_delay = clampf(2.f * echo.dist / SPEED_OF_SOUND, 0.02f, 0.207f);
 		out.echo_damping = clampf(1.f - echo.hf, 0.f, 0.99f);
 		out.echo_dir = echo.dir;
 		EchoCluster back = findEcho(rays, echo.dir, true);
-		out.echo_feedback = back.weight > 0.04f ? 0.35f : 0.1f;
+		// Parallel walls (a canyon) ring a little; a single cliff doesn't
+		out.echo_feedback = back.weight > 0.04f ? 0.2f : 0.f;
+
+		// A single echo is the room's first reflection: carry it on the
+		// reverb's early reflections, which have a delay (up to 0.3 s) and a
+		// direction. The echo slot only adds flutter between parallel walls.
+		if (out.echo > 0.05f) {
+			const float t = clampf(2.f * echo.dist / SPEED_OF_SOUND, 0.f, 0.3f);
+			out.reflections_delay = lerpf(out.reflections_delay, t, std::min(1.f, out.echo * 2.f));
+			out.reflections_pan = echo.dir * 0.9f;
+			const float wet_level = std::max(0.02f, out.wet * 0.32f);
+			out.reflections_gain = clampf(std::max(out.reflections_gain,
+					out.echo * 0.5f / wet_level), 0.f, 3.16f);
+		}
 	}
 
 	// Outdoors
+	const float k = std::max(0.f, params.outdoor_muffle);
 	if (out.underwater || out.in_lava) {
-		out.outdoor_gain = 0.15f;
+		out.outdoor_gain = 0.f;
 		out.outdoor_hf = 0.05f;
+		out.outdoor_wall = 0.2f; // dull rumble through the water
 	} else if (cellSky(snap.at(ear_cell))) {
 		out.outdoor_gain = 1.f;
 		out.outdoor_hf = 1.f;
+		out.outdoor_wall = 0.f;
 		out.outdoor_path = 0.f;
 		out.outdoor_focus = 0.f;
 	} else {
-		PathResult path = findSky(snap, ear_cell, ear);
-		if (path.found) {
-			const float k = std::max(0.f, params.outdoor_muffle);
-			out.outdoor_path = path.cost;
-			out.outdoor_gain = std::exp(-path.cost * k / 14.f);
-			out.outdoor_hf = std::exp(-path.hf_loss * k);
-			out.outdoor_dir = path.dir;
-			const float sky_frac = sky / n;
+		PathResult open, wall;
+		findSky(snap, ear_cell, ear, open, wall);
+		const float sky_frac = sky / n;
+		if (open.found) {
+			out.outdoor_path = open.cost;
+			out.outdoor_gain = std::exp(-open.cost * k / PATH_LAMBDA);
+			out.outdoor_hf = std::exp(-open.hf_loss * k);
+			out.outdoor_dir = open.dir;
 			out.outdoor_focus = clampf(1.f - 2.f * sky_frac, 0.f, 1.f) *
-					clampf(path.steps / 4.f, 0.f, 1.f);
+					clampf(open.steps / 4.f, 0.f, 1.f);
 		} else {
 			out.outdoor_gain = 0.f;
 			out.outdoor_hf = 0.f;
 			out.outdoor_path = (float)PATH_LIMIT_NODES;
 			out.outdoor_focus = 1.f;
+		}
+		if (wall.found) {
+			// Only what the wall path adds beyond the open path
+			out.outdoor_wall = std::exp(-wall.cost * k / PATH_LAMBDA);
+			if (!open.found)
+				out.outdoor_dir = wall.dir;
 		}
 	}
 	return out;
@@ -514,16 +579,16 @@ static float blockedCost(const VoxelSnapshot &snap, v3f from, v3f to, float &hf_
 	d /= len;
 	v3s16 end = floorNode(to);
 	float cost = 0.f;
-	traverse(from, d, len, [&](v3s16 p, float) {
+	traverse(from, d, len, [&](v3s16 p, float, int axis) {
 		if (p == end)
 			return false; // the emitter's own node doesn't block it
 		u8 cell = snap.at(p);
-		Material m = cellMaterial(cell);
-		if (m != Material::Air) {
-			cost += props(m).pass;
-			hf_loss += props(m).pass_hf;
+		if (cellBlocks(cell, axis)) {
+			const float k = cellThinAxis(cell) >= 0 ? THIN_PASS : 1.f;
+			cost += props(cellMaterial(cell)).pass * k;
+			hf_loss += props(cellMaterial(cell)).pass_hf * k;
 		}
-		return cost < 120.f;
+		return cost < 160.f;
 	});
 	return cost;
 }
@@ -549,19 +614,19 @@ Occlusion occlusion(const VoxelSnapshot &snap, v3f from, v3f to)
 	for (int i = 0; i < 5; i++)
 		costs[i] = blockedCost(snap, from, ends[i], hfs[i]);
 
+	if (costs[0] <= 0.f)
+		return {};
+
 	int order[5] = {0, 1, 2, 3, 4};
 	std::sort(order, order + 5, [&](int a, int b) { return costs[a] < costs[b]; });
-	// The direct ray counts double so a clear line of sight always wins.
-	float cost = 0.5f * (std::min(costs[0], costs[order[0]]) + costs[order[1]]);
-	float hf = 0.5f * (hfs[order[0]] + hfs[order[1]]);
-	if (costs[0] <= 0.f) {
-		cost = 0.f;
-		hf = 0.f;
-	}
+	const float cost = 0.5f * (costs[order[0]] + costs[order[1]]);
+	const float hf = 0.5f * (hfs[order[0]] + hfs[order[1]]);
 
 	Occlusion o;
 	o.amount = 1.f - std::exp(-cost / 6.f);
 	o.hf = std::exp(-hf);
+	// What's transmitted through the blocker on the direct line
+	o.wall = std::exp(-costs[0] / PATH_LAMBDA);
 	return o;
 }
 

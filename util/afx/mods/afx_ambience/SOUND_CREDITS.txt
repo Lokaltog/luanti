@@ -1,0 +1,13 @@
+Sounds in this mod were made by util/afx/import_sounds.py from:
+
+- Moodist (github.com/remvze/moodist), sounds under CC0 or the Pixabay
+  Content License: rain, rain on window/tent/leaves/car roof, wind, wind in
+  trees, howling wind, crickets, birds (bed), droplets (cut into drips),
+  boiling water (lava bubbling), campfire.
+- VoxeLibre (github.com/VoxeLibre/VoxeLibre): env_sounds_lava, lightning
+  thunder. See VoxeLibre's per-mod LICENSE files.
+- ambient_sounds by n0RE5 (github.com/n0RE5/ambient_sounds): robin,
+  cardinal, crested lark, crows, owls (CC-BY 3.0/4.0, CC0), large cave
+  ambience (CC0). See its SOUND_LICENCES.txt for authors.
+
+Personal use. Check each source's license before redistributing.

@@ -227,7 +227,8 @@ void TestAfxEfx::testOutdoorMuffle(Loopback &lb)
 	alDeleteBuffers(1, &buf);
 }
 
-// A cliff to the listener's right: the echo is louder on the right.
+// A cliff to the listener's right: its echo (carried on the reverb's early
+// reflections) is louder on the right.
 void TestAfxEfx::testEchoSide(Loopback &lb)
 {
 	ListenerFrame frame; // facing -Z in sound space; right is +X sound = -X node
@@ -237,27 +238,27 @@ void TestAfxEfx::testEchoSide(Loopback &lb)
 	auto run = [&](v3f node_dir) {
 		EfxRig rig(lb.dev, lb.sends);
 		afx::Acoustics env;
-		env.echo = 1.f;
-		env.echo_delay = 0.15f;
-		env.echo_feedback = 0.f;
-		env.echo_damping = 0.f;
-		env.echo_dir = node_dir;
+		env.wet = 1.f;
+		env.reflections_gain = 3.f;
+		env.reflections_delay = 0.15f;
+		env.reflections_pan = node_dir * 0.9f;
+		env.late_gain = 0.f;
+		env.decay = 0.3f;
 		rig.applyEnvironment(env, frame);
 		ALuint src = makeSource(buf, true);
 		afx::Mix mix = afx::mixFor(afx::Bus::Local, env, {}, params);
-		mix.reverb_send = 0.f; // isolate the echo
-		mix.direct_gain = 0.f;
+		mix.direct_gain = 0.f; // isolate the reflection
 		rig.applySource(src, mix, false, false, env, frame);
 		alSourcePlay(src);
 		auto out = lb.renderSeconds(0.5f);
 		alDeleteSources(1, &src);
-		return measure(out, 0.12f, 0.22f); // the first tap
+		return measure(out, 0.12f, 0.24f);
 	};
 
 	UASSERT(frame.toLocal(v3f(-1, 0, 0)).X > 0.99f);
 	Energy right = run(v3f(-1, 0, 0));
 	Energy left = run(v3f(1, 0, 0));
-	UASSERT(right.total() > 1e-5);
+	UASSERT(right.total() > 1e-6);
 	UASSERT(right.r > right.l * 1.5);
 	UASSERT(left.l > left.r * 1.5);
 	alDeleteBuffers(1, &buf);

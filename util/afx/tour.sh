@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
-# Records the afx test tour: what the player hears, plus the client's
-# acoustic state, at six stations (open field, cave, tunnel, hut, cliff,
-# under water). Then prints a per-station summary.
+# Records a scripted listening scenario in the real client: what the player
+# hears (OpenAL Soft's wave backend, no sound card needed) plus the client's
+# acoustic state, with the afx_ambience content mod running.
 #
-#   util/afx/tour.sh [outdir] [key=value ...]
-#   util/afx/tour.sh /tmp/tour afx_enable=false     # baseline
+#   util/afx/tour.sh <outdir> <scenario> [key=value ...]
+#   scenarios: hut_rain tunnel_wind forest cavern cliff
+#   util/afx/tour.sh /tmp/afx cavern afx_enable=false     # A/B baseline
 #
-# Audio goes through OpenAL Soft's wave backend into <outdir>/tour.wav, so no
-# sound card is needed. USE_XVFB=1 renders off-screen on Mesa's software GL.
+# Writes <outdir>/<scenario>.wav (from the scenario start), .mp3 and .log.
+# USE_XVFB=1 renders off-screen on Mesa's software GL.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-OUT=${1:-$ROOT/afx-tour}; shift || true
+OUT=$1; SCEN=$2; shift 2
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 cp -r "$ROOT/util/afx/testworld" "$WORK/world"
+cp -r "$ROOT/util/afx/mods/afx_ambience" "$WORK/world/worldmods/"
 
 cat > "$WORK/alsoft.conf" <<CONF
 [general]
@@ -26,7 +28,7 @@ channels = stereo
 frequency = 48000
 hrtf = false
 [wave]
-file = $OUT/tour.wav
+file = $WORK/raw.wav
 CONF
 
 CONF=$WORK/client.conf
@@ -38,6 +40,7 @@ enable_sound = true
 sound_volume = 1.0
 mute_sound = false
 afx_debug = true
+afxscene_scenario = $SCEN
 enable_ipv6 = false
 ipv6_server = false
 CONF
@@ -52,7 +55,10 @@ if [ "${USE_XVFB:-0}" = 1 ]; then
 	sleep 1
 fi
 
-ALSOFT_CONF="$WORK/alsoft.conf" timeout 240 "$ROOT/bin/luanti" --config "$CONF" \
-	--go --info --world "$WORK/world" --name tester --password "" >"$OUT/log.txt" 2>&1 || true
+LOG=$OUT/$SCEN.log
+ALSOFT_CONF="$WORK/alsoft.conf" timeout 300 "$ROOT/bin/luanti" --config "$CONF" \
+	--go --info --world "$WORK/world" --name tester --password "" >"$LOG" 2>&1 || true
 
-python3 "$ROOT/util/afx/analyze_tour.py" "$OUT/log.txt" "$OUT/tour.wav"
+python3 "$ROOT/util/afx/cut_scenario.py" "$LOG" "$WORK/raw.wav" "$OUT/$SCEN.wav"
+ffmpeg -v error -y -i "$OUT/$SCEN.wav" -codec:a libmp3lame -q:a 2 "$OUT/$SCEN.mp3"
+grep -E "afxscene: |afx: encl" "$LOG" | sed -E 's/^[0-9-]+ //' | cut -c1-170

@@ -105,8 +105,10 @@ Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &pa
 	switch (bus) {
 	case Bus::World: {
 		float o = std::clamp(occ.amount * params.occlusion, 0.f, 1.f);
-		m.direct_gain = lerpf(1.f, 0.12f, o);
+		m.direct_gain = 1.f - 0.97f * o;
 		m.direct_hf = std::pow(std::clamp(occ.hf, 0.f, 1.f), params.occlusion);
+		// What makes it through the blocker, muffled like a neighbour's party
+		m.muffle_send = o * std::clamp(occ.wall, 0.f, 1.f);
 		// A source behind a wall excites less of the listener's room.
 		m.reverb_send = 1.f - 0.6f * o;
 		m.reverb_hf = m.direct_hf;
@@ -120,8 +122,9 @@ Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &pa
 	case Bus::Outdoor:
 		m.direct_gain = env.outdoor_gain;
 		m.direct_hf = env.outdoor_hf;
+		m.muffle_send = env.outdoor_wall;
 		// Outdoor sound coming into a cave rings in it.
-		m.reverb_send = env.outdoor_gain * env.enclosure * 0.7f;
+		m.reverb_send = (env.outdoor_gain + 0.5f * env.outdoor_wall) * env.enclosure * 0.7f;
 		m.reverb_hf = env.outdoor_hf;
 		m.spatial_bed = true;
 		break;
@@ -132,12 +135,13 @@ Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &pa
 		break;
 	}
 
-	// Submerged: everything but the dry bus goes dull and a little quieter.
+	// Submerged: everything but the dry bus moves to the muffled path.
 	if (env.submerged > 0.f) {
-		m.direct_hf *= lerpf(1.f, 0.04f, env.submerged);
-		m.direct_gain *= lerpf(1.f, 0.6f, env.submerged);
-		m.reverb_hf *= lerpf(1.f, 0.1f, env.submerged);
-		m.echo_send *= 1.f - env.submerged;
+		const float s = env.submerged;
+		m.muffle_send = lerpf(m.muffle_send, std::max(m.muffle_send, 0.7f * m.direct_gain), s);
+		m.direct_gain *= 1.f - s;
+		m.reverb_hf *= lerpf(1.f, 0.1f, s);
+		m.echo_send *= 1.f - s;
 	}
 	return m;
 }
