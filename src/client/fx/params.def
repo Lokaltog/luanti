@@ -57,7 +57,7 @@ FX_FLOAT(rim_light,               0.25f, 0.f, 1.f,    LIVE, TUNE,    "Rim light 
 FX_BOOL (materials,               true,               RESTART)
 FX_BOOL (smooth_material_maps,    true,               LIVE)
 FX_FLOAT(normal_strength,         1.0f,  0.f, 2.f,    LIVE, TUNE,    "Normal maps")
-FX_FLOAT(parallax_depth,          0.05f, 0.f, 0.2f,   LIVE, TUNE,    "Parallax depth")
+FX_FLOAT(parallax_depth,          0.03f, 0.f, 0.2f,   LIVE, TUNE,    "Parallax depth")
 FX_FLOAT(specular,                0.6f,  0.f, 3.f,    LIVE, TUNE,    "Specular")
 FX_FLOAT(glints,                  0.4f,  0.f, 3.f,    LIVE, TUNE,    "Glints")
 FX_BOOL (particles,               true,               LIVE)

@@ -145,7 +145,7 @@ only light sources; surface keys only when surfaces are on).
   and `_s` emission, the renderer takes the brighter of the two per texel
   (it can't tell an authored black `_e` texel from "no map"), so a producer
   that ships `_e.png` should leave `_s` alpha at 255.
-- Parallax is texel-stepped (whole texels of the base), on `_n` alpha, depth
+- Parallax occlusion mapping with layer interpolation, on `_n` alpha, depth
   set by `fx_parallax_depth`.
 
 ## Open items (accepted)

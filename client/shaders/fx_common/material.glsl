@@ -55,7 +55,11 @@ bool fxHasNormal(vec4 n)
 	return n.r + n.g > 0.002;
 }
 
-// Texel-stepped parallax occlusion on the _n height channel.
+// Parallax occlusion mapping on the _n height channel. More layers at
+// grazing angles, then the hit is placed between the last two layers by
+// linear interpolation, so depth reads as a smooth surface instead of as
+// stacked slices. Heights come through the material array's own bilinear
+// filter (fx_smooth_material_maps), never stepped per texel.
 vec2 fxParallax(vec2 uv)
 {
 	if (fxParallaxDepth <= 0.0 || !fxTBNok)
@@ -70,19 +74,32 @@ vec2 fxParallax(vec2 uv)
 		return uv; // grazing or from behind
 	if (!fxHasNormal(fxMatN(uv)))
 		return uv;
-	vec2 dir = v.xy / -v.z * fxParallaxDepth;
-	const int STEPS = 12;
-	const float layer = 1.0 / float(STEPS);
+	// offset limiting: the shift grows with the view angle only up to ~70
+	// degrees, so grazing views don't look bottomless or swim
+	vec2 dir = v.xy / max(-v.z, 0.35) * fxParallaxDepth;
+	// 12 layers looking straight down, up to 32 at grazing angles
+	float n = mix(32.0, 12.0, clamp(-v.z, 0.0, 1.0));
+	float layer = 1.0 / n;
 	float cur = 1.0;
 	vec2 p = uv;
 	float h = fxMatN(p).a;
-	for (int i = 0; i < STEPS; i++) {
-		if (h >= cur)
+	float prev_h = h, prev_cur = cur;
+	vec2 prev_p = p;
+	for (int i = 0; i < 32; i++) {
+		if (float(i) >= n || h >= cur)
 			break;
+		prev_p = p;
+		prev_h = h;
+		prev_cur = cur;
 		cur -= layer;
 		p += dir * layer;
 		h = fxMatN(p).a;
 	}
+	// interpolate between the layer above the surface and the one below
+	float after = h - cur;               // >= 0: below the surface
+	float before = prev_h - prev_cur;    // < 0: still above it
+	float t = clamp(after / max(after - before, 1e-5), 0.0, 1.0);
+	p = mix(p, prev_p, t);
 	return mix(p, uv, smoothstep(10.0 * FX_BS, 16.0 * FX_BS, dist));
 }
 
