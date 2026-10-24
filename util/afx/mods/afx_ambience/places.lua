@@ -61,9 +61,9 @@ local function home_layer(ctx, wanted)
 	local clock = clock_nearby(ctx)
 	if clock then
 		if type(clock) == "table" and clock.x then
-			wanted.h_clock = {sound = "afx_clock", pos = clock, gain = 0.3, range = 10}
+			wanted.h_clock = {sound = "afx_clock", pos = clock, gain = 0.08, range = 6}
 		else
-			wanted.h_clock = {sound = "afx_clock", object = clock, gain = 0.3, range = 10}
+			wanted.h_clock = {sound = "afx_clock", object = clock, gain = 0.08, range = 6}
 		end
 	end
 end

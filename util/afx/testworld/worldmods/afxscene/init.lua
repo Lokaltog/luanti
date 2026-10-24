@@ -248,6 +248,10 @@ function BUILD.mineshaft(b)
 	b.fill(v(39, -20, 0), v(39, -20, 0), "afxscene:spawner")
 end
 
+function BUILD.steps(b)
+	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+end
+
 function BUILD.cliff(b)
 	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:stone")
 	b.fill(v(MIN.x, 0, 20), v(MAX.x, 30, 30), "basenodes:stone")
@@ -475,7 +479,19 @@ TIMELINE.mineshaft = {
 	{wait = 30},
 }
 
+TIMELINE.steps = {
+	{wait = 1, log = "stone"},
+	{walk = v(0, 0, 12), speed = 2.2, steps = "default_hard_footstep"},
+	{wait = 1, log = "wood"},
+	{walk = v(0, 0, 0), speed = 2.2, steps = "default_wood_footstep"},
+	{wait = 1, log = "grass"},
+	{walk = v(0, 0, 12), speed = 2.2, steps = "default_grass_footstep"},
+	{fn = tap, wait = 0.7}, {fn = tap, wait = 0.7}, {fn = tap, wait = 0.7},
+	{fn = tap, wait = 0.7}, {fn = tap, wait = 0.7}, {fn = tap, wait = 2},
+}
+
 local START = {
+	steps = v(0, 0, 0),
 	storm = v(-14, 0, -2), shore = v(0, 0, -6), home = v(-2, 0, 2), mineshaft = v(-20, -20, 0),
 	descent = v(0, 0, 1), meadow = v(0, 0, 0), beach = v(4, 0, -2), sky_island = v(0, 80, -2),
 	hut_rain = v(0, 0, -14), tunnel_wind = v(22, 0, 0), forest = v(0, 0, 0),

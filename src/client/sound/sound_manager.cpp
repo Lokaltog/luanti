@@ -98,10 +98,15 @@ std::string OpenALSoundManager::getLoadedSoundNameFromGroup(const std::string &g
 		return "";
 
 	std::vector<std::string> &group_sounds = it_groups->second;
+	std::string &last = m_last_pick[group_name];
 	while (!group_sounds.empty()) {
-		// choose one by random
-		int j = myrand() % group_sounds.size();
+		// choose one by random; afx: never the same one twice in a row
+		const size_t n = group_sounds.size();
+		size_t j = myrand() % n;
+		if (n > 1 && group_sounds[j] == last && m_afx_params.variation > 0.0f)
+			j = (j + 1 + myrand() % (n - 1)) % n;
 		chosen_sound_name = group_sounds[j];
+		last = chosen_sound_name;
 
 		// find chosen one
 		std::shared_ptr<ISoundDataOpen> snd = openSingleSound(chosen_sound_name);
@@ -228,6 +233,20 @@ void OpenALSoundManager::playSoundGeneric(sound_handle_t id, const std::string &
 	// afx: route by the group name the game asked for (the file name is a
 	// random pick from it)
 	afx::Bus bus = afx::classify(group_name, pos_vel_opt.has_value(), m_bus_rules);
+
+	// afx: no two footsteps alike. Short one-shots get a little pitch/speed
+	// and level variety on every play.
+	if (m_afx_params.enabled && m_afx_params.variation > 0.0f && !loop &&
+			bus != afx::Bus::Dry) {
+		auto data = openSingleSound(sound_name);
+		if (data && data->m_decode_info.length_seconds < afx::VARY_MAX_SECONDS) {
+			auto u = [] { return (myrand() % 10000) / 10000.0f; };
+			afx::Variation v = afx::vary(u(), u(), u(), u(), m_afx_params.variation);
+			pitch *= v.pitch;
+			volume *= v.gain;
+			target_fade_volume *= v.gain;
+		}
+	}
 
 	// play it
 	std::shared_ptr<PlayingSound> sound = createPlayingSound(sound_name, loop,

@@ -8,6 +8,7 @@
 #include "client/afx/afx_types.h"
 #include "client/afx/afx_smoother.h"
 #include "client/afx/afx_mood.h"
+#include "client/afx/afx_mix.h"
 #include "afx_worlds.h"
 
 #include <cmath>
@@ -35,6 +36,7 @@ public:
 	void testUnderwater();
 	void testSmoother();
 	void testMood();
+	void testVariation();
 };
 
 static TestAfx g_test_instance;
@@ -51,6 +53,7 @@ void TestAfx::runTests(IGameDef *gamedef)
 	TEST(testUnderwater);
 	TEST(testSmoother);
 	TEST(testMood);
+	TEST(testVariation);
 }
 
 void TestAfx::testOpenField()
@@ -273,4 +276,28 @@ void TestAfx::testMood()
 	for (int i = 0; i < 60 * 3; i++)
 		sm.step(1.f / 60, f);
 	UASSERT(sm.current().tension < 0.35f); // 3 s back out: mostly gone
+}
+
+void TestAfx::testVariation()
+{
+	// Off is exactly neutral
+	Variation off = vary(0.9f, 0.9f, 0.1f, 0.1f, 0.f);
+	UASSERT(off.pitch == 1.f && off.gain == 1.f);
+
+	// Within ±7 % pitch and ±3 dB at any amount; mostly small changes
+	float lo = 1, hi = 1, sum_abs = 0;
+	int n = 0;
+	for (int a = 0; a <= 10; a++)
+	for (int b = 0; b <= 10; b++) {
+		Variation v = vary(a / 10.f, b / 10.f, b / 10.f, a / 10.f, 2.f);
+		UASSERT(v.pitch >= std::exp(-0.0701f) && v.pitch <= std::exp(0.0701f));
+		UASSERT(v.gain >= 0.70f && v.gain <= 1.42f);
+		Variation w = vary(a / 10.f, b / 10.f, 0.5f, 0.5f, 1.f);
+		lo = std::min(lo, w.pitch);
+		hi = std::max(hi, w.pitch);
+		sum_abs += std::fabs(std::log(w.pitch));
+		n++;
+	}
+	UASSERT(hi > 1.05f && lo < 0.95f);  // audible spread at the extremes
+	UASSERT(sum_abs / n < 0.03f);       // but mostly subtle
 }

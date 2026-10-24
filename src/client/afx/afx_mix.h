@@ -54,6 +54,20 @@ struct BusRules {
 /// lists. Positional sounds are World unless explicitly dry.
 Bus classify(const std::string &name, bool positional, const BusRules &rules);
 
+/// Per-play variation of short one-shots (footsteps, digging, drips...):
+/// a pitch factor (pitch and speed move together, like a tape) and a gain
+/// factor. `u1..u4` are uniform randoms in [0, 1); `amount` scales it
+/// (afx_variation). Roughly normal, ~±4 % pitch and ~±1.5 dB at 1.0, hard
+/// limited to ±7 % so it never sounds detuned.
+struct Variation {
+	float pitch = 1.f;
+	float gain = 1.f;
+};
+Variation vary(float u1, float u2, float u3, float u4, float amount);
+
+/// Sounds shorter than this (seconds) get varied; longer ones are left alone.
+constexpr float VARY_MAX_SECONDS = 2.5f;
+
 /// The policy. `occ` is the source's smoothed occlusion (World only).
 Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &params);
 

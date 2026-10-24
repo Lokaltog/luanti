@@ -38,6 +38,7 @@ static const char *const SETTING_NAMES[] = {
 	"afx_reverb", "afx_max_decay", "afx_echo", "afx_occlusion",
 	"afx_outdoor_muffle", "afx_smoothing", "afx_debug",
 	"afx_dry_sounds", "afx_outdoor_sounds", "afx_indoor_sounds", "afx_doppler", "afx_mood",
+	"afx_variation",
 };
 
 static void readParams()
@@ -57,6 +58,7 @@ static void readParams()
 	p.debug = s->getBool("afx_debug");
 	p.doppler = rangelim(s->getFloat("afx_doppler"), 0.f, 2.f);
 	p.mood = rangelim(s->getFloat("afx_mood"), 0.f, 2.f);
+	p.variation = rangelim(s->getFloat("afx_variation"), 0.f, 2.f);
 	p.dry_sounds = s->get("afx_dry_sounds");
 	p.outdoor_sounds = s->get("afx_outdoor_sounds");
 	p.indoor_sounds = s->get("afx_indoor_sounds");

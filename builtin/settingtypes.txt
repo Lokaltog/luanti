@@ -991,6 +991,11 @@ afx_outdoor_muffle (Outdoor muffling) float 1.0 0.0 4.0
 #    Multiplies all transition times. Higher is slower and smoother.
 afx_smoothing (Smoothing) float 1.0 0.05 10.0
 
+#    Variety for short sounds (footsteps, digging, drips): each play gets a
+#    slightly different pitch, speed and level, and the same sample is never
+#    picked twice in a row. 0 = off.
+afx_variation (Sound variation) float 1.0 0.0 2.0
+
 #    Pitch shift of moving sound sources (minecarts, mobs). 0 = off.
 afx_doppler (Doppler) float 0.5 0.0 2.0
 

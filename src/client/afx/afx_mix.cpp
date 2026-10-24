@@ -96,6 +96,19 @@ Bus classify(const std::string &name, bool positional, const BusRules &rules)
 
 static float lerpf(float a, float b, float t) { return a + (b - a) * t; }
 
+Variation vary(float u1, float u2, float u3, float u4, float amount)
+{
+	Variation v;
+	if (amount <= 0.f)
+		return v;
+	// sum of two uniforms: a triangle distribution, mostly small changes
+	const float p = (u1 + u2 - 1.f) * 0.07f * amount;      // -0.07..0.07
+	const float g = (u3 + u4 - 1.f) * 3.0f * amount;       // -3..3 dB
+	v.pitch = std::exp(std::clamp(p, -0.07f, 0.07f));
+	v.gain = std::pow(10.f, std::clamp(g, -3.f, 3.f) / 20.f);
+	return v;
+}
+
 Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &params)
 {
 	Mix m;

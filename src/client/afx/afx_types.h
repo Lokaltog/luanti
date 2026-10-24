@@ -119,6 +119,7 @@ struct Params {
 	float smoothing = 1.0f;      // afx_smoothing, scales all time constants
 	float doppler = 0.5f;        // afx_doppler, OpenAL doppler factor
 	float mood = 1.0f;           // afx_mood, level of the tension/cozy layers
+	float variation = 1.0f;      // afx_variation, pitch/level variety of short sounds
 	bool debug = false;          // afx_debug
 	// Bus routing by sound name, comma-separated globs (see afx_mix.h)
 	std::string dry_sounds =     // afx_dry_sounds

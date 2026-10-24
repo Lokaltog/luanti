@@ -101,6 +101,12 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
 - **Game-aware.** The mod defers to the game's own water, lava, fire and thunder sounds where it has them, so nothing doubles. Node lists (furnaces, campfires, bee nests, rails, spawners) are built by name when the game loads, which also covers Mineclonia's naming.
 - Scenarios `storm`, `shore`, `home` and `mineshaft`, plus `tour.sh <out> voxelibre`: a real-game tour of VoxeLibre. Point `games/voxelibre` at a VoxeLibre checkout. The tour visits forest, rain, plains at dusk, a cave, snow, a thunderstorm, the Nether and the End.
 
+## Variety for short sounds
+
+- **Engine** (`afx_variation`, default 1.0): every short (< 2.5 s) non-dry one-shot gets a pitch/speed factor of about ±4 % (hard limit ±7 %) and about ±1.5 dB of level, drawn from a triangle distribution so most changes are subtle. A group's samples are never picked twice in a row. This covers the engine's own footsteps, digging and placing, which mods can't reach.
+- **Extra takes** (`make_variants.py <game_dir> <out>`): for each footstep, dig, dug and place group in a game, it writes three new takes into free `.N` slots (from .9 downward). Each take is one of the game's own samples with pitch and speed shifted independently, a ±2 dB high-shelf tilt and ±1 dB of level. Luanti merges `name.N.ogg` across mods, so the game draws from 5–7 takes instead of 2–4. The shipped takes are made from VoxeLibre. Rerun the script against your Mineclonia install to match its samples exactly.
+- The home clock is quieter now.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.
