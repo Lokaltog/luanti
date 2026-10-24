@@ -49,12 +49,22 @@ struct LightCell {
 void floodFillRGB(s16 sx, s16 sy, s16 sz, const u16 *content,
 		const std::vector<LightCell> &cells, std::vector<u8> &out);
 
+/// Same, reconciled with the engine's own artificial light (`engine`: the
+/// night light bank per cell, 0..15). Light the fill can't explain (its
+/// source sits in a block the client hasn't received, e.g. around a corner
+/// the server culls, or outside the window) is seeded where the engine says
+/// it is, in `fallback` hue (0..255 per channel, brightest 255), and spread
+/// by the same rule. Without this such light would be white until the
+/// source's block arrives.
+void floodFillRGB(s16 sx, s16 sy, s16 sz, const u16 *content, const u8 *engine,
+		const std::vector<LightCell> &cells, const u8 fallback[3], std::vector<u8> &out);
+
 class LightVolume
 {
 public:
 	// Volume size in nodes. Light reaches 14 nodes, so this covers what the
 	// camera sees up close; beyond it light is white (upstream).
-	static constexpr s16 SX = 64, SY = 48, SZ = 64;
+	static constexpr s16 SX = 96, SY = 48, SZ = 96;
 	static constexpr s16 ATLAS_COLS = 8;
 	static constexpr u32 ATLAS_W = SX * ATLAS_COLS;
 	static constexpr u32 ATLAS_H = SZ * ((SY + ATLAS_COLS - 1) / ATLAS_COLS);
@@ -93,6 +103,7 @@ private:
 		v3s16 origin;
 		u32 generation = 0;
 		std::vector<u16> content;   // SX*SY*SZ content ids (CONTENT_IGNORE = unknown)
+		std::vector<u8> engine;     // SX*SY*SZ engine night light, 0..15
 	};
 
 	void buildTables(Client *client);
@@ -123,6 +134,7 @@ private:
 	// main-thread state: the snapshot window
 	video::IVideoDriver *m_driver;
 	std::vector<u16> m_content;
+	std::vector<u8> m_engine;            // engine night light per voxel
 	v3s16 m_origin;
 	bool m_have_content = false;
 	std::unordered_set<v3s16> m_dirty;

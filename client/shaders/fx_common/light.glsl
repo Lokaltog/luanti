@@ -24,7 +24,10 @@ vec2 fxVolumeTexel(float slice, vec2 xz)
 	return (vec2(mod(slice, FX_VOL_COLS), floor(slice / FX_VOL_COLS)) * FX_VOL_SIZE.xz + xz) / FX_VOL_ATLAS;
 }
 
-// rgb = light level per channel (0..1 = 0..15), a = 1 inside the volume
+// rgb = light level per channel (0..1 = 0..15), a = how much to trust it:
+// 1 inside, fading to 0 over the last 8 nodes before the window's edge
+// (light there may come from outside; the hue then blends to white instead
+// of popping when the window moves)
 vec4 fxVolumeSample(vec3 p)
 {
 	vec3 v = (p - fxVolumeOrigin) / FX_BS;
@@ -38,7 +41,9 @@ vec4 fxVolumeSample(vec3 p)
 	vec2 xz = clamp(v.xz, vec2(0.0), FX_VOL_SIZE.xz - 1.0) + 0.5;
 	vec3 c0 = textureLod(fxLightVolume, fxVolumeTexel(y0, xz), 0.0).rgb;
 	vec3 c1 = textureLod(fxLightVolume, fxVolumeTexel(y1, xz), 0.0).rgb;
-	return vec4(mix(c0, c1, y - y0), 1.0);
+	vec3 edge = min(v, FX_VOL_SIZE - 1.0 - v);
+	float trust = smoothstep(0.0, 8.0, min(edge.x, edge.z)) * smoothstep(0.0, 4.0, edge.y);
+	return vec4(mix(c0, c1, y - y0), max(trust, 1e-3));
 }
 #endif
 
@@ -88,7 +93,8 @@ vec3 fxArtificialLight(vec3 p, vec3 n, float seconds)
 			float m = max(vs.r, max(vs.g, vs.b));
 			// world lights from the volume, weighted by how strong they are here
 			float vw = m * 4.0;
-			acc += (m > 0.001 ? vs.rgb / m : vec3(1.0)) * vw;
+			vec3 hue = m > 0.001 ? vs.rgb / m : vec3(1.0);
+			acc += mix(vec3(1.0), hue, vs.a) * vw;
 			wsum += vw;
 		}
 	}

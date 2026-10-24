@@ -36,6 +36,7 @@ public:
 	void testParamRegistry();
 	void testSettingtypesInSync();
 	void testPackGlob();
+	void testFloodEngineSeeds();
 	void testPackTables();
 };
 
@@ -45,6 +46,7 @@ void TestFx::runTests(IGameDef *gamedef)
 {
 	TEST(testFloodFalloff);
 	TEST(testPackGlob);
+	TEST(testFloodEngineSeeds);
 	TEST(testPackTables);
 	TEST(testFloodOpaqueStops);
 	TEST(testFloodGlassTints);
@@ -287,4 +289,31 @@ void TestFx::testPackTables()
 
 	fs::RecursiveDelete(a);
 	fs::RecursiveDelete(b);
+}
+
+// Light whose source the client doesn't have (engine light, no source in
+// the snapshot) is seeded in the fallback hue and spread; light a tinted
+// glass took away is not "unexplained".
+void TestFx::testFloodEngineSeeds()
+{
+	const s16 sx = 8, sy = 1, sz = 1;
+	std::vector<fx::LightCell> cells(3);
+	cells[0].opaque = false;                       // air
+	cells[1].opaque = false;                       // red glass
+	cells[1].tint[1] = cells[1].tint[2] = 0;
+	cells[2].opaque = false;                       // a source, level 10, white
+	cells[2].src[0] = cells[2].src[1] = cells[2].src[2] = 10;
+	// x: 0 1 2 3 4 5 6 7 ; engine says x=0 is lit 12 by something unknown
+	std::vector<u16> content = {0, 0, 0, 0, 2, 1, 0, 0};
+	std::vector<u8> engine = {12, 11, 10, 9, 10, 9, 8, 7};
+	const u8 warm[3] = {255, 128, 0};
+	std::vector<u8> out;
+	fx::floodFillRGB(sx, sy, sz, content.data(), engine.data(), cells, warm, out);
+	// seeded at x=0 in the warm hue
+	UASSERTEQ(int, out[0], 12);
+	UASSERTEQ(int, out[1], 6);
+	UASSERTEQ(int, out[2], 6); // the real source still reaches it
+	// behind the red glass: tinted, not reseeded white or warm
+	UASSERTEQ(int, out[6 * 3 + 0], 8);
+	UASSERTEQ(int, out[6 * 3 + 1], 0);
 }

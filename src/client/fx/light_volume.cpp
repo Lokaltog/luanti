@@ -92,6 +92,7 @@ bool LightVolume::readBox(Client *client, v3s16 lo, v3s16 hi)
 	if (lo.X > hi.X || lo.Y > hi.Y || lo.Z > hi.Z)
 		return false;
 	ClientMap &map = client->getEnv().getClientMap();
+	const NodeDefManager *ndef = client->ndef();
 	const v3s16 b0 = getNodeBlockPos(lo), b1 = getNodeBlockPos(hi);
 	v3s16 bp;
 	for (bp.Z = b0.Z; bp.Z <= b1.Z; bp.Z++)
@@ -106,9 +107,17 @@ bool LightVolume::readBox(Client *client, v3s16 lo, v3s16 hi)
 		for (s16 z = l.Z; z <= h.Z; z++)
 		for (s16 y = l.Y; y <= h.Y; y++) {
 			const size_t row = vidx(0, y - m_origin.Y, z - m_origin.Z);
-			for (s16 x = l.X; x <= h.X; x++)
-				m_content[row + (x - m_origin.X)] = block ? block->getNodeNoCheck(x - base.X, y - base.Y, z - base.Z).getContent()
-						: CONTENT_IGNORE;
+			for (s16 x = l.X; x <= h.X; x++) {
+				const size_t i = row + (x - m_origin.X);
+				if (!block) {
+					m_content[i] = CONTENT_IGNORE;
+					m_engine[i] = 0;
+					continue;
+				}
+				const MapNode n = block->getNodeNoCheck(x - base.X, y - base.Y, z - base.Z);
+				m_content[i] = n.getContent();
+				m_engine[i] = n.getLight(LIGHTBANK_NIGHT, ndef->getLightingFlags(n));
+			}
 		}
 	}
 	return true;
@@ -119,8 +128,11 @@ void LightVolume::moveTo(Client *client, v3s16 origin)
 	const v3s16 size(SX, SY, SZ);
 	const v3s16 d = origin - m_origin;
 	std::vector<u16> old;
+	std::vector<u8> old_engine;
 	old.swap(m_content);
+	old_engine.swap(m_engine);
 	m_content.assign(VOXELS, CONTENT_IGNORE);
+	m_engine.assign(VOXELS, 0);
 	m_origin = origin;
 	// the overlap of the old and new windows, in new-window coordinates
 	v3s16 lo, hi;
@@ -139,8 +151,12 @@ void LightVolume::moveTo(Client *client, v3s16 origin)
 	}
 	for (s16 z = lo.Z; z <= hi.Z; z++)
 	for (s16 y = lo.Y; y <= hi.Y; y++)
+	{
 		std::memcpy(&m_content[vidx(lo.X, y, z)], &old[vidx(lo.X + d.X, y + d.Y, z + d.Z)],
 				(hi.X - lo.X + 1) * sizeof(u16));
+		std::memcpy(&m_engine[vidx(lo.X, y, z)], &old_engine[vidx(lo.X + d.X, y + d.Y, z + d.Z)],
+				hi.X - lo.X + 1);
+	}
 	// read the newly exposed slabs: X outside the overlap, then Y within
 	// its X range, then Z within its X and Y range
 	const v3s16 o = origin, e = origin + size - v3s16(1, 1, 1);
@@ -156,8 +172,18 @@ void LightVolume::moveTo(Client *client, v3s16 origin)
 void floodFillRGB(s16 sx, s16 sy, s16 sz, const u16 *content,
 		const std::vector<LightCell> &cells, std::vector<u8> &lvl)
 {
+	static const u8 white[3] = {255, 255, 255};
+	floodFillRGB(sx, sy, sz, content, nullptr, cells, white, lvl);
+}
+
+void floodFillRGB(s16 sx, s16 sy, s16 sz, const u16 *content, const u8 *engine,
+		const std::vector<LightCell> &cells, const u8 fallback[3], std::vector<u8> &lvl)
+{
 	const size_t voxels = (size_t)sx * sy * sz;
 	lvl.assign(voxels * 3, 0);
+	// the engine's scalar rule alongside (tints don't dim it), to tell
+	// light the fill can't explain from light glass took away
+	std::vector<u8> scalar(engine ? voxels : 0, 0);
 	std::vector<u32> queue;
 	queue.reserve(8192);
 	static const LightCell opaque_unknown;
@@ -172,47 +198,90 @@ void floodFillRGB(s16 sx, s16 sy, s16 sz, const u16 *content,
 			lvl[i * 3 + 0] = ci.src[0];
 			lvl[i * 3 + 1] = ci.src[1];
 			lvl[i * 3 + 2] = ci.src[2];
+			if (engine)
+				scalar[i] = std::max({ci.src[0], ci.src[1], ci.src[2]});
 			queue.push_back((u32)i);
 		}
 	}
 
 	static const s16 dirs[6][3] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
-	for (size_t head = 0; head < queue.size(); head++) {
-		const u32 i = queue[head];
-		const s16 x = i % sx, y = (i / sx) % sy, z = i / ((u32)sx * sy);
-		const u8 l[3] = {lvl[i * 3], lvl[i * 3 + 1], lvl[i * 3 + 2]};
-		if (l[0] <= 1 && l[1] <= 1 && l[2] <= 1)
-			continue;
-		for (const auto &d : dirs) {
-			const s16 nx = x + d[0], ny = y + d[1], nz = z + d[2];
-			if (nx < 0 || ny < 0 || nz < 0 || nx >= sx || ny >= sy || nz >= sz)
+	auto spread = [&] () {
+		for (size_t head = 0; head < queue.size(); head++) {
+			const u32 i = queue[head];
+			const s16 x = i % sx, y = (i / sx) % sy, z = i / ((u32)sx * sy);
+			const u8 l[3] = {lvl[i * 3], lvl[i * 3 + 1], lvl[i * 3 + 2]};
+			const u8 ls = engine ? scalar[i] : 0;
+			if (l[0] <= 1 && l[1] <= 1 && l[2] <= 1 && ls <= 1)
 				continue;
-			const size_t j = idx(nx, ny, nz);
-			const LightCell &cj = info(content[j]);
-			if (cj.opaque)
-				continue;
-			bool improved = false;
-			for (int c = 0; c < 3; c++) {
-				int v = (int)l[c] - 1;
-				if (v <= 0)
+			for (const auto &d : dirs) {
+				const s16 nx = x + d[0], ny = y + d[1], nz = z + d[2];
+				if (nx < 0 || ny < 0 || nz < 0 || nx >= sx || ny >= sy || nz >= sz)
 					continue;
-				if (cj.tint[c] != 255)
-					v = v * cj.tint[c] / 255;
-				if (v > lvl[j * 3 + c]) {
-					lvl[j * 3 + c] = (u8)v;
+				const size_t j = idx(nx, ny, nz);
+				const LightCell &cj = info(content[j]);
+				if (cj.opaque)
+					continue;
+				bool improved = false;
+				for (int c = 0; c < 3; c++) {
+					int v = (int)l[c] - 1;
+					if (v <= 0)
+						continue;
+					if (cj.tint[c] != 255)
+						v = v * cj.tint[c] / 255;
+					if (v > lvl[j * 3 + c]) {
+						lvl[j * 3 + c] = (u8)v;
+						improved = true;
+					}
+				}
+				if (engine && ls > 1 && ls - 1 > scalar[j]) {
+					scalar[j] = ls - 1;
 					improved = true;
 				}
+				if (improved)
+					queue.push_back((u32)j);
 			}
-			if (improved)
-				queue.push_back((u32)j);
 		}
+	};
+	spread();
+	if (!engine)
+		return;
+
+	// seed what the engine lights but the fill doesn't explain
+	queue.clear();
+	for (size_t i = 0; i < voxels; i++) {
+		const u8 e = std::min<u8>(engine[i], 15);
+		if (e <= scalar[i] || info(content[i]).opaque)
+			continue;
+		scalar[i] = e;
+		for (int c = 0; c < 3; c++)
+			lvl[i * 3 + c] = std::max<u8>(lvl[i * 3 + c], (u8)((e * fallback[c] + 127) / 255));
+		queue.push_back((u32)i);
 	}
+	spread();
 }
 
 void LightVolume::compute(const Job &job, std::vector<u8> &out)
 {
+	// hue for light whose source isn't in the snapshot: the average hue of
+	// the sources that are (torches, mostly), else white
+	float acc[3] = {0.f, 0.f, 0.f};
+	for (u16 c : job.content) {
+		if (c >= m_info.size())
+			continue;
+		const u8 *src = m_info[c].src;
+		const float m = std::max({src[0], src[1], src[2]});
+		if (m > 0.f)
+			for (int i = 0; i < 3; i++)
+				acc[i] += src[i] / m;
+	}
+	u8 fallback[3] = {255, 255, 255};
+	const float am = std::max({acc[0], acc[1], acc[2]});
+	if (am > 0.f)
+		for (int i = 0; i < 3; i++)
+			fallback[i] = (u8)(acc[i] / am * 255.f + 0.5f);
+
 	std::vector<u8> lvl;
-	floodFillRGB(SX, SY, SZ, job.content.data(), m_info, lvl);
+	floodFillRGB(SX, SY, SZ, job.content.data(), job.engine.data(), m_info, fallback, lvl);
 
 	// Pack into the atlas: Y slices tiled ATLAS_COLS per row, ARGB8 texels.
 	out.assign((size_t)ATLAS_W * ATLAS_H * 4, 0);
@@ -319,6 +388,7 @@ void LightVolume::update(Client *client, v3s16 camera_node, float dtime)
 	if (!m_have_content) {
 		m_origin = want;
 		m_content.assign(VOXELS, CONTENT_IGNORE);
+		m_engine.assign(VOXELS, 0);
 		readBox(client, m_origin, m_origin + v3s16(SX - 1, SY - 1, SZ - 1));
 		m_have_content = true;
 		m_dirty.clear();
@@ -354,6 +424,7 @@ void LightVolume::update(Client *client, v3s16 camera_node, float dtime)
 	job->origin = m_origin;
 	job->generation = m_generation;
 	job->content = m_content;
+	job->engine = m_engine;
 	m_job_generation = m_generation;
 	m_busy = true;
 	{
