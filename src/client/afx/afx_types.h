@@ -190,6 +190,15 @@ struct Acoustics {
 	// Floor under your feet: 1 = planks over empty space (boomy footsteps)
 	float hollow = 0.f;
 
+	// Walls you can hear: the nearest surface beside you (a slap from that
+	// side) and the nearest one across from it (a corridor answers twice)
+	float wall_near = 0.f;     // 0..1 how strongly it reflects (0 = none)
+	float wall_near_dist = 4.f;// nodes
+	v3f wall_near_dir;         // node space, unit
+	float wall_far = 0.f;
+	float wall_far_dist = 8.f;
+	v3f wall_far_dir;
+
 	// What the surfaces are: 1 = rock, earth, snow (a cave, a hillside),
 	// 0 = built (planks, glass, wool)
 	float natural = 0.f;
@@ -202,6 +211,7 @@ struct Acoustics {
 	bool underwater = false;
 	bool in_lava = false;
 	float submerged = 0.f;     // 0..1, smoothed immersion (water or lava)
+	float water_depth = 0.f;   // nodes of water above the ear (0 in air)
 };
 
 /// The sound thread's smoothed state, reported back for the debug HUD and for

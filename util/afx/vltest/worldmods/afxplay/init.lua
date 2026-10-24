@@ -178,8 +178,54 @@ local function muffle_tour()
 	})
 end
 
+-- Creatures and diving: animals startle when you land among them; a dive
+-- into deep water, strokes under, and coming up for air
+local function life_tour()
+	say("start")
+	local f = SPOTS.plains
+	local animals = {}
+	run({
+		{log = "plains, a few animals around", wait = 8, fn = function()
+			weather("none"); core.set_timeofday(0.5); go(f)
+			for i, name in ipairs({"mobs_mc:chicken", "mobs_mc:chicken", "mobs_mc:sheep",
+					"mobs_mc:cow", "mobs_mc:pig", "mobs_mc:chicken"}) do
+				local a = i * math.pi / 3
+				local o = core.add_entity(vector.offset(f, 3 * math.cos(a), 0.5, 3 * math.sin(a)), name)
+				animals[#animals + 1] = o
+			end
+		end},
+		{log = "jumping down among them", wait = 8, fn = function()
+			local pl = P()
+			pl:set_physics_override({gravity = 1, speed = 0, jump = 0})
+			pl:set_pos(vector.offset(f, 0, 7, 0))
+		end},
+		{log = "a pond: dive in from above", wait = 6, fn = function()
+			local c = vector.offset(f, 30, -1, 0)
+			for x = -4, 4 do for z = -4, 4 do for y = -6, 0 do
+				core.set_node(vector.offset(c, x, y, z), {name = "mcl_core:water_source"})
+			end end end
+			local pl = P()
+			pl:set_physics_override({gravity = 1, speed = 0, jump = 0})
+			pl:set_pos(vector.offset(c, 0, 6, 0))
+		end},
+		{log = "swimming under water", wait = 9, fn = function()
+			local pl = P()
+			pl:set_physics_override({gravity = 0, speed = 0, jump = 0})
+			pl:set_pos(vector.offset(f, 30, -5, -3))
+			for i = 0, 8 do
+				core.after(i * 0.9, function() pl:add_velocity({x = 0, y = 0, z = 2.5}) end)
+				core.after(i * 0.9 + 0.5, function() pl:add_velocity({x = 0, y = 0, z = -2.5}) end)
+			end
+		end},
+		{log = "coming up for air", wait = 6, fn = function()
+			P():set_pos(vector.offset(f, 30, 0.6, 0))
+		end},
+	})
+end
+
 local function tour()
 	if core.settings:get("afxplay_mode") == "muffle" then return muffle_tour() end
+	if core.settings:get("afxplay_mode") == "life" then return life_tour() end
 	say("start")
 	run({
 		{log = "forest, noon", wait = 16, fn = function()

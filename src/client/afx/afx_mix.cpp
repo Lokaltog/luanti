@@ -204,7 +204,11 @@ Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &pa
 
 	// Submerged: everything but the dry bus moves to the muffled path.
 	if (env.submerged > 0.f) {
-		const float s = env.submerged;
+		// just under the surface, the world above still comes through: duller,
+		// but there; a few nodes down it's gone
+		float s = env.submerged;
+		if (bus == Bus::Outdoor || bus == Bus::World)
+			s *= std::clamp(0.45f + 0.35f * (env.water_depth - 1.f), 0.45f, 1.f);
 		m.muffle_send = lerpf(m.muffle_send, std::max(m.muffle_send, 0.7f * m.direct_gain), s);
 		m.direct_gain *= 1.f - s;
 		m.reverb_hf *= lerpf(1.f, 0.1f, s);

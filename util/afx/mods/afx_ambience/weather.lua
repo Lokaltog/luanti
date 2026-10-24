@@ -188,6 +188,7 @@ A.register_layer(function(ctx, wanted)
 		return
 	end
 	ctx.wind = A.wind_now() * (0.7 + 0.8 * exposure(ctx.ppos))
+	ctx.st.wind = ctx.wind
 	rain_layer(ctx, wanted)
 	-- tell the player's engine, so distant sounds travel with the weather
 	if ctx.player.set_afx_world and ctx.hearing then

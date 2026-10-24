@@ -54,6 +54,10 @@ public:
 	void applySource(ALuint source, const afx::Mix &mix, bool positional, bool stereo,
 			const afx::Acoustics &env, const ListenerFrame &frame);
 
+	/// Walls you can hear (slot 1 with EAX reverb)
+	void applyWalls(const afx::Acoustics &env, const ListenerFrame &frame);
+	bool hasWalls() const { return m_walls; }
+
 	/// The far space a source sits in (send 5): its tail, panned toward it.
 	void applyRemote(const afx::RemoteSpace &r, const ListenerFrame &frame);
 	bool hasRemote() const { return m_remote_slot != 0; }
@@ -100,6 +104,9 @@ private:
 	// where a source is: a cave's tail on a zombie in it, while you stand
 	// somewhere dead
 	ALuint m_remote_effect = 0, m_remote_slot = 0;
+	bool m_walls = false;
+	float m_walls_t[2] = {-1.f, -1.f}, m_walls_far = -1.f, m_walls_last_level = 1.f;
+	v3f m_walls_pan[2];
 	float m_rm_last_decay = -1.f, m_rm_last_hf = -1.f;
 	v3f m_rm_last_pan;
 	float m_nb_last_decay = -1.f, m_nb_last_hf = -1.f;

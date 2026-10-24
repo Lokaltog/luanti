@@ -35,6 +35,7 @@
 
 #include "client/shader.h"
 #include "client/minimap.h"
+#include "client/afx/afx.h"
 #include <quaternion.h>
 #include <SMesh.h>
 #include <IMeshBuffer.h>
@@ -1143,7 +1144,16 @@ void GenericCAO::step(float dtime, ClientEnvironment *env)
 
 		float moved = lastpos.getDistanceFrom(pos_translator.val_current);
 		m_step_distance_counter += moved;
-		if (m_step_distance_counter > 1.5f * BS) {
+		// afx: a body's size sets its stride and its weight: a chicken
+		// patters, a cow plods, an iron golem thuds (1 = player sized)
+		float body = 1.0f;
+		if (afx::params().enabled) {
+			const v3f ext = m_prop.collisionbox.getExtent();
+			body = std::cbrt(std::max(0.001f, ext.X * ext.Y * ext.Z) / 0.64f);
+			body = std::clamp(body, 0.4f, 2.5f);
+		}
+		const float stride = 1.5f * std::clamp(body, 0.5f, 2.0f);
+		if (m_step_distance_counter > stride * BS) {
 			m_step_distance_counter = 0.0f;
 			if (!m_is_local_player && m_prop.makes_footstep_sound) {
 				const NodeDefManager *ndef = m_client->ndef();
@@ -1156,6 +1166,10 @@ void GenericCAO::step(float dtime, ClientEnvironment *env)
 				// Reduce footstep gain, as non-local-player footsteps are
 				// somehow louder.
 				spec.gain *= 0.6f;
+				if (body != 1.0f) {
+					spec.gain *= std::clamp(0.3f + 0.7f * body, 0.3f, 1.6f);
+					spec.pitch *= std::clamp(std::pow(body, -0.35f), 0.72f, 1.4f);
+				}
 				// The footstep-sound doesn't travel with the object. => vel=0
 				m_client->sound()->playSoundAt(0, spec, foot_pos, v3f(0.0f));
 			}

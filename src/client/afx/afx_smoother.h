@@ -97,6 +97,13 @@ public:
 		glide_dir(c.neighbor_dir, t.neighbor_dir, 0.4f);
 		glide(c.hollow, t.hollow, 0.15f, 0.15f);
 		glide(c.natural, t.natural, 0.8f, 0.8f);
+		glide(c.water_depth, t.water_depth, 0.2f, 0.2f);
+		glide(c.wall_near, t.wall_near, 0.3f, 0.3f);
+		glide(c.wall_near_dist, t.wall_near_dist, 0.3f, 0.3f);
+		glide_dir(c.wall_near_dir, t.wall_near_dir, 0.3f);
+		glide(c.wall_far, t.wall_far, 0.3f, 0.3f);
+		glide(c.wall_far_dist, t.wall_far_dist, 0.3f, 0.3f);
+		glide_dir(c.wall_far_dir, t.wall_far_dir, 0.3f);
 
 		c.underwater = t.underwater;
 		c.in_lava = t.in_lava;

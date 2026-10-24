@@ -53,6 +53,7 @@ public:
 	void testWeather();
 	void testSkybridge();
 	void testShortTunnel();
+	void testWalls();
 };
 
 static TestAfx g_test_instance;
@@ -82,6 +83,7 @@ void TestAfx::runTests(IGameDef *gamedef)
 	TEST(testWeather);
 	TEST(testSkybridge);
 	TEST(testShortTunnel);
+	TEST(testWalls);
 }
 
 void TestAfx::testOpenField()
@@ -673,4 +675,33 @@ void TestAfx::testSkybridge()
 	const Acoustics m = openField().probe(v3f(0, 1.6f, 0));
 	UASSERT(m.wet > 0.1f);
 	UASSERT(m.decay > 1.2f);
+}
+
+void TestAfx::testWalls()
+{
+	// Open meadow: the ground isn't a wall
+	const Acoustics open = openField().probe(v3f(0, 1.6f, 0));
+	UASSERT(open.wall_near < 0.05f);
+	// Beside a stone cliff 2 nodes east: a slap from the east
+	World cliff = openField();
+	cliff.fill({2, 0, -32}, {31, 20, 31}, Material::Stone);
+	cliff.markSky();
+	const Acoustics c = cliff.probe(v3f(0, 1.6f, 0));
+	UASSERT(c.wall_near > 0.5f);
+	UASSERT(c.wall_near_dir.X > 0.7f);
+	UASSERT(std::fabs(c.wall_near_dist - 1.5f) < 1.f);
+	UASSERT(c.wall_far < 0.05f);
+	// A 3-wide stone corridor: both sides answer
+	World cor = openField();
+	cor.fill({-32, 0, -32}, {31, 4, 31}, Material::Stone);
+	cor.fill({-32, 0, -1}, {31, 3, 1}, Material::Air);
+	cor.markSky();
+	const Acoustics k = cor.probe(v3f(0, 1.6f, 0));
+	UASSERT(k.wall_near > 0.5f && k.wall_far > 0.5f);
+	UASSERT(k.wall_near_dir.dotProduct(k.wall_far_dir) < -0.6f);
+	// Wool walls barely answer
+	World wool = openField();
+	wool.fill({2, 0, -32}, {31, 20, 31}, Material::Soft);
+	wool.markSky();
+	UASSERT(wool.probe(v3f(0, 1.6f, 0)).wall_near < 0.4f);
 }

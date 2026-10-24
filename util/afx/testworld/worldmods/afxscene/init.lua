@@ -317,6 +317,16 @@ function BUILD.music(b)
 	b.fill(v(6, -28, 6), v(6, -28, 6), "afx_ambience:music_box")
 end
 
+function BUILD.walls(b)
+	b.fill(v(MIN.x, -20, MIN.z), v(MAX.x, -2, MAX.z), "basenodes:stone")
+	b.fill(v(MIN.x, -1, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	-- a long stone wall to the north of the path
+	b.fill(v(-24, 0, 2), v(-4, 4, 2), "basenodes:stone")
+	-- then a corridor between two walls, open to the sky
+	b.fill(v(-2, 0, -2), v(14, 4, -2), "basenodes:stone")
+	b.fill(v(-2, 0, 2), v(14, 4, 2), "basenodes:stone")
+end
+
 function BUILD.bridge(b)
 	b.fill(v(MIN.x, -20, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:stone")
 	b.fill(v(-30, -1, -1), v(-30, -1, 1), "basenodes:stone")
@@ -707,6 +717,15 @@ end, wait = 3, log = "meadow, a strong wind blowing east"},
 	{fn = function() growl_at(v(-28, 0.5, -6)) end, wait = 3},
 	{fn = function() afx_ambience.wind_override = nil end, wait = 1}})
 
+TIMELINE.walls = {
+	{walk = v(-26, 0, -8), speed = 2.2, steps = "default_hard_footstep", log = "open meadow"},
+	{walk = v(-26, 0, 0), speed = 2.2, steps = "default_hard_footstep"},
+	{walk = v(-5, 0, 0), speed = 2.2, steps = "default_hard_footstep", log = "along a wall on the left"},
+	{walk = v(13, 0, 0), speed = 2.2, steps = "default_hard_footstep", log = "between two walls"},
+	{walk = v(24, 0, 0), speed = 2.2, steps = "default_hard_footstep", log = "out in the open again"},
+	{wait = 1},
+}
+
 TIMELINE.bridge = {
 	{walk = v(-8, 0, 0), speed = 2, steps = "default_hard_footstep", log = "on rock"},
 	{walk = v(6, 0, 0), speed = 2, steps = "default_wood_footstep", log = "on the bridge"},
@@ -777,7 +796,7 @@ TIMELINE.cinema = {
 }
 
 local START = {
-	cinema = v(0, 0, 0), voices = v(-24, 0, -20), knock = v(-4, 0, -1), music = v(-14, 0, -2),
+	cinema = v(0, 0, 0), voices = v(-24, 0, -20), knock = v(-4, 0, -1), music = v(-14, 0, -2), walls = v(-26, 0, -14),
 	details = v(-24, 0, 0),
 	corner = v(-16, 0, 0), nextdoor = v(0, 0, -4), bridge = v(-16, 0, 0), draft = v(0, 0, 0),
 	steps = v(0, 0, 0),

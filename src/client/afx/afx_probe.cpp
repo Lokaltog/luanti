@@ -434,6 +434,12 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 		out.underwater = m == Material::Water;
 		out.in_lava = m == Material::Lava;
 		out.submerged = (out.underwater || out.in_lava) ? 1.f : 0.f;
+		if (out.underwater) {
+			int d = 1;
+			while (d < 8 && cellMaterial(snap.at(ear_cell + v3s16(0, d, 0))) == Material::Water)
+				d++;
+			out.water_depth = (float)d;
+		}
 		if (m != Material::Air && !out.underwater && !out.in_lava) {
 			for (const auto &nb : NEIGHBORS) {
 				if (cellMaterial(snap.at(ear_cell + nb)) == Material::Air) {
@@ -552,6 +558,40 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 
 	if (!full)
 		return out; // a neighbour's room: the reverb is all we need
+
+	// Walls beside you: the nearest roughly horizontal hit, and the nearest
+	// across from it. Close and hard is loud; far and soft fades out.
+	{
+		const RayHit *near = nullptr, *far = nullptr;
+		for (const auto &r : rays) {
+			// a wall at body height, not the ground or the ceiling
+			if (!r.hit || std::fabs(r.dir.Y * r.dist) > 1.f || r.dist < 0.8f || r.dist > 14.f)
+				continue;
+			if (!near || r.dist < near->dist)
+				near = &r;
+		}
+		if (near) {
+			for (const auto &r : rays) {
+				if (!r.hit || std::fabs(r.dir.Y * r.dist) > 1.f || r.dist < 0.8f || r.dist > 16.f)
+					continue;
+				if (r.dir.dotProduct(near->dir) < -0.6f && (!far || r.dist < far->dist))
+					far = &r;
+			}
+			auto strength = [](const RayHit &r) {
+				const MaterialProps &mp = props(r.mat);
+				return clampf((1.f - mp.absorption) * clampf((12.f - r.dist) / 10.f, 0.f, 1.f),
+						0.f, 1.f);
+			};
+			out.wall_near = strength(*near);
+			out.wall_near_dist = near->dist;
+			out.wall_near_dir = near->dir;
+			if (far) {
+				out.wall_far = strength(*far);
+				out.wall_far_dist = far->dist;
+				out.wall_far_dir = far->dir;
+			}
+		}
+	}
 
 	// Echo
 	EchoCluster echo = findEcho(rays);

@@ -9,7 +9,7 @@ local L = A.lib
 local loops = {}
 
 local function loop_to(pname, key, sound, gain, pitch, fade)
-	gain = A.gain_for(sound, gain)
+	gain = A.gain_for(sound, gain, pname)
 	loops[pname] = loops[pname] or {}
 	local l = loops[pname][key]
 	if gain < 0.01 then

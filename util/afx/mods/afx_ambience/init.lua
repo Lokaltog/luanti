@@ -92,16 +92,27 @@ function afx_ambience.category(name)
 	return c
 end
 
+-- Per place, per player: subtle at home, cinematic in caves and storms
+-- (set in where(); her music and the heartbeat aren't scaled)
+local PLACE = {}
+local UNSCALED = {music = true, heart = true, thunder = true}
+local function place_scale(cat, pname)
+	if UNSCALED[cat] or not pname then return 1 end
+	return PLACE[pname] or 1
+end
+
 -- Every sound this mod plays goes through here, scaled by its layer
 function afx_ambience.play(name, params, ephemeral)
-	local v = VOL[afx_ambience.category(name)] or 1
-	if v <= 0.001 then return nil end
+	local cat = afx_ambience.category(name)
 	params = params or {}
+	local v = (VOL[cat] or 1) * place_scale(cat, params.to_player)
+	if v <= 0.001 then return nil end
 	params.gain = (params.gain or 1) * v
 	return core.sound_play(name, params, ephemeral)
 end
-function afx_ambience.gain_for(name, gain)
-	return gain * (VOL[afx_ambience.category(name)] or 1)
+function afx_ambience.gain_for(name, gain, pname)
+	local cat = afx_ambience.category(name)
+	return gain * (VOL[cat] or 1) * place_scale(cat, pname)
 end
 
 local function log(msg)
@@ -267,7 +278,7 @@ local FADE = 0.5 -- gain per second
 --                 gain=, fade=, range=}
 local function reconcile(pname, st, wanted)
 	for key, w in pairs(wanted) do
-		w.gain = afx_ambience.gain_for(w.sound, w.gain)
+		w.gain = afx_ambience.gain_for(w.sound, w.gain, pname)
 		if w.gain < 0.01 then wanted[key] = nil end
 	end
 	for key, e in pairs(st.emitters) do
@@ -736,7 +747,7 @@ end
 
 local modpath = core.get_modpath(core.get_current_modname())
 for _, f in ipairs({"mixer.lua", "weather.lua", "water.lua", "life.lua", "places.lua", "body.lua",
-		"cinema.lua", "music.lua"}) do
+		"cinema.lua", "music.lua", "creatures.lua"}) do
 	dofile(modpath .. "/" .. f)
 end
 
@@ -755,6 +766,20 @@ vanilla client) light levels stand in. Fields:
   ctx.underground  a cave: dark, enclosed, cut off, not a home
   ctx.indoors      a built room (or a lit cellar): enclosed, not a cave
   ctx.hearing      the raw engine report, or nil ]]
+
+local function place_target(ctx)
+	local h = ctx.hearing or {}
+	if ctx.underground then return 1.0 end
+	local stormy = ctx.rain > 0.5 or (ctx.st.wind or 0) > 1.25
+	local t
+	if ctx.indoors then
+		t = ((h.homey or 0) >= 2 or (h.cozy or 0) > 0.4) and 0.6 or 0.75
+		if stormy then t = t + 0.15 end -- the storm outside is the drama
+	else
+		t = stormy and 1.0 or (ctx.day < 0.5 and 0.9 or 0.8)
+	end
+	return t
+end
 
 local function where(ctx)
 	local h = ctx.player.get_acoustics and ctx.player:get_acoustics()
@@ -779,6 +804,13 @@ local function where(ctx)
 	end
 end
 afx_ambience.where = where
+
+local function update_place(ctx, dtime)
+	local t = place_target(ctx)
+	local cur = PLACE[ctx.pname] or t
+	PLACE[ctx.pname] = cur + (t - cur) * math.min(1, dtime * 0.3)
+	ctx.place_scale = PLACE[ctx.pname]
+end
 
 core.register_globalstep(function(dtime)
 	tick_timer = tick_timer + dtime
@@ -807,6 +839,7 @@ core.register_globalstep(function(dtime)
 			daylight = (core.get_natural_light or core.get_node_light)(ear, 0.5) or 0,
 		}
 		where(ctx)
+		update_place(ctx, SCAN)
 		local wanted = {}
 		for _, fn in ipairs(layers) do fn(ctx, wanted) end
 		if CFG.rain_surfaces and ctx.rain > 0 then
