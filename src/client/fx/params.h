@@ -17,7 +17,7 @@ enum class Apply : u8 { LIVE, SHADERS, RESTART };
 /// Every fx_* tunable, by value. Members are named like the settings
 /// without the fx_ prefix.
 struct Params {
-#define FX_BOOL(name, def, apply) bool name = def;
+#define FX_BOOL(name, def, apply, label) bool name = def;
 #define FX_INT(name, def, lo, hi, apply) int name = def;
 #define FX_FLOAT(name, def, lo, hi, apply, tune, label) float name = def;
 #include "params.def"

@@ -229,7 +229,7 @@ static bool loadMoodFile(const std::string &name, Mood &out)
 			key = key.substr(dot + 1);
 		}
 		const ParamInfo *info = findParam(key);
-		if (!info || !info->tune) {
+		if (!info || !info->tune || info->type != ParamType::Float) {
 			warningstream << path << ":" << lineno << ": \"" << key
 				<< "\" is not a tunable fx setting" << std::endl;
 			continue;
@@ -255,7 +255,7 @@ void Renderer::applyMood(const std::string &name)
 		return;
 	mood = m;
 	for (const auto &i : paramInfo()) {
-		if (!i.tune)
+		if (!i.tune || i.type != ParamType::Float)
 			continue;
 		auto it = m.base.find(&i);
 		g_settings->setFloat(i.setting, it != m.base.end() ? it->second : i.def);
@@ -294,7 +294,7 @@ std::string saveMood(const std::string &raw_name)
 	std::ostringstream os;
 	os << "# fx mood saved from the in-game tuner\n";
 	for (const auto &i : paramInfo())
-		if (i.tune)
+		if (i.tune && i.type == ParamType::Float)
 			os << i.setting << " = " << getFloat(r->base, i) << "\n";
 	for (const auto &[sit, m] : r->mood.targets)
 		for (const auto &i : paramInfo()) {
@@ -336,7 +336,7 @@ void Renderer::updateMood(float dtime, const std::map<std::string, float> &activ
 
 	params = base;
 	for (const auto &i : paramInfo()) {
-		if (!i.tune)
+		if (!i.tune || i.type != ParamType::Float)
 			continue;
 		float v = getFloat(base, i);
 		for (const auto &[m, w] : order) {

@@ -5,6 +5,62 @@
 #ifdef FX_ENABLE
 #include "fx_generated/params.glsl"
 
+// Hard toggles (tuner checkboxes, fx_use_*): a disabled effect's strength
+// becomes the constant 0, so its branch folds away at compile time and the
+// shader does none of its work.
+#ifndef FX_ON_USE_PARALLAX
+#undef fxParallaxDepth
+#define fxParallaxDepth 0.0
+#endif
+#ifndef FX_ON_USE_SPECULAR
+#undef fxSpecular
+#define fxSpecular 0.0
+#endif
+#ifndef FX_ON_USE_GLINTS
+#undef fxGlints
+#define fxGlints 0.0
+#endif
+#ifndef FX_ON_USE_CONTACT_SHADOWS
+#undef fxContactShadows
+#define fxContactShadows 0.0
+#endif
+#ifndef FX_ON_USE_CAUSTICS
+#undef fxCaustics
+#define fxCaustics 0.0
+#endif
+#ifndef FX_ON_USE_SHAFTS
+#undef fxUnderwaterShafts
+#define fxUnderwaterShafts 0.0
+#endif
+#ifndef FX_ON_USE_HEAT_HAZE
+#undef fxHeatHaze
+#define fxHeatHaze 0.0
+#endif
+#ifndef FX_ON_USE_FOG_BLUR
+#undef fxFogBlur
+#define fxFogBlur 0.0
+#endif
+#ifndef FX_ON_USE_LENS_DIRT
+#undef fxLensDirt
+#define fxLensDirt 0.0
+#endif
+#ifndef FX_ON_USE_END_SKY
+#undef fxEndSky
+#define fxEndSky 0.0
+#endif
+#ifndef FX_ON_USE_PORTAL_WARP
+#undef fxPortalWarp
+#define fxPortalWarp 0.0
+#endif
+#ifndef FX_ON_USE_LIGHTNING
+#undef fxLightningFlash
+#define fxLightningFlash 0.0
+#endif
+#ifndef FX_ON_USE_DAMAGE_FX
+#undef fxDamageFx
+#define fxDamageFx 0.0
+#endif
+
 layout(std140) uniform FxFrame {
 	mat4 fxViewProj;          // scene space (relative to cameraOffset) -> clip, jittered
 	mat4 fxInvViewProj;
@@ -50,6 +106,7 @@ layout(std140) uniform FxLights {
 };
 #define fxLightCount fxLightInfo.x
 #define fxHeldLightIndex fxLightInfo.y
+#define fxHeldLevelMax fxLightInfo.z            // held light's level (0: none)
 
 const float FX_BS = 10.0;
 #endif

@@ -365,10 +365,11 @@ void LightVolume::setHeld(v3s16 node, u8 level)
 	level = std::min<u8>(level, 14);
 	if (level == m_held_level && (level == 0 || node == m_held_node))
 		return;
-	// a full atlas upload per change: at most every 50 ms while moving
-	// (picking the item up or putting it away goes through at once)
+	// a full atlas upload per change: at most every 120 ms while moving (the
+	// shader glides the light between updates; picking the item up or
+	// putting it away goes through at once)
 	const u64 now = porting::getTimeMs();
-	if (level == m_held_level && now - m_held_upload_ms < 50)
+	if (level == m_held_level && now - m_held_upload_ms < 120)
 		return;
 	m_held_upload_ms = now;
 	m_held_node = node;

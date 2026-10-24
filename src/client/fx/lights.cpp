@@ -96,6 +96,7 @@ void Renderer::updateLights(Client *client, Camera *camera)
 	LightsBlock &b = lights;
 	b.info[0] = 0;   // count
 	b.info[1] = -1;  // held index
+	b.info[2] = 0;   // held light level
 	if (!caps.colored_light) {
 		driver->setUniformBufferData(UBO_LIGHTS, &b, sizeof(b));
 		return;
@@ -178,6 +179,7 @@ void Renderer::updateLights(Client *client, Camera *camera)
 			}
 		}
 	}
+	b.info[2] = held_level;
 	if (volume)
 		volume->setHeld(cam_node, held_level);
 	driver->setUniformBufferData(UBO_LIGHTS, &b, sizeof(b));

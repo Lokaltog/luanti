@@ -57,11 +57,13 @@ rendering.
 | Material maps | LabPBR 1.3 `_n`/`_s` companions: normals (cotangent frame from screen-space derivatives), texel-stepped parallax, AO, GGX sun specular, glints that fade once a texel is smaller than a pixel, `_s` emission. | `fx_materials`, `fx_normal_strength`, `fx_parallax_depth`, `fx_specular`, `fx_glints` |
 | Heat haze | UV shimmer above warm, strongly blooming sources. | `fx_heat_haze` |
 | TAA (off) | Kept but frozen: jitter, reprojection, variance clipping, sharpen. | `fx_taa`, `fx_taa_blend`, `fx_sharpen` |
-| Moods | `client/fx_moods/*.conf` plus your own in `<user dir>/fx_moods/`. A mood is a complete overlay on the defaults; `cave.*`, `night.*` and `underwater.*` keys blend in situationally. | `fx_mood` |
+| Moods | `client/fx_moods/*.conf` plus your own in `<user dir>/fx_moods/`. A mood is a complete overlay on the defaults. `<situation>.fx_*` keys blend in while a situation holds: `night`, `cave`, `underwater`, `rain`, `snow`, `storm`, `nether`, `heat` (Nether near lava), `end`, `portal`, `biome.<name>`. Shared defaults for every mood live in `_situations.conf`. | `fx_mood` |
+| World hints | `util/fx/mods/fx_hints` (server mod, enable per world) tells the client the dimension, biome, weather, nearby lightning and portals, as a hidden HUD text. Without it the world situations never trigger. | |
+| World effects | Fog distance blur (no halos around near objects), End stars and nebula, portal swirl and violet cast, lightning flash, lens dirt lit by bright light, warmth, vignette, red damage flash and low-health heartbeat. No motion blur. | `fx_fog_blur`, `fx_end_sky`, `fx_portal_warp`, `fx_lightning_flash`, `fx_lens_dirt`, `fx_grade_warmth`, `fx_vignette`, `fx_damage_fx` |
 | Mood tuner | Pause menu → Mood: a slider per tunable setting, "Save as mood". | |
 | Debug views | 1 light chroma, 2 emissive, 3 HDR luminance (false colour), 4 bloom input, 5 scene copy, 6 scene copy depth, 7 AO. | `fx_debug_view` |
 | Shader hot reload | Recompiles changed `*.glsl` in place; on a compile error the old program keeps running. | `fx_shader_hot_reload` |
-| Ambient particles | `util/fx/mods/fx_ambience` (server mod, enable per world): fireflies at night under the open sky, motes around lights, embers over lava and fire, drips, bubbles, falling leaves. One grouped node scan per player per second. | `fx_particles`, `fx_particles_density`, `fx_particles_<kind>` |
+| Ambient particles | `util/fx/mods/fx_ambience` (server mod, enable per world): fireflies at night under the open sky, motes around lights, embers over lava and fire, drips, bubbles, falling leaves, Nether air by biome (crimson and warped spores, soul sand valley and basalt delta ash, cinders in the wastes). One grouped node scan per player per second. | `fx_particles`, `fx_particles_density`, `fx_particles_<kind>` |
 
 Texture slots (Irrlicht now has 8): 0 base, 1 crack, 2 emissive, 3 shadow map,
 4 and 5 scene copy, 6 light volume, 7 material array.

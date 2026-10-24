@@ -36,9 +36,9 @@ std::vector<ParamInfo> build()
 {
 	std::vector<ParamInfo> v;
 	int slot = 0;
-#define FX_BOOL(name, def, apply) \
-	v.push_back({#name, "fx_" #name, "", ParamType::Bool, Apply::apply, false, \
-			(def) ? 1.f : 0.f, 0.f, 1.f, "", offsetof(Params, name)});
+#define FX_BOOL(name, def, apply, label) \
+	v.push_back({#name, "fx_" #name, "", ParamType::Bool, Apply::apply, (label)[0] != 0, \
+			(def) ? 1.f : 0.f, 0.f, 1.f, label, offsetof(Params, name)});
 #define FX_INT(name, def, lo, hi, apply) \
 	v.push_back({#name, "fx_" #name, "", ParamType::Int, Apply::apply, false, \
 			(float)(def), (float)(lo), (float)(hi), "", offsetof(Params, name)});

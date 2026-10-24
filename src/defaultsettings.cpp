@@ -339,7 +339,7 @@ void set_default_settings()
 	settings->setDefault("enable_bloom", "false");
 
 	// fx fork (mood renderer): every tunable comes from the registry
-#define FX_BOOL(name, def, apply) settings->setDefault("fx_" #name, (def) ? "true" : "false");
+#define FX_BOOL(name, def, apply, label) settings->setDefault("fx_" #name, (def) ? "true" : "false");
 #define FX_INT(name, def, lo, hi, apply) settings->setDefault("fx_" #name, std::to_string(def));
 #define FX_FLOAT(name, def, lo, hi, apply, tune, label) settings->setDefault("fx_" #name, ftos(def));
 #include "client/fx/params.def"

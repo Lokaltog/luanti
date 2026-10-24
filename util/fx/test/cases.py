@@ -118,6 +118,8 @@ CASES = [
      "settings": {**DAY, "fxscene_view": "underwater_up"},
      "probes": [{"name": "water is blue-green", "region": [0.1, 0.5, 0.9, 0.95], "hue": [185, 40]}]},
 
+    {"name": "toggles_off", "doc": "every hard toggle off: shaders still build, the scene renders",
+     "settings": {"fx_use_parallax": "false", "fx_use_specular": "false", "fx_use_glints": "false", "fx_use_contact_shadows": "false", "fx_use_caustics": "false", "fx_use_shafts": "false", "fx_use_heat_haze": "false", "fx_use_fog_blur": "false", "fx_use_lens_dirt": "false", "fx_use_end_sky": "false", "fx_use_portal_warp": "false", "fx_use_lightning": "false", "fx_use_damage_fx": "false", "fx_use_wet": "false", "fx_use_snow": "false", "fx_use_wind": "false"}, "golden": False},
     # --- world moods (wave 1); hints from fx_test_hints instead of the server mod
     {"name": "end_sky", "doc": "the End: stars and nebula over the sky, cold grade",
      "settings": {"fx_test_hints": "fx1;dim=end;biome=End;weather=none;flash=0;portal=none",

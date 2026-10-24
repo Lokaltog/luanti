@@ -261,7 +261,42 @@ function feature.leaves(name, list, d)
 	end
 end
 
-local ORDER = {"fireflies", "motes", "embers", "drips", "bubbles", "leaves"}
+-- Nether air: drifting ash, spores and cinders around the player, by biome
+-- (Mineclonia; the dimension and biome come from its APIs)
+local NETHER_AIR = {
+	CrimsonForest = {color = "#ff3a30", tex = "fx_ambience_dot.png", glow = 6, amount = 10, rise = 0.05},
+	WarpedForest = {color = "#40e0d0", tex = "fx_ambience_dot.png", glow = 6, amount = 10, rise = 0.05},
+	SoulsandValley = {color = "#9fb4c8", tex = "fx_ambience_dot.png", glow = 0, amount = 12, rise = -0.05},
+	BasaltDelta = {color = "#e8e4e0", tex = "fx_ambience_dot.png", glow = 0, amount = 18, rise = -0.15},
+	Nether = {color = "#ff8030", tex = "fx_ambience_spark.png", glow = 12, amount = 4, rise = 0.3},
+}
+
+function feature.nether_air(name, _, d, ppos)
+	if not (core.get_modpath("mcl_worlds") and mcl_worlds.pos_to_dimension) then return end
+	if mcl_worlds.pos_to_dimension(ppos) ~= "nether" then return end
+	local biome = "Nether"
+	if core.get_modpath("mcl_biome_dispatch") then
+		local ok, b = pcall(mcl_biome_dispatch.get_biome_name, ppos)
+		if ok and b and NETHER_AIR[b] then biome = b end
+	end
+	local a = NETHER_AIR[biome]
+	spawn(name, {
+		amount = math.ceil(a.amount * d),
+		pos = {min = v(ppos.x - 10, ppos.y - 4, ppos.z - 10), max = v(ppos.x + 10, ppos.y + 8, ppos.z + 10)},
+		vel = {min = v(-0.3, a.rise - 0.1, -0.3), max = v(0.3, a.rise + 0.1, 0.3)},
+		jitter = {min = v(-0.2, -0.05, -0.2), max = v(0.2, 0.05, 0.2)},
+		exptime = {min = 4, max = 8},
+		size = {min = 0.4, max = 0.9},
+		texture = {
+			name = a.tex .. "^[multiply:" .. a.color,
+			alpha_tween = {0, 0.8, 0.8, 0},
+			blend = a.glow > 0 and "add" or "screen",
+		},
+		glow = a.glow,
+	})
+end
+
+local ORDER = {"fireflies", "motes", "embers", "drips", "bubbles", "leaves", "nether_air"}
 
 local timer = 0
 local turn = 0
@@ -300,7 +335,7 @@ core.register_globalstep(function(dtime)
 
 	for _, f in ipairs(ORDER) do
 		local list = lists[f]
-		if list and #list > 0 and S:get_bool("fx_particles_" .. f, true) then
+		if (f == "nether_air" or (list and #list > 0)) and S:get_bool("fx_particles_" .. f, true) then
 			local before = spawned
 			feature[f](name, list, d, pp)
 			if debug and spawned > before then

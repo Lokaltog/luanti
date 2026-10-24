@@ -20,7 +20,16 @@ static std::vector<const ParamInfo *> sliders()
 {
 	std::vector<const ParamInfo *> out;
 	for (const auto &i : paramInfo())
-		if (i.tune)
+		if (i.tune && i.type == ParamType::Float)
+			out.push_back(&i);
+	return out;
+}
+
+static std::vector<const ParamInfo *> toggles()
+{
+	std::vector<const ParamInfo *> out;
+	for (const auto &i : paramInfo())
+		if (i.tune && i.type == ParamType::Bool)
 			out.push_back(&i);
 	return out;
 }
@@ -35,9 +44,13 @@ std::string tunerFormspec(const std::string &status)
 	const auto params = sliders();
 	const auto moods = listMoods();
 	const std::string current = g_settings->get("fx_mood");
+	const auto checks = toggles();
 	const int per_col = (int)(params.size() + 1) / 2;
 	const float row = 0.72f;
-	const float h = 2.3f + per_col * row + 1.0f;
+	const int check_cols = 4, check_rows = (int)(checks.size() + check_cols - 1) / check_cols;
+	const float check_row = 0.5f;
+	const float y_checks = 2.0f + per_col * row + 0.5f;
+	const float h = y_checks + 0.4f + check_rows * check_row + 1.3f;
 
 	std::ostringstream os;
 	os << std::fixed;
@@ -74,6 +87,18 @@ std::string tunerFormspec(const std::string &status)
 			<< "scrollbar[" << (x + 4.1f) << "," << y << ";3.8,0.45;horizontal;"
 			<< p.setting << ";" << sliderPos(p, v) << "]";
 	}
+	os << "label[0.4," << (y_checks) << ";" << strgettext("Effects (off removes the shader work; * on rejoin):") << "]";
+	for (size_t i = 0; i < checks.size(); i++) {
+		const ParamInfo &p = *checks[i];
+		const int col = (int)i % check_cols, r = (int)i / check_cols;
+		const float x = 0.4f + col * 4.15f, y = y_checks + 0.5f + r * check_row;
+		std::string label = p.label;
+		if (p.apply == Apply::RESTART)
+			label += " *";
+		str_formspec_escape(label);
+		os << "checkbox[" << x << "," << y << ";" << p.setting << ";" << label << ";"
+			<< (g_settings->getBool(p.setting) ? "true" : "false") << "]";
+	}
 	const float yb = h - 0.95f;
 	std::string esc_status = status;
 	str_formspec_escape(esc_status);
@@ -96,6 +121,16 @@ bool tunerFields(const std::unordered_map<std::string, std::string> &fields, std
 		if (Renderer *r = renderer())
 			r->applyMood(it->second);
 		status = strgettext("Mood applied");
+		return true;
+	}
+	// checkboxes: a toggle reports only itself
+	for (const ParamInfo *p : toggles()) {
+		auto it = fields.find(p->setting);
+		if (it == fields.end())
+			continue;
+		g_settings->setBool(p->setting, it->second == "true");
+		status = p->apply == Apply::RESTART ? strgettext("Applies when you next join a world")
+			: strgettext("Updated");
 		return true;
 	}
 	// Every event reports every scrollbar; the one being moved says "CHG:".

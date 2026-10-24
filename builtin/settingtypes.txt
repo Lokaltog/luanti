@@ -1003,6 +1003,54 @@ fx_materials (Material maps) bool true
 #    keeps crisp texels.
 fx_smooth_material_maps (Smooth material maps) bool true
 
+#    Parallax occlusion on material maps. Off compiles the effect out of the shaders.
+fx_use_parallax (Parallax) bool true
+
+#    Sun highlights from _s maps. Off compiles the effect out of the shaders.
+fx_use_specular (Specular highlights) bool true
+
+#    Sparkle on metals and smooth texels. Off compiles the effect out of the shaders.
+fx_use_glints (Glints) bool true
+
+#    Short screen-space shadows toward the sun. Off compiles the effect out of the shaders.
+fx_use_contact_shadows (Contact shadows) bool true
+
+#    Light patterns under water. Off compiles the effect out of the shaders.
+fx_use_caustics (Caustics) bool true
+
+#    Light shafts seen from under water. Off compiles the effect out of the shaders.
+fx_use_shafts (Underwater shafts) bool true
+
+#    Shimmer above lava and fire. Off compiles the effect out of the shaders.
+fx_use_heat_haze (Heat haze) bool true
+
+#    Distant things soften into the fog. Off compiles the effect out of the shaders.
+fx_use_fog_blur (Fog blur) bool true
+
+#    Smudges lit by bright lights. Off compiles the effect out of the shaders.
+fx_use_lens_dirt (Lens dirt) bool true
+
+#    Stars and nebula over the End. Off compiles the effect out of the shaders.
+fx_use_end_sky (End sky) bool true
+
+#    Swirl while standing in a portal. Off compiles the effect out of the shaders.
+fx_use_portal_warp (Portal warp) bool true
+
+#    Lightning lights up the scene. Off compiles the effect out of the shaders.
+fx_use_lightning (Lightning flash) bool true
+
+#    Red flash when hurt, heartbeat at low health. Off compiles the effect out of the shaders.
+fx_use_damage_fx (Damage effects) bool true
+
+#    Rain darkens and glosses surfaces, puddles form. Off compiles the effect out of the shaders.
+fx_use_wet (Wet surfaces) bool true
+
+#    Snow settles on top faces in the cold. Off compiles the effect out of the shaders.
+fx_use_snow (Snow cover) bool true
+
+#    Foliage sways in a wind that grows with the weather. Off compiles the effect out of the shaders.
+fx_use_wind (Wind) bool true
+
 #    Strength of normal-mapped relief and baked AO from _n maps.
 fx_normal_strength (Normal map strength) float 1.0 0.0 2.0
 

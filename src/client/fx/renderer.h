@@ -71,7 +71,7 @@ static_assert(sizeof(FrameBlock) == 3 * 64 + 9 * 16, "FxFrame std140 layout");
 struct LightsBlock {
 	float pos_radius[MAX_LIGHTS * 4];  // xyz scene space, w radius (BS)
 	float color_seed[MAX_LIGHTS * 4];  // rgb, w = flicker amplitude (int part /100) + seed
-	s32 info[4];                       // count, held index
+	s32 info[4];                       // count, held index, held level
 };
 
 struct SceneCopy {

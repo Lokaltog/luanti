@@ -7,6 +7,7 @@
 // per-material uniform setter.
 
 #include "renderer.h"
+#include <cctype>
 #include "fx_test.h"
 
 #include "client/shader.h"
@@ -50,6 +51,16 @@ public:
 			constants["FX_SURFACES"] = 1;
 			if (p.ssr)
 				constants["FX_SSR"] = 1;
+		}
+		// hard toggles: FX_ON_<NAME> for every enabled SHADERS checkbox
+		for (const auto &i : paramInfo()) {
+			if (i.type != ParamType::Bool || i.apply != Apply::SHADERS || !i.tune ||
+					getFloat(p, i) < 0.5f)
+				continue;
+			std::string def = "FX_ON_";
+			for (const char *s = i.name; *s; s++)
+				def += (char)std::toupper((unsigned char)*s);
+			constants[def] = 1;
 		}
 		constants["FX_TONEMAPPER"] = p.tonemapper;
 		constants["FX_DEBUG_VIEW"] = p.debug_view;

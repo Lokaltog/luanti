@@ -99,7 +99,13 @@ vec3 fxArtificialLight(vec3 p, vec3 n, float seconds)
 		vec4 vs = fxVolumeSample(q);
 		// alpha 1 can't come from the atlas (held levels stop at 14/15): an
 		// unbound sampler (the wield scene, other objects) reads (0,0,0,1)
-		fxHeldLevel = vs.a > 0.99 ? 0.0 : vs.a;
+		// The flood fill (leak-free, but refreshed only every ~0.1 s at
+		// the node the camera was in) bounds a smooth analytic falloff from
+		// where the camera is now: the light glides with you, walls still
+		// stop it.
+		float bfs = vs.a > 0.99 ? 0.0 : vs.a * 15.0;
+		float analytic = float(fxHeldLevelMax) - length(q - fxEyePos) / FX_BS;
+		fxHeldLevel = fxHeldLevelMax > 0 ? clamp(min(analytic, bfs + 1.5), 0.0, 15.0) / 15.0 : 0.0;
 		float m = max(vs.r, max(vs.g, vs.b));
 		if (m > 0.0) {
 			// world lights from the volume, weighted by how strong they are here
