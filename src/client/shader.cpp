@@ -401,6 +401,10 @@ public:
 	void rebuildShaders() override;
 	void hotReloadShaders() override;
 
+	/// fx: replace `#include "dir/file.glsl"` lines with that file (from the
+	/// same lookup as shaders: shader_path, then the built-in dir), recursively.
+	std::string expandIncludes(const std::string &src, int depth = 0);
+
 	void addShaderConstantSetter(std::unique_ptr<IShaderConstantSetter> setter) override
 	{
 		m_constant_setters.emplace_back(std::move(setter));
@@ -664,6 +668,40 @@ void ShaderSource::rebuildShaders()
 	}
 }
 
+std::string ShaderSource::expandIncludes(const std::string &src, int depth)
+{
+	if (src.find("#include") == std::string::npos)
+		return src;
+	if (depth > 8) {
+		errorstream << "Shader #include nested too deeply" << std::endl;
+		return src;
+	}
+	std::ostringstream out;
+	std::istringstream in(src);
+	std::string line;
+	int lineno = 0;
+	while (std::getline(in, line)) {
+		lineno++;
+		const std::string t(trim(line));
+		if (str_starts_with(t, "#include")) {
+			const size_t a = t.find('"'), b = t.rfind('"');
+			const std::string path = (a != std::string::npos && b > a) ? t.substr(a + 1, b - a - 1) : "";
+			const size_t slash = path.rfind('/');
+			if (slash == std::string::npos) {
+				throw ShaderException("Shader #include needs \"dir/file.glsl\": " + t);
+			}
+			const std::string inc = m_sourcecache.getOrLoad(path.substr(0, slash), path.substr(slash + 1));
+			if (inc.empty())
+				throw ShaderException("Shader #include not found: " + path);
+			// keep error line numbers meaningful in the including file
+			out << expandIncludes(inc, depth + 1) << "\n#line " << (lineno + 1) << "\n";
+			continue;
+		}
+		out << line << '\n';
+	}
+	return out.str();
+}
+
 void ShaderSource::hotReloadShaders()
 {
 	MutexAutoLock lock(m_shaderinfo_cache_mutex);
@@ -878,6 +916,10 @@ void ShaderSource::generateShader(ShaderInfo &shaderinfo)
 	std::string vertex_shader = m_sourcecache.getOrLoad(name, "opengl_vertex.glsl");
 	std::string fragment_shader = m_sourcecache.getOrLoad(name, "opengl_fragment.glsl");
 	std::string geometry_shader = m_sourcecache.getOrLoad(name, "opengl_geometry.glsl");
+	// fx: `#include "dir/file.glsl"` pulls in a file from the shader dirs
+	vertex_shader = expandIncludes(vertex_shader);
+	fragment_shader = expandIncludes(fragment_shader);
+	geometry_shader = expandIncludes(geometry_shader);
 
 	if (vertex_shader.empty() || fragment_shader.empty()) {
 		throw ShaderException(fmtgettext("Failed to find \"%s\" shader files.", name.c_str()));
