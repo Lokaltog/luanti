@@ -1008,6 +1008,18 @@ fx_refraction (Refraction) float 1.0 0.0 4.0
 #    Applies right away (the shaders are rebuilt).
 fx_ssr (Screen-space reflections) bool true
 
+#    Steps of the reflection ray march on water and glass. Fewer is faster;
+#    the cost is per reflective pixel. Applies after the shaders rebuild.
+fx_ssr_steps (Reflection steps) int 16 4 64
+
+#    Binary-search steps that pin down a reflection hit between two march
+#    steps. 0 accepts the coarse hit (blockier reflections).
+fx_ssr_refine (Reflection refine steps) int 3 0 8
+
+#    How far reflection rays travel, in nodes. The march steps grow with
+#    distance, so a shorter reach also means finer steps near the surface.
+fx_ssr_distance (Reflection distance) float 32.0 4.0 128.0
+
 #    Strength of reflections on glass and water.
 fx_reflection (Reflection) float 1.0 0.0 2.0
 
@@ -1142,6 +1154,13 @@ fx_normal_strength (Normal map strength) float 1.0 0.0 2.0
 #    Parallax depth (in tile units) from the _n height channel. 0 disables.
 fx_parallax_depth (Parallax depth) float 0.03 0.0 0.2
 
+#    Most height samples per pixel for parallax occlusion mapping (at grazing
+#    angles; fewer looking straight on). Applies after the shaders rebuild.
+fx_parallax_steps (Parallax steps) int 10 2 32
+
+#    Parallax fades out to flat normal mapping by this distance, in nodes.
+fx_parallax_distance (Parallax distance) float 6.0 1.0 16.0
+
 #    Sun specular highlights on smooth and metal surfaces (_s maps).
 fx_specular (Specular) float 0.6 0.0 3.0
 
@@ -1154,6 +1173,13 @@ fx_particles (Ambient particles) bool true
 
 #    Heat shimmer above bright emissive sources (lava, fire).
 fx_heat_haze (Heat haze) float 0.5 0.0 3.0
+
+#    Size of the heat shimmer's ripples, relative to the screen. Smaller is a
+#    finer shimmer.
+fx_heat_haze_scale (Heat haze size) float 0.35 0.05 2.0
+
+#    How much the shimmer is stretched upwards (rising hot air).
+fx_heat_haze_stretch (Heat haze stretch) float 3.0 1.0 8.0
 
 #    Short screen-space shadows along the sun direction, for small detail the
 #    shadow map misses. Requires: fx_ao.

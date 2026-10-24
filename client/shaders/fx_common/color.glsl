@@ -90,6 +90,24 @@ float fxNoise3(vec3 p)
 	               mix(fxHash13(i + vec3(0, 1, 1)), fxHash13(i + vec3(1, 1, 1)), f.x), f.y), f.z);
 }
 
+// 2D value noise and a 3-octave fbm: 12 hashes instead of fxFbm3's 40,
+// for masks that only vary over the ground (snow cover, puddles)
+float fxVNoise2(vec2 p)
+{
+	vec2 i = floor(p), f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(fxHash13(vec3(i, 0.0)), fxHash13(vec3(i + vec2(1.0, 0.0), 0.0)), f.x),
+	           mix(fxHash13(vec3(i + vec2(0.0, 1.0), 0.0)), fxHash13(vec3(i + vec2(1.0, 1.0), 0.0)), f.x), f.y);
+}
+
+float fxFbm2(vec2 p)
+{
+	// weights sum to 0.875, like the first three octaves of fxFbm3; the
+	// missing tail is its mean
+	return fxVNoise2(p) * 0.5 + fxVNoise2(p * 2.03 + vec2(1.7, 9.2)) * 0.25
+		+ fxVNoise2(p * 4.12 + vec2(5.1, 2.3)) * 0.125 + 0.0625;
+}
+
 float fxFbm3(vec3 p)
 {
 	float v = 0.0, a = 0.5;

@@ -107,12 +107,22 @@ vec3 fxSampleScene(vec2 uv)
 #ifdef FX_SSR
 // March the reflected ray against the scene depth copy. Returns linear rgb +
 // hit weight.
+#ifndef FX_SSR_STEPS
+#define FX_SSR_STEPS 16
+#endif
+#ifndef FX_SSR_REFINE
+#define FX_SSR_REFINE 3
+#endif
 vec4 fxTraceReflection(vec3 origin, vec3 dir)
 {
-	float stepLen = 0.4 * FX_BS;
-	vec3 p = origin + dir * 0.3 * FX_BS;
+	// geometric steps that cover fx_ssr_distance in FX_SSR_STEPS: fine near
+	// the surface, coarse far away
+	const float G = 1.2;
+	float GN = pow(G, float(FX_SSR_STEPS));
+	float stepLen = fxSsrDistance * FX_BS * (G - 1.0) / (GN - 1.0);
+	vec3 p = origin + dir * (0.15 * FX_BS + stepLen);
 	vec3 prev = origin;
-	for (int i = 0; i < 28; i++) {
+	for (int i = 0; i < FX_SSR_STEPS; i++) {
 		float rd;
 		vec2 uv = fxProject(p, rd);
 		if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || rd > 1.0)
@@ -123,7 +133,7 @@ vec4 fxTraceReflection(vec3 origin, vec3 dir)
 			if (gap < max(stepLen * 1.5, 0.5 * FX_BS)) {
 				// refine between prev and p
 				vec3 a = prev, b = p;
-				for (int j = 0; j < 5; j++) {
+				for (int j = 0; j < FX_SSR_REFINE; j++) {
 					vec3 m = (a + b) * 0.5;
 					float md;
 					vec2 muv = fxProject(m, md);
@@ -133,14 +143,14 @@ vec4 fxTraceReflection(vec3 origin, vec3 dir)
 				vec2 huv = fxProject(b, bd);
 				vec2 edge = min(huv, 1.0 - huv);
 				float fade = clamp(min(edge.x, edge.y) * 12.0, 0.0, 1.0)
-					* (1.0 - float(i) / 28.0);
+					* (1.0 - float(i) / float(FX_SSR_STEPS));
 				return vec4(fxToLinear(texture2D(fxSceneColor, huv).rgb), fade);
 			}
 			break; // went behind something thick: no reliable hit
 		}
 		prev = p;
 		p += dir * stepLen;
-		stepLen *= 1.25;
+		stepLen *= G;
 	}
 	return vec4(0.0);
 }
@@ -220,7 +230,7 @@ vec3 fxSurface(vec3 lit, vec4 base, out vec3 transmitted)
 	vec3 fog_lin = fxToLinear(fogColor.rgb);
 	vec3 refl = mix(fog_lin, fog_lin * vec3(0.6, 0.75, 1.3), clamp(R.y, 0.0, 1.0)) * daylight;
 #ifdef FX_SSR
-	if (!from_below) {
+	if (!from_below && fresnel * fxReflection > 0.03) {
 		vec4 hit = fxTraceReflection(worldPosition, R);
 		refl = mix(refl, hit.rgb, hit.a);
 	}

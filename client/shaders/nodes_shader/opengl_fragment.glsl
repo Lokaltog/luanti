@@ -648,7 +648,7 @@ void main(void)
 		sss = 0.8; // leaves and plants are thin
 #endif
 #ifdef FX_MAT_ACTIVE
-		float por = fxMatS(uv).b * 255.0;
+		float por = fxMatSm.b * 255.0;
 		if (por >= 65.0)
 			sss = max(sss, (por - 65.0) / 190.0);
 #endif

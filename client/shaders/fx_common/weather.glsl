@@ -4,7 +4,10 @@
 // light (fxSkyExp, set in the vertex shader). Linear light.
 #include "fx_common/uniforms.glsl"
 #include "fx_common/color.glsl"
-#if defined(FX_ENABLE) && !defined(FX_SURFACE_ACTIVE)
+// compiled in only when one of its effects is on (fx_use_wet, _snow,
+// _translucency): a smaller shader keeps more pixels in flight
+#if defined(FX_ENABLE) && !defined(FX_SURFACE_ACTIVE) && \
+		(defined(FX_ON_USE_WET) || defined(FX_ON_USE_SNOW) || defined(FX_ON_USE_TRANSLUCENCY))
 #define FX_WEATHER_ACTIVE 1
 VARYING_ float fxSkyExp; // sky light reaching the vertex, 0..1
 
@@ -54,7 +57,7 @@ vec3 fxWeatherSurface(vec3 lin, vec3 albedo, vec3 N)
 	// snow on top faces, broken up at the edges of its cover
 	float snow = fxSnowCover * fxSnow * sky * up;
 	if (snow > 0.001) {
-		float m = smoothstep(0.35, 0.65, fxFbm3(vec3(wp.xz * 0.8, 0.0)) + snow * 0.6 - 0.3);
+		float m = smoothstep(0.35, 0.65, fxFbm2(wp.xz * 0.8) + snow * 0.6 - 0.3);
 		snow = clamp(snow * m * 1.4, 0.0, 1.0);
 		float light = fxLuma(lin) / max(fxLuma(albedo), 0.04);
 		lin = mix(lin, vec3(0.92, 0.95, 1.0) * light, snow);
@@ -65,7 +68,7 @@ vec3 fxWeatherSurface(vec3 lin, vec3 albedo, vec3 N)
 		return lin;
 	float w = clamp(wet, 0.0, 1.0);
 	lin *= mix(1.0, 0.62, w * 0.8); // wet materials darken
-	float puddle = up * w * smoothstep(0.55, 0.7, fxFbm3(vec3(wp.xz * 0.35, 3.0)) + (wet - 1.0) * 0.2);
+	float puddle = up * w * smoothstep(0.55, 0.7, fxFbm2(wp.xz * 0.35 + 31.0) + (wet - 1.0) * 0.2);
 	vec3 n = N;
 	if (puddle > 0.0) {
 		vec2 r = fxRipples(wp.xz) * fxRaining;

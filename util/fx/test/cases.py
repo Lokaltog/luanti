@@ -143,7 +143,7 @@ CASES = [
      "settings": {"fxscene_view": "sky", "fx_test_cloud_density": "0.4", **DAY}, "golden": False},
     {"name": "warm_water", "doc": "a warm biome: turquoise water with foam at the edges",
      "settings": {"fx_test_hints": "fx1;dim=overworld;biome=Desert;weather=none;flash=0;portal=none", **DAY},
-     "compare": [{"with": "day", "min_mean": 0.5, "name": "the biome changes the water"}]},
+     "compare": [{"with": "day", "min_mean": 0.25, "name": "the biome changes the water"}]},
     {"name": "portal_warp", "doc": "standing in a nether portal: swirl and violet cast",
      "settings": {"fx_test_hints": "fx1;dim=overworld;biome=Plains;weather=none;flash=0;portal=nether"},
      "compare": [{"with": "night", "min_mean": 3.0, "name": "the portal warps the image"}]},

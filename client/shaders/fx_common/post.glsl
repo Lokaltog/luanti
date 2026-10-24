@@ -239,11 +239,18 @@ vec2 fxHeatHazeUV(vec2 uv, vec2 texel)
 	float mask = smoothstep(0.15, 0.9, fxLuma(b)) * warm;
 	if (mask <= 0.001)
 		return uv;
+	// rising shimmer: two layers of value noise, squashed horizontally and
+	// stretched vertically (fx_heat_haze_stretch), scrolling upwards; sized
+	// against the screen height so it looks the same at any resolution
 	float t = fxTime;
-	vec2 p = uv / texel;
-	vec2 off = vec2(sin(p.y * 0.11 + t * 5.0 + sin(p.x * 0.05 + t)),
-		cos(p.x * 0.09 - t * 4.0 + sin(p.y * 0.07)));
-	return uv + off * texel * 2.5 * mask * fxHeatHaze;
+	vec2 p = vec2(uv.x / (texel.x / texel.y), uv.y) * (60.0 / fxHeatHazeScale);
+	p.y /= fxHeatHazeStretch;
+	p.y += t * 1.6;
+	vec2 off = vec2(fxVNoise2(p) - 0.5, fxVNoise2(p * 1.9 + vec2(7.3, t * 0.9)) - 0.5);
+	off.x += (fxVNoise2(p * 2.7 + vec2(3.1, -t * 1.3)) - 0.5) * 0.6;
+	// mostly sideways wobble, a little vertical; ~5 px at 1080p, in screen
+	// height units so it scales with the resolution
+	return uv + off * vec2(texel.x / texel.y, 0.45) * (5.0 / 1080.0) * mask * fxHeatHaze;
 }
 #endif
 

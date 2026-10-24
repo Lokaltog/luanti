@@ -55,8 +55,11 @@ public:
 			constants["FX_CLOUDS"] = 1;
 		if (c.surfaces) {
 			constants["FX_SURFACES"] = 1;
-			if (p.ssr)
+			if (p.ssr) {
 				constants["FX_SSR"] = 1;
+				constants["FX_SSR_STEPS"] = p.ssr_steps;
+				constants["FX_SSR_REFINE"] = p.ssr_refine;
+			}
 		}
 		// hard toggles: FX_ON_<NAME> for every enabled SHADERS checkbox
 		for (const auto &i : paramInfo()) {
@@ -69,6 +72,7 @@ public:
 			constants[def] = 1;
 		}
 		constants["FX_TONEMAPPER"] = p.tonemapper;
+		constants["FX_PARALLAX_STEPS"] = p.parallax_steps;
 		constants["FX_DEBUG_VIEW"] = p.debug_view;
 		if (test::active())
 			constants["FX_NAN_CHECK"] = 1; // paints NaN/Inf pixels pure magenta

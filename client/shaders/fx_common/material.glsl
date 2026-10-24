@@ -14,6 +14,9 @@
 #include "fx_common/color.glsl"
 #if defined(FX_ENABLE) && defined(FX_MATERIALS) && defined(USE_ARRAY_TEXTURE) && !defined(FX_SURFACE_ACTIVE)
 #define FX_MAT_ACTIVE 1
+#ifndef FX_PARALLAX_STEPS
+#define FX_PARALLAX_STEPS 10
+#endif
 #define fxMatTex texture7
 uniform mediump sampler2DArray fxMatTex;
 
@@ -21,6 +24,7 @@ mat3 fxTBN;
 bool fxTBNok = false;
 vec2 fxUVdx, fxUVdy;            // derivatives of the unshifted uv
 vec3 fxMatEmission = vec3(0.0); // linear, from _s.a
+vec4 fxMatSm = vec4(0.0);       // the _s texel fxShadeMaterial read
 
 // Cotangent frame from screen-space derivatives (Schueler 2013): works for
 // rotated and world-aligned tiles without tangents in the mesh. Call once at
@@ -67,7 +71,8 @@ vec2 fxParallax(vec2 uv)
 	vec3 eye = cameraPosition - cameraOffset;
 	vec3 V = worldPosition - eye;
 	float dist = length(V);
-	if (dist > 10.0 * FX_BS)
+	float far_d = fxParallaxDistance * FX_BS;
+	if (dist > far_d)
 		return uv;
 	vec3 v = (V / max(dist, 1e-4)) * fxTBN; // into tangent space (transpose)
 	if (v.z > -0.08)
@@ -77,16 +82,17 @@ vec2 fxParallax(vec2 uv)
 	// offset limiting: the shift grows with the view angle only up to ~70
 	// degrees, so grazing views don't look bottomless or swim
 	vec2 dir = v.xy / max(-v.z, 0.35) * fxParallaxDepth;
-	// 6 layers looking straight down, up to 16 at grazing angles, fewer far
-	// away (the interpolation hides the coarse steps)
-	float n = mix(16.0, 6.0, clamp(-v.z, 0.0, 1.0)) * mix(1.0, 0.5, smoothstep(3.0 * FX_BS, 8.0 * FX_BS, dist));
+	// FX_PARALLAX_STEPS layers at grazing angles, ~40% of that looking
+	// straight down, half far away (the interpolation hides coarse steps)
+	const float NMAX = float(FX_PARALLAX_STEPS);
+	float n = max(2.0, mix(NMAX, NMAX * 0.4, clamp(-v.z, 0.0, 1.0)) * mix(1.0, 0.5, smoothstep(far_d * 0.4, far_d, dist)));
 	float layer = 1.0 / n;
 	float cur = 1.0;
 	vec2 p = uv;
 	float h = fxMatN(p).a;
 	float prev_h = h, prev_cur = cur;
 	vec2 prev_p = p;
-	for (int i = 0; i < 16; i++) {
+	for (int i = 0; i < FX_PARALLAX_STEPS; i++) {
 		if (float(i) >= n || h >= cur)
 			break;
 		prev_p = p;
@@ -101,7 +107,7 @@ vec2 fxParallax(vec2 uv)
 	float before = prev_h - prev_cur;    // < 0: still above it
 	float t = clamp(after / max(after - before, 1e-5), 0.0, 1.0);
 	p = mix(p, prev_p, t);
-	return mix(p, uv, smoothstep(7.0 * FX_BS, 10.0 * FX_BS, dist));
+	return mix(p, uv, smoothstep(far_d * 0.7, far_d, dist));
 }
 
 // Normal-mapped relief, AO, GGX sun specular, glints, _s emission.
@@ -111,6 +117,7 @@ vec3 fxShadeMaterial(vec3 lin, vec4 base, vec2 uv)
 {
 	vec4 nm = fxMatN(uv);
 	vec4 sm = fxMatS(uv);
+	fxMatSm = sm;
 	vec3 N = fxSafeNormalize(vNormal);
 	vec3 Nm = N;
 	float ao = 1.0;
@@ -158,11 +165,11 @@ vec3 fxShadeMaterial(vec3 lin, vec4 base, vec2 uv)
 			vec2 tsz = vec2(textureSize(fxMatTex, 0).xy);
 			float px = max(length(fxUVdx * tsz), length(fxUVdy * tsz));
 			float lod = 1.0 - smoothstep(0.6, 1.5, px);
-			vec2 texel = floor(uv * tsz);
-			float seed = dot(floor(H * 4.0), vec3(1.0, 7.0, 13.0));
-			float hsh = fract(sin(dot(vec3(texel, seed), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-			float g = smoothstep(0.985, 1.0, hsh) * smoothness * lod;
-			lin += g * fxGlints * 4.0 * sun * (metal ? albedo : vec3(1.0));
+			if (lod > 0.0) {
+				float hsh = fxHash13(vec3(floor(uv * tsz), dot(floor(H * 4.0), vec3(1.0, 7.0, 13.0))));
+				float g = smoothstep(0.985, 1.0, hsh) * smoothness * lod;
+				lin += g * fxGlints * 4.0 * sun * (metal ? albedo : vec3(1.0));
+			}
 		}
 	}
 	if (sm.a < 0.999)
