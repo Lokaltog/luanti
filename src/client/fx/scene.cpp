@@ -76,7 +76,18 @@ void Renderer::updateCamera(Client *client, Camera *camera, Sky *sky, float dtim
 	const float cave = std::clamp((11.f - skylight) / 8.f, 0.f, 1.f);
 	const float dnr = client->getEnv().getDayNightRatio() / 1000.f;
 	const float night = std::clamp((0.6f - dnr) / 0.4f, 0.f, 1.f);
-	updateMood(dtime, cave, night, cam.underwater);
+	std::map<std::string, float> active = {{"cave", cave}, {"night", night},
+		{"underwater", cam.underwater}, {"nether", events.nether}, {"end", events.end},
+		{"rain", hints.weather == "rain" ? 1.f : 0.f},
+		{"snow", hints.weather == "snow" ? 1.f : 0.f},
+		{"storm", hints.weather == "thunder" ? 1.f : 0.f},
+		{"heat", events.heat}, {"portal", events.portal}};
+	if (!hints.biome.empty())
+		active["biome." + hints.biome] = 1.f;
+	// weather is outdoors: under a roof (the cave measure) it fades out
+	for (const char *w : {"rain", "snow", "storm"})
+		active[w] *= 1.f - cave;
+	updateMood(dtime, active);
 	cam.time = std::fmod(cam.time + dtime, 3600.f);
 
 	// TAA bookkeeping: last frame's unjittered matrix becomes "previous"
@@ -131,6 +142,14 @@ void Renderer::uploadFrame()
 	b.offset_delta[2] = cam.offset_delta[2];
 	b.offset_delta[3] = cam.proj_scale;
 	b.water[0] = cam.water_level;
+	b.events[0] = events.flash;
+	b.events[1] = events.damage;
+	b.events[2] = events.low_health;
+	b.events[3] = events.portal;
+	b.world[0] = events.nether;
+	b.world[1] = events.end;
+	b.world[2] = events.wet;
+	b.world[3] = events.storm;
 	driver->setUniformBufferData(UBO_FRAME, &b, sizeof(b));
 }
 

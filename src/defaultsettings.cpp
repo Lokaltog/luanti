@@ -350,6 +350,7 @@ void set_default_settings()
 	settings->setDefault("fx_mood_applied", "");
 	settings->setDefault("fx_open_tuner_on_start", "false");
 	// test mode (util/fx/test, src/client/fx/fx_test.h)
+	settings->setDefault("fx_test_hints", "");
 	settings->setDefault("fx_test_capture", "");
 	settings->setDefault("fx_test_fixed_dtime", "true");
 	settings->setDefault("fx_test_wait_ready", "true");

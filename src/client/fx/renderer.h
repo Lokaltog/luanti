@@ -14,6 +14,7 @@
 #include "light_volume.h"
 
 #include <atomic>
+#include <map>
 #include <filesystem>
 #include <memory>
 #include <unordered_map>
@@ -27,10 +28,26 @@ namespace fx
 {
 
 /// Mood: a preset of tunables plus situational targets.
+using ParamMap = std::unordered_map<const ParamInfo *, float>;
+
 struct Mood {
 	std::string name;
-	std::unordered_map<const ParamInfo *, float> base;   // missing = registry default
-	std::unordered_map<const ParamInfo *, float> cave, night, underwater;
+	ParamMap base;   // missing = registry default
+	// situation ("night", "nether", "biome.CrimsonForest", ...) -> targets the
+	// renderer blends towards while that situation holds (see situations())
+	std::map<std::string, ParamMap> targets;
+};
+
+/// Situations a mood can target, in blend order (later ones win). Biomes
+/// ("biome.<name>") come after "end", "portal" last.
+const std::vector<std::string> &situations();
+
+/// What the companion server mod (util/fx/mods/fx_hints) tells the client.
+struct Hints {
+	bool present = false;
+	std::string dim = "overworld", biome, weather = "none", portal = "none";
+	int flash = 0;
+	std::string raw; // the last text parsed
 };
 
 /// std140 mirror of FxFrame in fx_common/uniforms.glsl.
@@ -45,8 +62,10 @@ struct FrameBlock {
 	float misc[4];              // underwater, scene copy valid, TAA reset, frame
 	float offset_delta[4];      // camera offset change (scene units), proj scale
 	float water[4];             // surface height above the camera (scene space), -, -, -
+	float events[4];            // lightning flash, damage, low health, portal
+	float world[4];             // nether, end, wet (rain/storm), storm
 };
-static_assert(sizeof(FrameBlock) == 3 * 64 + 7 * 16, "FxFrame std140 layout");
+static_assert(sizeof(FrameBlock) == 3 * 64 + 9 * 16, "FxFrame std140 layout");
 
 /// std140 mirror of FxLights.
 struct LightsBlock {
@@ -136,7 +155,18 @@ public:
 	std::string note;            // tuner note (restart pending, ...)
 
 	Mood mood;
-	float w_cave = 0.f, w_night = 0.f, w_underwater = 0.f;
+	std::map<std::string, float> weights;  // situation -> smoothed weight
+
+	// the world as the server describes it (fx_hints), and camera events
+	Hints hints;
+	struct Events {
+		float flash = 0.f, damage = 0.f, low_health = 0.f, portal = 0.f;
+		float nether = 0.f, end = 0.f, wet = 0.f, storm = 0.f;
+		float heat = 0.f; // Nether, near lava
+		int last_flash = -1;
+		s32 last_hp = -1;
+		float flash_age = 10.f;
+	} events;
 
 	CameraState cam;
 	SceneCopy copy;
@@ -152,7 +182,9 @@ public:
 
 	void onSettingsChanged();
 	void applyMood(const std::string &name);
-	void updateMood(float dtime, float cave, float night, float underwater);
+	void updateMood(float dtime, const std::map<std::string, float> &active);
+	/// fx_hints, health, lightning, portals: per frame, before updateCamera.
+	void updateWorld(Client *client, float dtime);
 	void updateCamera(Client *client, Camera *camera, Sky *sky, float dtime);
 	void updateLights(Client *client, Camera *camera);
 	void uploadParams();

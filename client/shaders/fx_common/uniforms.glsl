@@ -16,6 +16,8 @@ layout(std140) uniform FxFrame {
 	vec4 fxMisc;
 	vec4 fxOffsetDeltaProj;
 	vec4 fxWater;
+	vec4 fxEvents;
+	vec4 fxWorld;
 };
 #define fxEyePos fxEyeTime.xyz          // camera in scene space
 #define fxTime fxEyeTime.w              // seconds, wraps hourly
@@ -32,6 +34,14 @@ layout(std140) uniform FxFrame {
 #define fxOffsetDelta fxOffsetDeltaProj.xyz // camera offset change (scene units)
 #define fxProjScale fxOffsetDeltaProj.w     // pixels per scene unit at depth 1
 #define fxWaterLevel fxWater.x              // scene y of the water surface (when underwater)
+#define fxFlash fxEvents.x                  // lightning, 0..1
+#define fxDamage fxEvents.y                 // just hurt, 0..1 decaying
+#define fxLowHealth fxEvents.z              // 0..1
+#define fxPortal fxEvents.w                 // standing in a portal, 0..1 ramping
+#define fxNether fxWorld.x                  // in the Nether, 0..1 smoothed
+#define fxEnd fxWorld.y                     // in the End, 0..1 smoothed
+#define fxWet fxWorld.z                     // rained on lately, 0..1
+#define fxStorm fxWorld.w                   // thunderstorm, 0..1
 
 layout(std140) uniform FxLights {
 	vec4 fxLightPosRadius[FX_LIGHT_MAX];  // xyz scene space, w radius

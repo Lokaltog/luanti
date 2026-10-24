@@ -39,6 +39,7 @@ set(client_SRCS
 	${CMAKE_CURRENT_SOURCE_DIR}/fx/scene.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/fx/shaders.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/fx/tuner.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/fx/world.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/render/anaglyph.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/render/core.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/render/factory.cpp

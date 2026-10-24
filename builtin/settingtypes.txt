@@ -866,6 +866,32 @@ fx_grade_saturation (Grade saturation) float 1.0 0.0 2.0
 #    Contrast (power) of the AgX look.
 fx_grade_contrast (Grade contrast) float 1.0 0.5 2.0
 
+#    Colour temperature of the final image: warmer (positive) or cooler
+#    (negative). Moods use it per situation (the Nether runs warm).
+fx_grade_warmth (Warmth) float 0.0 -1.0 1.0
+
+#    Darkened screen corners.
+fx_vignette (Vignette) float 0.1 0.0 1.0
+
+#    Distant things soften as they sink into the fog. Moods raise it in
+#    rain, storms and the Nether. Not a lens blur: nothing near is blurred.
+fx_fog_blur (Fog blur) float 0.5 0.0 4.0
+
+#    Smudges on the lens that light up around bright lights and the sun.
+fx_lens_dirt (Lens dirt) float 0.4 0.0 2.0
+
+#    Stars and nebula over the End (needs the fx_hints server mod).
+fx_end_sky (End sky) float 1.0 0.0 2.0
+
+#    Screen swirl while standing in a portal (needs fx_hints).
+fx_portal_warp (Portal warp) float 1.0 0.0 2.0
+
+#    Red flash when hurt and a slow pulse at low health.
+fx_damage_fx (Damage and low health) float 1.0 0.0 2.0
+
+#    Lightning lights up the scene (needs fx_hints).
+fx_lightning_flash (Lightning flash) float 1.0 0.0 2.0
+
 #    Linear luminance above which pixels bloom.
 fx_bloom_threshold (Bloom threshold) float 1.0 0.0 8.0
 

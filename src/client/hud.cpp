@@ -348,7 +348,7 @@ void Hud::drawLuaElements(const v3s16 &camera_offset, bool only_unhidable)
 
 	elems.reserve(player->hud.getElements().size() + player->csm_hud.getElements().size());
 	for (auto const &e : player->hud.getElements()) {
-		if (e)
+		if (e && e->name != "fx_hints") // fx: data for the renderer, not for drawing
 			elems.push_back(e.get());
 	}
 	for (auto const &e : player->csm_hud.getElements()) {

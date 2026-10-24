@@ -118,6 +118,23 @@ CASES = [
      "settings": {**DAY, "fxscene_view": "underwater_up"},
      "probes": [{"name": "water is blue-green", "region": [0.1, 0.5, 0.9, 0.95], "hue": [185, 40]}]},
 
+    # --- world moods (wave 1); hints from fx_test_hints instead of the server mod
+    {"name": "end_sky", "doc": "the End: stars and nebula over the sky, cold grade",
+     "settings": {"fx_test_hints": "fx1;dim=end;biome=End;weather=none;flash=0;portal=none",
+                  "fxscene_view": "underwater_up", "fxscene_time": "0.0"}, "golden": False},
+    {"name": "nether_crimson", "doc": "Nether, crimson forest: warm, blurred distance, vignette",
+     "settings": {"fx_test_hints": "fx1;dim=nether;biome=CrimsonForest;weather=none;flash=0;portal=none"},
+     "compare": [{"with": "night", "min_mean": 3.0, "name": "the Nether mood changes the image"}]},
+    {"name": "storm", "doc": "thunderstorm grade and fog blur",
+     "settings": {"fx_test_hints": "fx1;dim=overworld;biome=Plains;weather=thunder;flash=0;portal=none", **DAY},
+     "compare": [{"with": "day", "min_mean": 2.0, "name": "the storm mood changes the image"}]},
+    {"name": "portal_warp", "doc": "standing in a nether portal: swirl and violet cast",
+     "settings": {"fx_test_hints": "fx1;dim=overworld;biome=Plains;weather=none;flash=0;portal=nether"},
+     "compare": [{"with": "night", "min_mean": 3.0, "name": "the portal warps the image"}]},
+    {"name": "low_health", "doc": "damage FX off unless hurt: same image as night",
+     "settings": {}, "golden": False,
+     "compare": [{"with": "night", "max_mean": 1.0, "name": "no damage, no red"}]},
+
     # --- content -----------------------------------------------------------------
     {"name": "particles", "mods": ["fx_ambience"],
      "settings": {"fx_particles_density": "4", "fxscene_view": "particles"}, "golden": False},

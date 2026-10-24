@@ -162,7 +162,31 @@ void Renderer::onSettingsChanged()
 	Moods
 */
 
+const std::vector<std::string> &situations()
+{
+	static const std::vector<std::string> list = {"night", "cave", "underwater",
+		"rain", "snow", "storm", "nether", "heat", "end", "portal"};
+	return list;
+}
+
+static bool loadMoodFile(const std::string &name, Mood &out);
+
+// A mood file, over the shared situational targets in _situations.conf
+// (the mood's own targets win, key by key).
 bool loadMood(const std::string &name, Mood &out)
+{
+	if (!loadMoodFile(name, out))
+		return false;
+	Mood common;
+	if (loadMoodFile("_situations", common)) {
+		for (auto &[sit, map] : common.targets)
+			for (auto &[info, v] : map)
+				out.targets[sit].emplace(info, v); // keeps the mood's own
+	}
+	return true;
+}
+
+static bool loadMoodFile(const std::string &name, Mood &out)
 {
 	out = Mood();
 	out.name = name;
@@ -191,12 +215,18 @@ bool loadMood(const std::string &name, Mood &out)
 		std::string key(trim(t.substr(0, eq)));
 		std::string val(trim(t.substr(eq + 1)));
 		auto *target = &out.base;
-		for (auto [prefix, map] : {std::pair{"cave.", &out.cave}, {"night.", &out.night},
-				{"underwater.", &out.underwater}}) {
-			if (str_starts_with(key, prefix)) {
-				key = key.substr(strlen(prefix));
-				target = map;
+		// "<situation>.fx_x": the situation is everything before the last dot
+		if (const auto dot = key.rfind('.'); dot != std::string::npos) {
+			const std::string sit = key.substr(0, dot);
+			const auto &known = situations();
+			if (!str_starts_with(sit, "biome.") &&
+					std::find(known.begin(), known.end(), sit) == known.end()) {
+				warningstream << path << ":" << lineno << ": unknown situation \"" << sit
+					<< "\"" << std::endl;
+				continue;
 			}
+			target = &out.targets[sit];
+			key = key.substr(dot + 1);
 		}
 		const ParamInfo *info = findParam(key);
 		if (!info || !info->tune) {
@@ -239,7 +269,7 @@ std::vector<std::string> listMoods()
 	std::vector<std::string> out;
 	for (bool user : {false, true}) {
 		for (const auto &e : fs::GetDirListing(moodDir(user))) {
-			if (e.dir || !str_ends_with(e.name, ".conf"))
+			if (e.dir || !str_ends_with(e.name, ".conf") || str_starts_with(e.name, "_"))
 				continue;
 			std::string n = e.name.substr(0, e.name.size() - 5);
 			if (std::find(out.begin(), out.end(), n) == out.end())
@@ -266,16 +296,12 @@ std::string saveMood(const std::string &raw_name)
 	for (const auto &i : paramInfo())
 		if (i.tune)
 			os << i.setting << " = " << getFloat(r->base, i) << "\n";
-	auto dump = [&] (const char *prefix, const std::unordered_map<const ParamInfo *, float> &m) {
+	for (const auto &[sit, m] : r->mood.targets)
 		for (const auto &i : paramInfo()) {
 			auto it = m.find(&i);
 			if (it != m.end())
-				os << prefix << i.setting << " = " << it->second << "\n";
+				os << sit << "." << i.setting << " = " << it->second << "\n";
 		}
-	};
-	dump("cave.", r->mood.cave);
-	dump("night.", r->mood.night);
-	dump("underwater.", r->mood.underwater);
 	if (!fs::safeWriteToFile(path, os.str()))
 		return "";
 	r->mood.name = name;
@@ -284,27 +310,40 @@ std::string saveMood(const std::string &raw_name)
 	return path;
 }
 
-void Renderer::updateMood(float dtime, float cave, float night, float underwater)
+void Renderer::updateMood(float dtime, const std::map<std::string, float> &active)
 {
 	// ~1.5 s exponential smoothing, like an eye adapting
 	const float k = 1.f - std::exp(-dtime / 1.5f);
-	w_cave += (cave - w_cave) * k;
-	w_night += (night - w_night) * k;
-	w_underwater += (underwater - w_underwater) * k;
+	for (const auto &[sit, map] : mood.targets) {
+		auto it = active.find(sit);
+		float &w = weights[sit];
+		w += ((it != active.end() ? it->second : 0.f) - w) * k;
+	}
+	// blend order: the fixed situations, biomes, then the portal on top
+	std::vector<std::pair<const ParamMap *, float>> order;
+	auto add = [&] (const std::string &sit) {
+		auto it = mood.targets.find(sit);
+		if (it != mood.targets.end() && weights[sit] > 1e-3f)
+			order.emplace_back(&it->second, weights[sit]);
+	};
+	for (const auto &sit : situations())
+		if (sit != "portal")
+			add(sit);
+	for (const auto &[sit, map] : mood.targets)
+		if (str_starts_with(sit, "biome."))
+			add(sit);
+	add("portal");
 
 	params = base;
 	for (const auto &i : paramInfo()) {
 		if (!i.tune)
 			continue;
 		float v = getFloat(base, i);
-		auto blend = [&] (const std::unordered_map<const ParamInfo *, float> &m, float w) {
-			auto it = m.find(&i);
-			if (it != m.end())
+		for (const auto &[m, w] : order) {
+			auto it = m->find(&i);
+			if (it != m->end())
 				v += (it->second - v) * w;
-		};
-		blend(mood.night, w_night);
-		blend(mood.cave, w_cave);
-		blend(mood.underwater, w_underwater);
+		}
 		setFloat(params, i, v);
 	}
 }
@@ -405,6 +444,7 @@ void updateFrame(Client *client, Camera *camera, Sky *sky, float dtime)
 
 	// the solid pass must not see last frame's scene copy as valid
 	r->copy.valid = false;
+	r->updateWorld(client, dtime);
 	r->updateCamera(client, camera, sky, dtime);
 	if (r->volume)
 		r->volume->update(client, floatToInt(camera->getPosition(), BS), dtime);

@@ -148,6 +148,12 @@ vec3 fxApplyUnderwater(vec3 color, vec2 uv, out vec3 trans)
 }
 #endif
 
+float fxDepthAspect()
+{
+	vec2 s = vec2(textureSize(fxDepth, 0));
+	return s.y / max(s.x, 1.0); // uv x per uv y, for round kernels
+}
+
 vec3 fxFalseColor(float lum)
 {
 	// log2 luminance stops: blue (-4) .. green (0) .. yellow (+2) .. red (+4)
@@ -177,5 +183,162 @@ vec2 fxHeatHazeUV(vec2 uv, vec2 texel)
 	return uv + off * texel * 2.5 * mask * fxHeatHaze;
 }
 #endif
+
+/*
+	World and camera effects (wave 1): fog blur, the End sky, portals,
+	lightning, lens dirt, grade, vignette, damage. Situational strength comes
+	from the moods (nether.fx_fog_blur = ... in client/fx_moods/).
+*/
+
+float fxHash13(vec3 p)
+{
+	p = fract(p * 0.1031);
+	p += dot(p, p.zyx + 31.32);
+	return fract((p.x + p.y) * p.z);
+}
+
+float fxNoise3(vec3 p)
+{
+	vec3 i = floor(p), f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(mix(fxHash13(i), fxHash13(i + vec3(1, 0, 0)), f.x),
+	               mix(fxHash13(i + vec3(0, 1, 0)), fxHash13(i + vec3(1, 1, 0)), f.x), f.y),
+	           mix(mix(fxHash13(i + vec3(0, 0, 1)), fxHash13(i + vec3(1, 0, 1)), f.x),
+	               mix(fxHash13(i + vec3(0, 1, 1)), fxHash13(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+float fxFbm3(vec3 p)
+{
+	float v = 0.0, a = 0.5;
+	for (int i = 0; i < 5; i++) {
+		v += a * fxNoise3(p);
+		p = p * 2.03 + vec3(1.7, 9.2, 3.1);
+		a *= 0.5;
+	}
+	return v;
+}
+
+// Swirl while standing in a portal: the view twists around the centre and
+// breathes, more the longer you stand in it.
+vec2 fxPortalUV(vec2 uv)
+{
+	float p = fxPortal * fxPortalWarp;
+	if (p <= 0.001)
+		return uv;
+	vec2 c = uv - 0.5;
+	float r = length(c);
+	float a = p * (1.0 - smoothstep(0.0, 0.8, r)) * (1.6 + 0.6 * sin(fxTime * 0.9));
+	float s = sin(a), co = cos(a);
+	c = mat2(co, s, -s, co) * c;
+	c *= 1.0 - 0.05 * p * sin(fxTime * 2.3 + r * 14.0);
+	return c + 0.5;
+}
+
+// View distance (0..1 of the far plane) at uv; 1 for the sky
+float fxViewDist01(vec2 uv)
+{
+	float d = texture2D(fxDepth, uv).r;
+	if (d >= 0.99999)
+		return 1.0;
+	return length(fxScenePos(uv, d) - fxEyePos) / fxNearFar.y;
+}
+
+// Distant things soften into the fog. A gather blur whose radius grows with
+// distance; samples nearer than this pixel don't bleed in (no halos around
+// near objects). Display-encoded in and out, before the HDR chain.
+vec3 fxApplyFogBlur(vec3 col, vec2 uv)
+{
+	if (fxFogBlur <= 0.0)
+		return col;
+	float dist = fxViewDist01(uv);
+	float f = smoothstep(0.2, 0.9, dist);
+	float radius = f * fxFogBlur * 0.0035; // of the screen height
+	if (radius < 0.0004)
+		return col;
+	vec2 px = vec2(radius * fxDepthAspect(), radius);
+	vec3 acc = col;
+	float wsum = 1.0;
+	for (int i = 0; i < 12; i++) {
+		float t = (float(i) + 0.5) / 12.0;
+		float ang = float(i) * 2.39996; // golden angle
+		vec2 o = vec2(cos(ang), sin(ang)) * sqrt(t) * px;
+		float sd = fxViewDist01(uv + o);
+		float w = smoothstep(dist * 0.7, dist * 0.9, sd);
+		acc += texture2D(rendered, uv + o).rgb * w;
+		wsum += w;
+	}
+	return acc / wsum;
+}
+
+// Stars and a slow nebula over the End, on sky pixels. Linear.
+vec3 fxEndSkyColor(vec2 uv)
+{
+	float k = fxEnd * fxEndSky;
+	if (k <= 0.001 || texture2D(fxDepth, uv).r < 0.99999)
+		return vec3(0.0);
+	vec3 dir = fxSafeNormalize(fxScenePos(uv, 1.0) - fxEyePos);
+	vec3 q = dir * 3.0 + vec3(0.0, fxTime * 0.004, fxTime * 0.002);
+	float n = fxFbm3(q);
+	float wisps = smoothstep(0.45, 0.85, n) * smoothstep(0.3, 0.7, fxFbm3(q * 2.2 + 4.0));
+	vec3 nebula = mix(vec3(0.30, 0.08, 0.45), vec3(0.05, 0.30, 0.42), fxFbm3(q * 0.7 + 9.0)) * wisps * 0.6;
+	vec3 cell = floor(dir * 220.0);
+	float h = fxHash13(cell);
+	float star = step(0.9965, h) * (0.5 + 0.5 * sin(fxTime * (1.0 + h * 3.0) + h * 40.0));
+	return (nebula + vec3(0.9, 0.85, 1.0) * star * 1.5) * k;
+}
+
+// Smudges that light up where bright light (the bloom buffer, gathered wide)
+// crosses them. Linear.
+vec3 fxLensDirtColor(vec2 uv)
+{
+#ifdef ENABLE_BLOOM
+	if (fxLensDirt <= 0.0)
+		return vec3(0.0);
+	vec3 light = vec3(0.0);
+	for (int y = -1; y <= 1; y++)
+	for (int x = -1; x <= 1; x++)
+		light += texture2D(bloom, clamp(uv + vec2(float(x), float(y)) * 0.12, 0.0, 1.0)).rgb;
+	light /= 9.0;
+	if (dot(light, vec3(1.0)) < 0.02)
+		return vec3(0.0); // nothing bright around: skip the noise
+	vec3 p = vec3(uv * vec2(1.0 / fxDepthAspect(), 1.0) * 5.0, 0.0);
+	float dirt = smoothstep(0.55, 0.85, fxFbm3(p)) * 0.8 + smoothstep(0.7, 0.95, fxFbm3(p * 3.0 + 7.0)) * 0.6;
+	return light * dirt * fxLensDirt * 0.6;
+#else
+	return vec3(0.0);
+#endif
+}
+
+// Lightning: the whole scene lights up, slightly blue. Linear, before
+// exposure is final.
+vec3 fxApplyFlash(vec3 col)
+{
+	float f = fxFlash * fxLightningFlash;
+	return col * (1.0 + f * 2.5) + vec3(0.80, 0.86, 1.0) * f * 0.12;
+}
+
+// After the tonemap (display-encoded): warmth, vignette, portal tint,
+// damage flash and the low-health heartbeat.
+vec3 fxFinalGrade(vec3 col, vec2 uv)
+{
+	float w = fxGradeWarmth;
+	col *= vec3(1.0 + 0.10 * w, 1.0 + 0.02 * w, 1.0 - 0.12 * w);
+	vec2 c = (uv - 0.5) * vec2(1.15, 1.0);
+	float edge = smoothstep(0.30, 0.95, length(c));
+	col *= 1.0 - edge * fxVignette * 0.7;
+	// portal: violet cast creeping in from the edges
+	float p = fxPortal * fxPortalWarp;
+	col = mix(col, col * vec3(0.8, 0.55, 1.15) + vec3(0.10, 0.0, 0.16) * (0.5 + 0.5 * sin(fxTime * 3.0)),
+		clamp(p * (0.25 + 0.5 * edge), 0.0, 1.0));
+	// damage and low health
+	float dmg = fxDamage * fxDamageFx;
+	float beat = pow(max(sin(fxTime * 6.0), 0.0), 8.0) + 0.6 * pow(max(sin(fxTime * 6.0 - 0.9), 0.0), 8.0);
+	float low = fxLowHealth * fxDamageFx;
+	float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+	col = mix(col, vec3(luma), clamp(low * 0.45, 0.0, 1.0));
+	float red = clamp(edge * (dmg * 0.7 + low * (0.25 + 0.35 * beat)), 0.0, 0.9);
+	col = mix(col, vec3(0.55, 0.02, 0.02), red);
+	return col;
+}
 
 #endif // FX_HDR_COMPOSITE

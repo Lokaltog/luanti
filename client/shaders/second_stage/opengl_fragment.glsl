@@ -104,6 +104,9 @@ vec3 screen_space_dither(highp vec2 frag_coord) {
 void main(void)
 {
 	vec2 uv = varTexCoord.st;
+#if defined(FX_ENABLE) && defined(FX_HDR_COMPOSITE)
+	uv = fxPortalUV(uv);
+#endif
 #if defined(FX_ENABLE) && defined(FX_HDR_COMPOSITE) && defined(ENABLE_BLOOM)
 	uv = fxHeatHazeUV(uv, texelSize0);
 #endif
@@ -130,6 +133,9 @@ void main(void)
 #endif
 #endif
 
+#if defined(FX_ENABLE) && defined(FX_HDR_COMPOSITE) && !defined(ENABLE_SSAA)
+	color.rgb = fxApplyFogBlur(color.rgb, uv);
+#endif
 	// translate to linear colorspace (approximate)
 	color.rgb = pow(color.rgb, vec3(2.2));
 
@@ -151,6 +157,8 @@ void main(void)
 #ifdef ENABLE_AUTO_EXPOSURE
 	color.rgb *= exposure;
 #endif
+	color.rgb += fxEndSkyColor(uv);
+	color.rgb = fxApplyFlash(color.rgb);
 	vec3 fxTrans = vec3(1.0);
 #ifdef FX_SURFACES
 	color.rgb = fxApplyUnderwater(color.rgb, uv, fxTrans);
@@ -167,6 +175,7 @@ void main(void)
 #endif
 	color.rgb += fxBloom * fxBloomIntensity;
 #endif
+	color.rgb += fxLensDirtColor(uv) * fxTrans;
 #ifdef FX_NAN_CHECK
 	if (fxBad) {
 		gl_FragColor = vec4(1.0, 0.0, 1.0, 1.0);
@@ -193,6 +202,7 @@ void main(void)
 #endif
 #endif
 	color.rgb = applySaturation(color.rgb, saturation);
+	color.rgb = fxFinalGrade(color.rgb, varTexCoord.st);
 #ifdef ENABLE_DITHERING
 	color.rgb += screen_space_dither(gl_FragCoord.xy);
 #endif
