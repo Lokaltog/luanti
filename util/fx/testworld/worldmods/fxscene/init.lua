@@ -235,6 +235,8 @@ core.register_on_joinplayer(function(player)
 			core.bulk_set_node(dirt, {name = "basenodes:dirt"})
 			core.bulk_set_node(sand, {name = "basenodes:sand"})
 			core.bulk_set_node(water, {name = "basenodes:water_source"})
+			-- a spring on the beach: flowing water spreads and runs into the lake
+			core.set_node({x = 18, y = 0, z = -3}, {name = "basenodes:water_source"})
 			player:set_pos({x = 22, y = 2, z = 4})
 			player:set_look_horizontal(-math.pi / 2)
 			player:set_look_vertical(0.32)
@@ -268,6 +270,14 @@ core.register_on_joinplayer(function(player)
 			player:set_pos({x = 0, y = 2.5, z = -1})
 			player:set_look_horizontal(0)
 			player:set_look_vertical(0.25)
+		end
+		-- fxscene_cam = "x,y,z,yaw,pitch": any view, from any spot
+		local cam = core.settings:get("fxscene_cam")
+		if cam and cam ~= "" then
+			local v = cam:split(",")
+			player:set_pos({x = tonumber(v[1]), y = tonumber(v[2]), z = tonumber(v[3])})
+			player:set_look_horizontal(tonumber(v[4]))
+			player:set_look_vertical(tonumber(v[5]))
 		end
 		-- fx test mode: the scene is built (singleplayer shares settings with
 		-- the client, which waits for this before it starts counting frames)

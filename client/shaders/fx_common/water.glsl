@@ -26,6 +26,7 @@ struct FxWaterInfo {
 	float depth;    // nodes of water below the surface
 	vec2 to_shore;  // unit direction towards the nearest shore (xz)
 	float known;    // 1 where the field covers this spot
+	float flowing;  // 1 on flowing water (rivers, streams, falls), 0 still
 };
 
 // p: node position relative to the camera offset
@@ -37,6 +38,7 @@ FxWaterInfo fxWaterAt(vec3 p)
 	w.depth = 4.0;
 	w.to_shore = vec2(0.0);
 	w.known = 0.0;
+	w.flowing = 0.0;
 	if (fxWater.w > 1e8)
 		return w;
 	vec3 o = fxWaterFieldOrigin;
@@ -52,7 +54,9 @@ FxWaterInfo fxWaterAt(vec3 p)
 	w.known = 1.0;
 	w.shore = c.r * 32.0;
 	w.open = cn.g * 32.0;
-	w.depth = cn.b * 16.0;
+	float b = cn.b * 255.0;
+	w.flowing = step(127.5, b);
+	w.depth = mod(b, 128.0) / 127.0 * 16.0;
 	const float e = 1.0 / 96.0;
 	vec2 g = vec2(textureLod(fxWaterField, uv + vec2(e, 0.0), 0.0).r - textureLod(fxWaterField, uv - vec2(e, 0.0), 0.0).r,
 	              textureLod(fxWaterField, uv + vec2(0.0, e), 0.0).r - textureLod(fxWaterField, uv - vec2(0.0, e), 0.0).r);
@@ -96,7 +100,8 @@ vec3 fxSwells(vec2 p, FxWaterInfo w, out float amp_max)
 	float chop = fxWaterChop;
 	// calm at the very edge, a little higher where they pile up in the
 	// shallows before breaking
-	float shore_k = smoothstep(0.2, 1.6, w.shore) * (1.0 + 0.5 * s * (1.0 - smoothstep(1.5, 5.0, w.shore)));
+	float shore_k = smoothstep(0.2, 1.6, w.shore) * (1.0 + 0.5 * s * (1.0 - smoothstep(1.5, 5.0, w.shore)))
+		* (1.0 - 0.85 * w.flowing); // running water doesn't swell
 	float size = mix(0.3, 1.0, s);
 	vec2 dir = fxSwellDir(w);
 	float t = fxTime;
@@ -119,21 +124,64 @@ vec3 fxSwells(vec2 p, FxWaterInfo w, out float amp_max)
 	return acc;
 }
 
+// Rain on the water: per half-node cell a drop lands at a random spot and
+// time, and a ring runs out from it. Returns the slope (d/dx, d/dz).
+vec2 fxWaterRain(vec2 p)
+{
+	vec2 acc = vec2(0.0);
+	for (int k = 0; k < 3; k++) {
+		vec2 q = p * 2.0 + float(k) * vec2(0.37, 0.71);
+		vec2 cell = floor(q), f = fract(q);
+		float h = fxHash13(vec3(cell, 11.0 + float(k)));
+		vec2 c = vec2(fxHash13(vec3(cell, 13.0 + float(k))), fxHash13(vec3(cell, 17.0 + float(k)))) * 0.6 + 0.2;
+		float t = fract(fxTime * 1.1 + h);
+		vec2 d = f - c;
+		float r = length(d);
+		// a ring and a fainter one behind it, both dying out as they spread
+		float x = (r - t * 0.42) * 30.0, x2 = (r - t * 0.3) * 30.0;
+		float ring = (exp(-x * x) - 0.5 * exp(-x2 * x2)) * (1.0 - t) * (1.0 - t);
+		acc += d / max(r, 1e-3) * ring * 2.0;
+	}
+	return acc * 0.5;
+}
+
 // All layers for the fragment: (height, dh/dx, dh/dz). footprint: nodes per
 // pixel, so detail finer than a pixel fades out instead of shimmering.
-vec3 fxWaterWaves(vec2 p, FxWaterInfo w, float footprint, out float amp_max)
+// flow: the surface's downhill slope (the liquid mesh tilts its normal that
+// way, xz), zero on still water.
+vec3 fxWaterWaves(vec2 p, FxWaterInfo w, float footprint, vec2 flow, out float amp_max)
 {
 	vec3 h = fxSwells(p, w, amp_max);
 	float s = fxWaterScale(w);
 	float chop = fxWaterChop;
 	vec2 wd = vec2(cos(fxWindAngle), sin(fxWindAngle));
 	float t = fxTime;
+	// running water: the noise rides downstream, stretched along the flow
+	// into streaks; still water: it drifts with the wind
+	float speed = clamp(length(flow) * 5.0, 0.0, 1.6) * max(w.flowing, step(0.02, length(flow)));
+	vec2 fd = speed > 0.01 ? normalize(flow) : wd;
+	mat2 to_flow = mat2(fd.x, -fd.y, fd.y, fd.x); // world xz -> (along, across)
+	vec2 q = speed > 0.01 ? to_flow * p * vec2(0.45, 1.0) : p; // streaky along the flow
+	vec2 mv = speed > 0.01 ? vec2(-t * (0.6 + speed * 1.8) * 0.45, 0.0) : vec2(0.0);
 	// chop: two octaves drifting with the wind, at different speeds
-	float ca = 0.05 * chop * mix(0.35, 1.0, s) * smoothstep(0.0, 0.8, w.shore + 0.3);
-	vec3 n1 = fxVNoise2d(p * 1.3 + wd * t * 0.45);
-	vec3 n2 = fxVNoise2d(mat2(0.8, -0.6, 0.6, 0.8) * p * 2.9 + wd * t * 0.8 + 17.0);
-	h += vec3(n1.x - 0.5, n1.yz * 1.3) * ca;
-	h += vec3(n2.x - 0.5, n2.yz * 2.9) * ca * 0.45 * (1.0 - smoothstep(0.15, 0.4, footprint));
+	float ca = 0.05 * mix(chop * mix(0.35, 1.0, s), 0.9 + speed * 0.4, step(0.01, speed))
+		* smoothstep(0.0, 0.8, w.shore + 0.3);
+	vec3 n1 = fxVNoise2d(q * 1.3 + mv * 1.3 + wd * t * 0.45 * (1.0 - step(0.01, speed)));
+	vec3 n2 = fxVNoise2d(mat2(0.8, -0.6, 0.6, 0.8) * q * 2.9 + mv * 2.9 + wd * t * 0.8 + 17.0);
+	vec2 g1 = n1.yz * 1.3, g2 = n2.yz * 2.9 * mat2(0.8, -0.6, 0.6, 0.8);
+	if (speed > 0.01) {
+		// back from (along, across) to world xz, with the along squash
+		g1 = (g1 * vec2(0.45, 1.0)) * to_flow;
+		g2 = (g2 * vec2(0.45, 1.0)) * to_flow;
+	}
+	h += vec3(n1.x - 0.5, g1) * ca;
+	h += vec3(n2.x - 0.5, g2) * ca * 0.45 * (1.0 - smoothstep(0.15, 0.4, footprint));
+	// rain rings, where a pixel resolves them
+	if (fxRaining > 0.01) {
+		float rf = 1.0 - smoothstep(0.04, 0.15, footprint);
+		if (rf > 0.0)
+			h.yz += fxWaterRain(p) * fxRaining * rf;
+	}
 	// ripples: fine, everywhere (ponds too), only where a pixel resolves them
 	float rf = 1.0 - smoothstep(0.03, 0.12, footprint);
 	if (rf > 0.0) {
@@ -148,7 +196,7 @@ vec3 fxWaterWaves(vec2 p, FxWaterInfo w, float footprint, out float amp_max)
 // Foam: lapping at the water's edge, breakers running in on open water,
 // whitecaps on high crests in rough weather. h: wave height, amp_max: its
 // range. Returns coverage 0..1.
-float fxWaterFoam(vec2 p, FxWaterInfo w, float h, float amp_max, float contact)
+float fxWaterFoam(vec2 p, FxWaterInfo w, float h, float amp_max, float contact, vec2 flow)
 {
 	float t = fxTime;
 	float s = fxWaterScale(w);
@@ -167,7 +215,16 @@ float fxWaterFoam(vec2 p, FxWaterInfo w, float h, float amp_max, float contact)
 	float crest = smoothstep(0.55, 0.95, amp_max > 1e-4 ? h / amp_max : 0.0)
 		* smoothstep(0.8, 1.4, chop) * s;
 	// around things standing in the water (the scene depth knows those)
-	float cover = max(max(lap, breaker), max(crest, contact));
+	// running water: streaks of foam carried downstream, more where it's fast
+	float speed = clamp(length(flow) * 5.0, 0.0, 1.6) * w.flowing;
+	float streak = 0.0;
+	if (speed > 0.05) {
+		vec2 fd = normalize(flow);
+		vec2 q = vec2(dot(p, fd), dot(p, vec2(-fd.y, fd.x)));
+		streak = smoothstep(0.55, 0.8, fxFbm2(vec2(q.x * 0.6 - t * (0.6 + speed * 1.8), q.y * 2.4)))
+			* smoothstep(0.05, 0.8, speed);
+	}
+	float cover = max(max(max(lap, breaker), max(crest, contact)), streak);
 	// the texture breaks the cover up into bubbles and streaks
 	float bubbly = smoothstep(0.45, 0.8, tex + cover * 0.35);
 	return clamp(bubbly * min(cover * 1.5, 1.0) * fxFoam * 1.4, 0.0, 1.0);

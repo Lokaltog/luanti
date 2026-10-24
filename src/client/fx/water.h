@@ -8,7 +8,8 @@
 //   R  distance to the shore along the surface, nodes / 32 (bilinear: smooth)
 //   G  openness: the largest shore distance in this body of water, nodes / 32
 //      (a pond is ~0.05, a lake ~0.3, the sea 1); waves scale with it
-//   B  depth below the surface, nodes / 16
+//   B  depth below the surface (nodes, 0..16 -> 0..127), +128 where the
+//      surface is flowing water (a river or stream rather than still water)
 //   A  surface height in the window + 1, / 64 (0 = no water in this column)
 // The water shaders sample it to size waves, turn them towards the shore and
 // break them into foam there.
@@ -43,16 +44,17 @@ public:
 	static constexpr int SIZE = 96;
 
 	/// CPU-side build, exposed for the unit test: content ids in the light
-	/// volume snapshot layout, is_water per content id. Output RGBA8 texels.
+	/// volume snapshot layout, kind per content id (0 not water, 1 still
+	/// water, 2 flowing water). Output RGBA8 texels.
 	static void build(const std::vector<u16> &snap, int sx, int sy, int sz,
-			const std::vector<bool> &is_water, std::vector<u8> &out);
+			const std::vector<u8> &kind, std::vector<u8> &out);
 
 private:
 	void buildTables(Client *client);
 
 	video::IVideoDriver *m_driver;
 	video::ITexture *m_tex = nullptr;
-	std::vector<bool> m_is_water;
+	std::vector<u8> m_kind;
 	std::vector<u8> m_px;
 	v3s16 m_origin;
 	u32 m_generation = 0;

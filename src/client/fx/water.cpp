@@ -29,7 +29,7 @@ WaterField::~WaterField()
 void WaterField::buildTables(Client *client)
 {
 	const NodeDefManager *ndef = client->ndef();
-	m_is_water.assign(ndef->size(), false);
+	m_kind.assign(ndef->size(), 0);
 	for (content_t c = 0; c < ndef->size(); c++) {
 		const ContentFeatures &f = ndef->get(c);
 		if (f.name.empty() || f.liquid_type == LIQUID_NONE)
@@ -38,29 +38,35 @@ void WaterField::buildTables(Client *client)
 		if (!lava && (itemgroup_get(f.groups, "water") > 0 ||
 				f.name.find("water") != std::string::npos ||
 				resolveSurface(f).kind == SurfaceKind::Water))
-			m_is_water[c] = true;
+			m_kind[c] = f.liquid_type == LIQUID_FLOWING ? 2 : 1;
 	}
 	m_tables = true;
 }
 
 void WaterField::build(const std::vector<u16> &snap, int sx, int sy, int sz,
-		const std::vector<bool> &is_water, std::vector<u8> &out)
+		const std::vector<u8> &kind, std::vector<u8> &out)
 {
 	const int N = sx * sz;
 	auto water = [&] (int x, int y, int z) {
 		if (y < 0 || y >= sy)
 			return false;
 		const u16 c = snap[((size_t)z * sy + y) * sx + x];
-		return c < is_water.size() && is_water[c];
+		return c < kind.size() && kind[c] != 0;
+	};
+	auto flowing = [&] (int x, int y, int z) {
+		const u16 c = snap[((size_t)z * sy + y) * sx + x];
+		return c < kind.size() && kind[c] == 2;
 	};
 	// 1. per column: the highest water surface (water with no water above)
 	std::vector<int> surf(N, -1), depth(N, 0);
+	std::vector<u8> flow(N, 0);
 	for (int z = 0; z < sz; z++)
 	for (int x = 0; x < sx; x++) {
 		for (int y = sy - 1; y >= 0; y--) {
 			if (!water(x, y, z) || water(x, y + 1, z))
 				continue;
 			surf[z * sx + x] = y;
+			flow[z * sx + x] = flowing(x, y, z);
 			int d = 0;
 			while (d < 16 && water(x, y - d - 1, z))
 				d++;
@@ -165,7 +171,7 @@ void WaterField::build(const std::vector<u16> &snap, int sx, int sy, int sz,
 		const float d = std::min(dist[i] >= INF ? CAP : dist[i], CAP);
 		const u32 r = (u32)std::lround(d / CAP * 255.f);
 		const u32 g = (u32)std::lround(std::min(open[label[i]], CAP) / CAP * 255.f);
-		const u32 b = (u32)std::lround(std::min(depth[i], 16) / 16.f * 255.f);
+		const u32 b = (u32)std::lround(std::min(depth[i], 16) / 16.f * 127.f) + (flow[i] ? 128 : 0);
 		const u32 a = (u32)std::min(255, (int)std::lround((surf[i] + 1) / 64.f * 255.f));
 		px[i] = video::SColor(a, r, g, b).color;
 	}
@@ -184,7 +190,7 @@ void WaterField::update(Client *client, const LightVolume &vol, float dtime)
 	m_timer = 0.f;
 	m_generation = gen;
 	static_assert(LightVolume::SX == SIZE && LightVolume::SZ == SIZE, "water field = volume footprint");
-	build(vol.snapshot(), LightVolume::SX, LightVolume::SY, LightVolume::SZ, m_is_water, m_px);
+	build(vol.snapshot(), LightVolume::SX, LightVolume::SY, LightVolume::SZ, m_kind, m_px);
 
 	if (!m_tex) {
 		const bool mip = m_driver->getTextureCreationFlag(video::ETCF_CREATE_MIP_MAPS);

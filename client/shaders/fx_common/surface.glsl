@@ -198,10 +198,12 @@ vec3 fxSurface(vec3 lit, vec4 base, out vec3 transmitted)
 	float wave_h = 0.0, wave_amp = 0.0;
 	bool top = abs(N.y) > 0.5;
 	vec2 wabs = (worldPosition.xz + cameraOffset.xz) / FX_BS;
+	// flowing liquid tilts its top normal downstream (content_mapblock)
+	vec2 wflow = top ? vNormal.xz / max(abs(vNormal.y), 0.2) : vec2(0.0);
 	if (top) {
 		wi = fxWaterAt(worldPosition / FX_BS);
 		float footprint = length(fwidth(wabs));
-		vec3 hw = fxWaterWaves(wabs, wi, footprint, wave_amp);
+		vec3 hw = fxWaterWaves(wabs, wi, footprint, wflow, wave_amp);
 		wave_h = hw.x;
 		dn = vec3(-hw.y, 0.0, -hw.z) * (from_below ? -1.0 : 1.0);
 	}
@@ -271,7 +273,7 @@ vec3 fxSurface(vec3 lit, vec4 base, out vec3 transmitted)
 		float contact = 1.0 - smoothstep(0.0, 0.3 * FX_BS, below);
 		float foam;
 		if (top) {
-			foam = fxWaterFoam(wabs, wi, wave_h, wave_amp, contact * 0.8);
+			foam = fxWaterFoam(wabs, wi, wave_h, wave_amp, contact * 0.8, wflow);
 		} else {
 			float n = fxFbm2(wabs * 2.2 + fxTime * 0.3);
 			foam = clamp(contact * smoothstep(0.35, 0.6, n + contact * 0.3) * fxFoam, 0.0, 1.0);
