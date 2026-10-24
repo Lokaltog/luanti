@@ -10,8 +10,8 @@ can't carry fx data: custom `_fields` never reach the client.
 the format. Producers (jsl2mcl) conform to it and test against it. A change
 lands here first, then in the producer.
 
-**Status.** Format 1, format 2 items 1–4 and the renderer side of item 5
-(glass bevel) are implemented. Items 6–7 are open.
+**Status.** Format 1, format 2 items 1–4 and the renderer side of items 5
+(glass bevel) and 6 (tint-aware emissive) are implemented. Item 7 is open.
 
 ## `fx_pack.txt`
 
@@ -156,9 +156,15 @@ only light sources; surface keys only when surfaces are on).
    normal into a quarter-round bevel where a frame is drawn
    (`fx_glass_bevel`, in 1/16 node). Single-texture `glasslike` glass has no
    frame edges: producers bake its bevel into `_n`.
-6. **Tint-aware emissive** (deferred). Tile and palette colour are baked into
-   the vertex colour together with light, so this needs a vertex format change.
-   Redstone power is the only known case.
+6. **Tint-aware emissive** (renderer: done). The emissive companion (and
+   `_s` emission) is multiplied by the node's tint: its palette colour or
+   `color`. Vertex colour carries tint x light, which can't be separated in
+   the dark, so the mesher stores the tint as an RGB444 code in the length of
+   the vertex normal (`1 + (code + 1) / 2^17`; normals are made unit first)
+   and flags it with Aux bit 15. No vertex format change. A pack makes a
+   tinted node glow by shipping an `_e.png` for its texture (redstone dust:
+   the palette then sets the glow per power level); `[fx_autoemissive` still
+   only covers light sources.
 7. **Producer-side** (jsl2mcl): `_n`/`_s` per material class; baked bevel for
    single-texture glass; an `fx` profile without the painted glass highlight
    streaks.

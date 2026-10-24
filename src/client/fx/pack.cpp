@@ -540,4 +540,22 @@ Surface detectSurface(const ContentFeatures &f)
 	return s;
 }
 
+void encodeTint(std::vector<video::S3DVertex> &vertices, video::SColor tint)
+{
+	if (!caps().enabled)
+		return;
+	const u32 rgb444 = (tint.getRed() * 15 + 127) / 255 << 8 |
+			(tint.getGreen() * 15 + 127) / 255 << 4 | (tint.getBlue() * 15 + 127) / 255;
+	const float len = 1.f + (float)(rgb444 + 1) / 131072.f; // code 0: untinted
+	for (auto &v : vertices) {
+		if (v.Aux & 0xF000)
+			continue; // glass frame mask
+		const float l = v.Normal.getLength();
+		if (l < 1e-6f)
+			continue; // no normal: no room for the code
+		v.Normal *= len / l;
+		v.Aux |= 0x8000;
+	}
+}
+
 } // namespace fx

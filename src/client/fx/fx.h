@@ -17,6 +17,7 @@
 #include "irrlichttypes.h"
 #include "irr_v3d.h"
 #include <SColor.h>
+#include <S3DVertex.h>
 #include <dimension2d.h>
 #include <EMaterialTypes.h>
 #include <string>
@@ -144,6 +145,14 @@ struct Surface {
 
 /// Glass/water surface of a node: pack table, then heuristics.
 Surface resolveSurface(const ContentFeatures &f);
+
+/// Tint-aware emissive: record a tile's tint (palette or `color`) in its
+/// vertices so the shader can scale the glow by it. Vertex colour carries
+/// tint x light, inseparable in the dark, so the tint goes into the
+/// normal's length (1 + rgb444 code / 2^17, normals become unit first) and
+/// Aux bit 15 flags it. Skips vertices whose Aux bits 12..15 are in use
+/// (glass frame mask). Map meshes only; call before the tint is baked.
+void encodeTint(std::vector<video::S3DVertex> &vertices, video::SColor tint);
 
 /// The fx post pass draws being inside this node (water): skip upstream's
 /// flat post_effect_color overlay.

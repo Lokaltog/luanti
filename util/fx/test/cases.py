@@ -54,6 +54,13 @@ CASES = [
     {"name": "night_white", "doc": "fx_colored_light off: white artificial light",
      "settings": {"fx_colored_light": "false"},
      "compare": [{"with": "night", "min_mean": 2.0, "name": "colour changes the image"}]},
+    {"name": "tint_glow", "doc": "tint-aware glow: the magenta _e map takes the palette tint",
+     "settings": {"texture_path": PACK, "fxscene_view": "materials", "fx_debug_view": "2"},
+     "golden": False, "max_black": 1.0,
+     "probes": [
+         {"name": "red tint: red glow", "region": [0.34, 0.17, 0.45, 0.33], "hue": [355, 30]},
+         {"name": "green tint on magenta: dim violet", "region": [0.55, 0.17, 0.66, 0.33], "hue": [270, 35]},
+     ]},
     {"name": "materials", "doc": "M5 material maps in daylight",
      "settings": {**DAY, "texture_path": PACK, "fxscene_time": "0.35", "fxscene_view": "materials"},
      "compare": [{"with": "materials_off", "min_mean": 2.0, "name": "maps change the image"}]},

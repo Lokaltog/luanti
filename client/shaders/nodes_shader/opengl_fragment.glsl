@@ -79,6 +79,9 @@ flat VARYING_ uint varTexLayer;
 #ifdef FX_SURFACE_ACTIVE
 flat VARYING_ uint varFxEdges; // glass frame edges: U-, U+, V-, V+
 #endif
+#ifdef FX_ENABLE
+flat VARYING_ vec3 varFxTint; // the tile's tint (display-encoded), white if none
+#endif
 CENTROID_ VARYING_ float nightRatio;
 VARYING_ highp vec3 eyeVec;
 
@@ -650,6 +653,8 @@ void main(void)
 #ifdef FX_MAT_ACTIVE
 	emit = max(emit, fxMatEmission * fxEmissiveStrength);
 #endif
+	// tinted nodes glow in their tint (a wire's power level)
+	emit *= fxToLinear(varFxTint);
 	lin += emit;
 
 	vec3 fog = fxFogLinear(fogColor.rgb, clarity);

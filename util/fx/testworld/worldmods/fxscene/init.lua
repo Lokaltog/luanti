@@ -42,6 +42,16 @@ for _, name in ipairs({"gold_ore", "gold_block"}) do
 	})
 end
 
+-- tint-aware glow: devtest's light14 glyph (magenta _e map in the test pack)
+-- on a palette node; index 0 tints it red, index 1 green
+core.register_node("fxscene:tinted_glow", {
+	description = "tinted glow",
+	tiles = {"testnodes_light_14.png"},
+	paramtype2 = "color",
+	palette = "fxscene_palette.png",
+	groups = {dig_immediate = 3},
+})
+
 -- entity with an authored emissive companion (fxscene_mob_e.png in the test pack)
 core.register_entity("fxscene:mob", {
 	initial_properties = {
@@ -159,6 +169,10 @@ core.register_on_joinplayer(function(player)
 				core.set_node({x = -5 + (i - 1) * 2, y = y, z = 2}, {name = name})
 				core.set_node({x = -4 + (i - 1) * 2, y = y, z = 2}, {name = name})
 			end
+		end
+		if core.settings:get("fxscene_view") == "materials" then
+			core.set_node({x = -1, y = 2, z = 2}, {name = "fxscene:tinted_glow", param2 = 0})
+			core.set_node({x = 1, y = 2, z = 2}, {name = "fxscene:tinted_glow", param2 = 1})
 		end
 		-- fx_ambience test props, only in "particles" view
 		if core.settings:get("fxscene_view") == "particles" then

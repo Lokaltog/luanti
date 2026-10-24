@@ -419,6 +419,9 @@ static void applyColorAndMerge(std::vector<PreMeshBuffer> &prebuffers)
 	// colors (light data) before applying the tile colors.
 
 	for (auto &p : prebuffers) {
+		// fx: keep the tint apart from the light for tinted glow
+		if (p.layer.color != video::SColor(0xFFFFFFFF))
+			fx::encodeTint(p.vertices, p.layer.color);
 		// bake color into vertices
 		p.applyTileColor();
 		// erase color information for later comparisons

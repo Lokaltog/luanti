@@ -152,6 +152,9 @@ float snoise(vec3 p)
 #define FX_SURFACE_ACTIVE 1 // as in the fragment shader
 flat VARYING_ uint varFxEdges; // glass frame edges: U-, U+, V-, V+
 #endif
+#ifdef FX_ENABLE
+flat VARYING_ vec3 varFxTint; // the tile's tint (display-encoded), white if none
+#endif
 
 void main(void)
 {
@@ -164,6 +167,17 @@ void main(void)
 #endif
 #ifdef FX_SURFACE_ACTIVE
 	varFxEdges = inVertexAux >> 12;
+#endif
+#ifdef FX_ENABLE
+	// tint code in the normal's length (fx::encodeTint), flagged by Aux bit 15
+	varFxTint = vec3(1.0);
+#ifndef FX_SURFACE_ACTIVE
+	if ((inVertexAux & 0x8000u) != 0u) {
+		int code = int(floor((length(inVertexNormal) - 1.0) * 131072.0 + 0.5)) - 1;
+		if (code >= 0 && code < 4096)
+			varFxTint = vec3(float(code >> 8), float((code >> 4) & 15), float(code & 15)) / 15.0;
+	}
+#endif
 #endif
 	varTexCoord = inTexCoord0.st;
 
