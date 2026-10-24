@@ -27,6 +27,7 @@ struct Caps {
 	bool light_volume = false;
 	bool volumetrics = false;   // the volumetric light / height fog pass
 	bool gi = false;            // the screen-space bounce light pass
+	bool clouds = false;        // volumetric clouds replace the engine's
 	bool materials = false;     // needs array textures
 	bool array_textures = false;
 

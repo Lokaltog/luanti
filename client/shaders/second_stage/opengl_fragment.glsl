@@ -161,12 +161,17 @@ void main(void)
 #ifdef FX_VOLUMETRICS
 	color.rgb = fxApplyVolumetrics(color.rgb, uv);
 #endif
-	color.rgb *= exposureParams.compensationFactor * fxExposure;
+	float fxExpo = exposureParams.compensationFactor * fxExposure;
 #ifdef ENABLE_AUTO_EXPOSURE
-	color.rgb *= exposure;
+	fxExpo *= exposure;
 #endif
+	color.rgb *= fxExpo;
 	color.rgb += fxEndSkyColor(uv);
 	color.rgb = fxApplySky(color.rgb, uv);
+#ifdef FX_CLOUDS
+	// over the sky (which replaces sky pixels), exposed like the scene
+	color.rgb = fxApplyClouds(color.rgb, uv, fxExpo);
+#endif
 	color.rgb *= 1.0 - fxDropMask * 0.15; // the drops darken their rim a little
 	color.rgb = fxApplyFlash(color.rgb);
 	vec3 fxTrans = vec3(1.0);

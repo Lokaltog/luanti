@@ -127,6 +127,8 @@ public:
 	bool isCameraInsideCloud() const { return m_camera_inside_cloud; }
 
 	const video::SColor getColor() const { return m_color.toSColor(); }
+	/// fx: publish the current cloud state to the fx renderer
+	void fxPublish();
 
 private:
 	void updateBox()

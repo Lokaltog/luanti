@@ -51,6 +51,8 @@ public:
 			constants["FX_VOLUMETRICS"] = 1;
 		if (c.gi)
 			constants["FX_GI"] = 1;
+		if (c.clouds)
+			constants["FX_CLOUDS"] = 1;
 		if (c.surfaces) {
 			constants["FX_SURFACES"] = 1;
 			if (p.ssr)

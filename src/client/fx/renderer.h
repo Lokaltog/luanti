@@ -67,9 +67,13 @@ struct FrameBlock {
 	float weather[4];           // snow cover, raining now, wind strength, wind angle
 	float fog[4];               // fog colour (display-encoded), camera offset y (scene units)
 	float water_style[4];       // water scatter tint (linear rgb), choppiness
-	float sky[4];               // cold (aurora), camera droplets, overworld, -
+	float sky[4];               // cold (aurora), camera droplets, overworld, is day
+	float cloud[4];             // height, thickness (nodes), density 0..1, visible
+	float cloud_origin[4];      // noise origin x, z; camera offset x, z (world, BS units)
+	float cloud_color[4];       // lit colour now (linear)
+	float cloud_shadow[4];      // shadow tint (linear)
 };
-static_assert(sizeof(FrameBlock) == 3 * 64 + 13 * 16, "FxFrame std140 layout");
+static_assert(sizeof(FrameBlock) == 3 * 64 + 17 * 16, "FxFrame std140 layout");
 
 /// std140 mirror of FxLights.
 struct LightsBlock {
@@ -179,6 +183,8 @@ public:
 	} events;
 
 	CameraState cam;
+	CloudState clouds;
+	u32 clouds_frame = 0;          // cam.frame of the last setClouds
 	SceneCopy copy;
 	LightsBlock lights{};
 	std::unique_ptr<LightVolume> volume;

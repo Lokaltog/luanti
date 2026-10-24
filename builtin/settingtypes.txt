@@ -943,6 +943,12 @@ fx_droplets_fx (Lens droplets) float 1.0 0.0 2.0
 #    texels marked in _s maps).
 fx_translucency (Translucency) float 1.0 0.0 2.0
 
+#    How wispy the clouds' edges are (0 = blocky like the game's).
+fx_cloud_softness (Cloud softness) float 1.0 0.0 2.0
+
+#    How thick the clouds look (lower: see more of the land through them).
+fx_cloud_opacity (Cloud opacity) float 1.0 0.0 2.0
+
 #    Linear luminance above which pixels bloom.
 fx_bloom_threshold (Bloom threshold) float 1.0 0.0 8.0
 
@@ -1101,6 +1107,11 @@ fx_use_snow (Snow cover) bool true
 
 #    Foliage sways in a wind that grows with the weather. Off compiles the effect out of the shaders.
 fx_use_wind (Wind) bool true
+
+#    Soft, see-through volumetric clouds instead of the game's cloud boxes
+#    (shapes, height, colours and speed still come from the game). Changing it
+#    applies when you next join a world.
+fx_use_clouds (Volumetric clouds) bool true
 
 #    Foam and biome waves on water. Off compiles the effect out of the shaders.
 fx_use_foam (Water foam & waves) bool true

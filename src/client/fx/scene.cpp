@@ -173,6 +173,20 @@ void Renderer::uploadFrame()
 	b.sky[1] = events.droplets;
 	b.sky[2] = events.overworld;
 	b.sky[3] = cam.is_day ? 1.f : 0.f;
+	// clouds: visible if Clouds::update published them this frame or the last
+	const bool clouds_on = caps.clouds && cam.frame - clouds_frame <= 1;
+	b.cloud[0] = clouds.height;
+	b.cloud[1] = clouds.thickness;
+	b.cloud[2] = clouds.density;
+	b.cloud[3] = clouds_on ? 1.f : 0.f;
+	b.cloud_origin[0] = clouds.origin[0];
+	b.cloud_origin[1] = clouds.origin[1];
+	b.cloud_origin[2] = cam.offset.X * BS;
+	b.cloud_origin[3] = cam.offset.Z * BS;
+	for (int i = 0; i < 3; i++) {
+		b.cloud_color[i] = std::pow(clouds.color[i], 2.2f);
+		b.cloud_shadow[i] = std::pow(clouds.shadow[i], 2.2f);
+	}
 	driver->setUniformBufferData(UBO_FRAME, &b, sizeof(b));
 }
 

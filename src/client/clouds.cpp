@@ -367,6 +367,8 @@ void Clouds::render()
 {
 	if (m_params.density <= 0.0f)
 		return; // no need to do anything
+	if (fx::cloudsReplaced())
+		return; // fx draws them as volumes (fx_clouds pass)
 
 	video::IVideoDriver* driver = SceneManager->getVideoDriver();
 
@@ -439,6 +441,11 @@ void Clouds::step(float dtime)
 
 void Clouds::update(const v3f &camera_p, const video::SColorf &color_diffuse)
 {
+	struct FxPublish { // fx: hand the cloud state over, every update
+		Clouds *c;
+		~FxPublish() { c->fxPublish(); }
+	} fx_publish{this};
+
 	video::SColorf ambient(m_params.color_ambient);
 	video::SColorf bright(m_params.color_bright);
 	m_color.r = core::clamp(color_diffuse.r * bright.r, ambient.r, 1.0f);
@@ -472,6 +479,21 @@ void Clouds::readSettings()
 	m_cloud_radius_i = rangelim(g_settings->getU16("cloud_radius"), 8, maximum);
 
 	invalidateMesh();
+}
+
+void Clouds::fxPublish()
+{
+	fx::CloudState st;
+	st.height = m_params.height;
+	st.thickness = is3D() ? m_params.thickness : 0.5f;
+	st.density = m_params.density;
+	st.origin[0] = m_origin.X;
+	st.origin[1] = m_origin.Y;
+	const video::SColorf amb(m_params.color_ambient), sh(m_params.color_shadow);
+	st.color[0] = m_color.r; st.color[1] = m_color.g; st.color[2] = m_color.b;
+	st.ambient[0] = amb.r; st.ambient[1] = amb.g; st.ambient[2] = amb.b;
+	st.shadow[0] = sh.r; st.shadow[1] = sh.g; st.shadow[2] = sh.b;
+	fx::setClouds(st);
 }
 
 bool Clouds::gridFilled(int x, int y) const

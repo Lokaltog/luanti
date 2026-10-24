@@ -87,6 +87,19 @@ vec3 fxApplyVolumetrics(vec3 color, vec2 uv)
 }
 #endif
 
+#ifdef FX_CLOUDS
+// volumetric clouds (fx_clouds pass, half res): light scattered towards the
+// eye (rgb) and transmittance (a); the pass stopped at the scene, so terrain
+// in front of a cloud stays clear
+#define fxCloudTex texture7
+uniform sampler2D fxCloudTex;
+vec3 fxApplyClouds(vec3 color, vec2 uv, float expo)
+{
+	vec4 c = texture2D(fxCloudTex, uv);
+	return color * c.a + c.rgb * expo;
+}
+#endif
+
 #ifdef FX_GI
 // wave 3: bounce light arriving at each pixel (linear), half res and noisy:
 // four bilinear taps around the pixel smooth it

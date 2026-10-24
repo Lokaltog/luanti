@@ -233,6 +233,15 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 		gi->setRenderSource(buffer);
 		gi->setRenderTarget(pipeline->createOwned<TextureBufferOutput>(buffer, TEXTURE_FX_GI));
 	}
+	static const u8 TEXTURE_FX_CLOUDS = 36;
+	const bool fx_clouds = fx::caps().clouds;
+	if (fx_clouds) {
+		buffer->setTexture(TEXTURE_FX_CLOUDS, scale * 0.5f, "fx_clouds", bloom_format);
+		shader_id = client->getShaderSource()->getShaderRaw("fx_clouds");
+		auto cl = pipeline->addStep<PostProcessingStep>(shader_id, std::vector<u8> { TEXTURE_DEPTH });
+		cl->setRenderSource(buffer);
+		cl->setRenderTarget(pipeline->createOwned<TextureBufferOutput>(buffer, TEXTURE_FX_CLOUDS));
+	}
 	if (fx_taa) {
 		buffer->setTexture(TEXTURE_FX_TAA_OUT, scale, "fx_taa_out", bloom_format);
 		buffer->setTexture(TEXTURE_FX_TAA_HISTORY, scale, "fx_taa_history", bloom_format);
@@ -365,6 +374,7 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 		final_inputs.push_back(fx_ao && !fx_taa ? TEXTURE_FX_AO : TEXTURE_DEPTH);
 		final_inputs.push_back(fx_vol ? TEXTURE_FX_VOLUMETRIC : TEXTURE_DEPTH);
 		final_inputs.push_back(fx_gi ? TEXTURE_FX_GI : TEXTURE_DEPTH);
+		final_inputs.push_back(fx_clouds ? TEXTURE_FX_CLOUDS : TEXTURE_DEPTH);
 	}
 	PostProcessingStep *effect = pipeline->createOwned<PostProcessingStep>(shader_id, final_inputs);
 	pipeline->addStep(effect);
@@ -372,6 +382,8 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 		effect->setBilinearFilter(5, true);
 	if (fx_gi)
 		effect->setBilinearFilter(6, true);
+	if (fx_clouds)
+		effect->setBilinearFilter(7, true);
 	if (enable_ssaa)
 		effect->setBilinearFilter(0, true);
 	effect->setBilinearFilter(1, true);

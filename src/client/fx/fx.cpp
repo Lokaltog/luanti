@@ -421,6 +421,26 @@ video::SColor tintParticleLight(v3s16 node, video::SColor color, float artificia
 	return video::SColor(color.getAlpha(), out[0], out[1], out[2]);
 }
 
+void setClouds(const CloudState &c)
+{
+	if (Renderer *r = renderer()) {
+		if (r->clouds_frame == 0)
+			infostream << "fx: clouds height " << c.height << " thickness " << c.thickness
+				<< " density " << c.density << std::endl;
+		r->clouds = c;
+		// test mode: a fixed cloud cover
+		if (test::active() && g_settings->exists("fx_test_cloud_density"))
+			r->clouds.density = g_settings->getFloat("fx_test_cloud_density");
+		r->clouds_frame = std::max<u32>(r->cam.frame, 1);
+	}
+}
+
+bool cloudsReplaced()
+{
+	Renderer *r = renderer();
+	return r && r->caps.clouds;
+}
+
 video::ITexture *lightVolumeTexture()
 {
 	Renderer *r = renderer();

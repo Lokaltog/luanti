@@ -73,6 +73,19 @@ video::ITexture *lightVolumeTexture();
 /// Post-processing texture_map index that stands for lightVolumeTexture().
 constexpr u8 RENDER_SOURCE_LIGHT_VOLUME = 254;
 
+/// The game's clouds this frame (Clouds::update): fx draws them as soft
+/// volumes instead when fx_use_clouds is on.
+struct CloudState {
+	float height = 120.f, thickness = 16.f, density = 0.4f; // nodes, 0..1
+	float origin[2] = {0.f, 0.f};  // noise origin, scene units (BS), world x/z
+	float color[3] = {1.f, 1.f, 1.f};          // lit colour now (time of day)
+	float ambient[3] = {0.f, 0.f, 0.f};
+	float shadow[3] = {0.8f, 0.8f, 1.f};
+};
+void setClouds(const CloudState &c);
+/// fx replaces the engine's cloud mesh (in a world, fx_use_clouds on).
+bool cloudsReplaced();
+
 /// Camera offset (head space) for slow breathing while standing still.
 v3f idleBreath();
 

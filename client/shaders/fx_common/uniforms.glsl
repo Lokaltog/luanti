@@ -106,6 +106,10 @@ layout(std140) uniform FxFrame {
 	vec4 fxFog;
 	vec4 fxWaterStyle;
 	vec4 fxSkyInfo;
+	vec4 fxCloud;
+	vec4 fxCloudOrigin;
+	vec4 fxCloudColor;
+	vec4 fxCloudShadow;
 };
 #define fxEyePos fxEyeTime.xyz          // camera in scene space
 #define fxTime fxEyeTime.w              // seconds, wraps hourly

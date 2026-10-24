@@ -42,6 +42,7 @@ Caps computeCaps(const Params &p, video::IVideoDriver *driver)
 	c.ao = p.ao && c.hdr; // applied in the linear HDR composite
 	c.volumetrics = p.use_volumetrics && c.hdr;
 	c.gi = p.use_gi && c.hdr;
+	c.clouds = p.use_clouds && c.hdr;
 	c.surfaces = p.surfaces && c.post;
 	c.colored_light = p.colored_light;
 	c.light_volume = c.colored_light; // the volume is how light gets its colour
