@@ -38,6 +38,7 @@ class PlayingSound final
 	// afx
 	afx::Bus m_bus;
 	bool m_footstep = false;
+	bool m_rain = false;
 	v3f m_pos_node;            // node space, for occlusion
 	afx::Occlusion m_occ_target, m_occ;
 	afx::SourceSpace m_space;  // the surroundings it sits in
@@ -115,6 +116,8 @@ public:
 	afx::Bus getBus() const { return m_bus; }
 	bool isFootstep() const { return m_footstep; }
 	void setFootstep(bool f) { m_footstep = f; }
+	bool isRain() const { return m_rain; }
+	void setRain(bool r) { m_rain = r; }
 	bool isPositional() const { return m_is_positional; }
 	bool isStereo() const { return m_data && m_data->m_decode_info.is_stereo; }
 	v3f getPosNode() const { return m_pos_node; }

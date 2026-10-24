@@ -327,6 +327,20 @@ function BUILD.walls(b)
 	b.fill(v(-2, 0, 2), v(14, 4, 2), "basenodes:stone")
 end
 
+function BUILD.accents(b)
+	b.fill(v(MIN.x, -20, MIN.z), v(MAX.x, -2, MAX.z), "basenodes:stone")
+	b.fill(v(MIN.x, -1, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	-- a sealed hut with a door (south, z=-4) and a window
+	b.fill(v(-4, 0, -4), v(4, 5, 4), "afxscene:planks")
+	b.fill(v(-3, 0, -3), v(3, 4, 3), "air")
+	b.fill(v(4, 2, 0), v(4, 2, 1), "afxscene:glass")
+	for y = 0, 1 do b.fill(v(0, y, -4), v(0, y, -4), "afxscene:door") end
+	-- a lava pool out in the open, and a plank deck over a drop
+	b.fill(v(8, -1, -14), v(11, -1, -11), "basenodes:lava_source")
+	b.fill(v(-12, -6, -14), v(-8, -1, -10), "air")
+	b.fill(v(-12, -1, -14), v(-8, -1, -10), "afxscene:planks")
+end
+
 function BUILD.bridge(b)
 	b.fill(v(MIN.x, -20, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:stone")
 	b.fill(v(-30, -1, -1), v(-30, -1, 1), "basenodes:stone")
@@ -726,6 +740,32 @@ TIMELINE.walls = {
 	{wait = 1},
 }
 
+local function drop_at(p, item)
+	core.add_item(vector.offset(p, 0, 3, 0), item or "basenodes:stone")
+end
+
+TIMELINE.accents = {
+	{fn = function()
+		afx_ambience.wind_override = {dir = {x = 1, y = 0, z = 0}, wind = 1.0}
+		P():set_pos(v(0, 0, -10))
+	end, wait = 4, log = "a calm meadow"},
+	{fn = function() afx_ambience.set_rain(0.8) end, wait = 26, log = "rain coming in from the west"},
+	{fn = function() P():set_pos(v(9, 0, -9)) end, wait = 7, log = "rain on the lava"},
+	{fn = function() P():set_pos(v(0, 0, 0)) end, wait = 6, log = "inside the sealed hut"},
+	{fn = function() core.set_node(v(0, 0, -4), {name = "air"}); core.set_node(v(0, 1, -4), {name = "air"}) end,
+		wait = 5, log = "the door opens"},
+	{fn = function() afx_ambience.thunder_at(v(60, 20, 30)) end, wait = 6, log = "thunder near: the window rattles"},
+	{fn = function() P():set_pos(v(0, 0, -10)); afx_ambience.set_rain(0) end, wait = 22,
+		log = "rain stops, moving off east"},
+	{fn = function() drop_at(v(2, 0, -9)) end, wait = 1.5, log = "things land: on grass"},
+	{fn = function() P():set_pos(v(-10, 0, -12)) end, wait = 1.5},
+	{fn = function() drop_at(v(-10, 0, -11)) end, wait = 1.5, log = "on planks over a drop"},
+	{fn = function() drop_at(v(-9, 0, -12)) end, wait = 1.5},
+	{fn = function() P():set_pos(v(0, -1, 10)); core.set_node(v(1, -1, 10), {name = "basenodes:stone"}) end, wait = 1},
+	{fn = function() drop_at(v(1, -1, 10)) end, wait = 1.5, log = "on stone"},
+	{fn = function() afx_ambience.wind_override = nil end, wait = 1},
+}
+
 TIMELINE.bridge = {
 	{walk = v(-8, 0, 0), speed = 2, steps = "default_hard_footstep", log = "on rock"},
 	{walk = v(6, 0, 0), speed = 2, steps = "default_wood_footstep", log = "on the bridge"},
@@ -796,7 +836,7 @@ TIMELINE.cinema = {
 }
 
 local START = {
-	cinema = v(0, 0, 0), voices = v(-24, 0, -20), knock = v(-4, 0, -1), music = v(-14, 0, -2), walls = v(-26, 0, -14),
+	cinema = v(0, 0, 0), voices = v(-24, 0, -20), knock = v(-4, 0, -1), music = v(-14, 0, -2), walls = v(-26, 0, -14), accents = v(0, 0, -10),
 	details = v(-24, 0, 0),
 	corner = v(-16, 0, 0), nextdoor = v(0, 0, -4), bridge = v(-16, 0, 0), draft = v(0, 0, 0),
 	steps = v(0, 0, 0),

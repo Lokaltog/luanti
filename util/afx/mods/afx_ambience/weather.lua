@@ -103,6 +103,37 @@ local function rain_layer(ctx, wanted)
 	-- Surface layers swell in over the first half minute
 	ctx.rain_ramp = raining and math.min(1, 0.15 + (now - rain.since) / 30) or 1
 
+	-- The front: rain marches in from upwind over ~25 s (the engine fades and
+	-- steers the game's rain bed by it), and after it stops our own tail
+	-- recedes downwind
+	local wd = A.wind_override and A.wind_override.dir or A.wind_dir()
+	if raining then
+		ctx.rain_front = math.min(1, (now - rain.since) / 25)
+		ctx.rain_front_dir = {x = -wd.x, z = -wd.z}
+	else
+		ctx.rain_front = math.max(0, 1 - (now - rain.stopped) / 22)
+		ctx.rain_front_dir = {x = wd.x, z = wd.z}
+		if ctx.rain_front > 0 and (rain.was_heavy or 0) > 0 and ctx.dimension == "overworld" then
+			wanted.rain_tail = {sound = "afx_out_rain", gain = 0.55 * rain.was_heavy, fade = 0.5}
+		end
+	end
+	if raining then rain.was_heavy = math.max(rain.was_heavy or 0, math.min(1, ctx.rain)) end
+	if not raining and ctx.rain_front <= 0 then rain.was_heavy = 0 end
+
+	-- Rain on fire and lava out in it: a sizzle
+	if raining and ctx.dimension == "overworld" then
+		local hot = core.find_nodes_in_area(vector.offset(ctx.ppos, -10, -4, -10),
+				vector.offset(ctx.ppos, 10, 6, 10), {"group:lava", "group:fire"})
+		local exposed = {}
+		for _, p in ipairs(hot) do
+			if L.sky_open(vector.offset(p, 0, 1, 0)) then exposed[#exposed + 1] = p end
+		end
+		for _, c in ipairs(L.nearest(L.clusters(exposed), ctx.ppos, 2)) do
+			wanted["sz" .. c.key] = {sound = "afx_sizzle", pos = c.pos,
+				gain = math.min(0.45, 0.1 + 0.04 * c.n) * ctx.rain * (ctx.rain_ramp or 1), range = 18}
+		end
+	end
+
 	local st = ctx.st
 	-- The first fat drops: single splats on surfaces near you that the rain
 	-- actually reaches (out here, not in your room or inside the walls)
@@ -201,8 +232,10 @@ A.register_layer(function(ctx, wanted)
 	if ctx.player.set_afx_world and ctx.hearing then
 		local d = A.wind_override and A.wind_override.dir or A.wind_dir()
 		local w = A.wind_override and A.wind_override.wind or ctx.wind
+		local fd = ctx.rain_front_dir or {x = 0, z = 0}
 		ctx.player:set_afx_world({wind_x = d.x, wind_z = d.z, wind = w,
-			rain = math.min(1, ctx.rain + 0.5 * ctx.snow)})
+			rain = math.min(1, ctx.rain + 0.5 * ctx.snow),
+			rain_front = ctx.rain_front or 1, front_x = fd.x, front_z = fd.z})
 	end
 end)
 
@@ -214,6 +247,7 @@ core.register_globalstep(step_gust)
 -- lightning mod); then only the far roll is ours.
 local function on_strike(pos, game_crack)
 	if not pos then return end
+	if A.rattle then A.rattle(pos, 1.3) end
 	for _, player in ipairs(core.get_connected_players()) do
 		local d = vector.distance(player:get_pos(), pos)
 		local pname = player:get_player_name()
@@ -240,6 +274,54 @@ core.register_on_mods_loaded(function()
 end)
 
 A.thunder_at = on_strike
+
+--[[ Windows rattle when a big sound arrives: thunder, a blast ]]
+
+local function rattle(pos, loudness)
+	for _, player in ipairs(core.get_connected_players()) do
+		local ppos = player:get_pos()
+		local d = vector.distance(ppos, pos)
+		local k = loudness * math.min(1, 60 / math.max(1, d))
+		if k > 0.12 then
+			local panes = core.find_nodes_in_area(vector.offset(ppos, -8, -3, -8),
+					vector.offset(ppos, 8, 6, 8), {"group:pane", "group:glass"})
+			local pname = player:get_player_name()
+			local arrive = d / 343 + 0.05
+			for i = 1, math.min(3, #panes) do
+				local p = panes[math.random(#panes)]
+				local taps = math.random(6, 10)
+				for t = 0, taps - 1 do
+					core.after(arrive + t * L.rand(0.035, 0.06) + i * 0.02, function()
+						A.play("afx_raindrop_hard", {pos = p, to_player = pname,
+							gain = 0.22 * k * (1 - t / taps), pitch = L.rand(1.7, 2.3),
+							max_hear_distance = 14}, true)
+					end)
+				end
+			end
+		end
+	end
+end
+A.rattle = rattle
+
+core.register_on_mods_loaded(function()
+	-- explosions, wherever the game sets them off
+	local ex = rawget(_G, "mcl_explosions")
+	if ex and ex.explode then
+		local explode = ex.explode
+		ex.explode = function(pos, strength, ...)
+			rattle(pos, math.min(1.5, (strength or 3) / 3))
+			return explode(pos, strength, ...)
+		end
+	end
+	local tnt = rawget(_G, "tnt")
+	if tnt and tnt.boom then
+		local boom = tnt.boom
+		tnt.boom = function(pos, def, ...)
+			rattle(pos, 1.2)
+			return boom(pos, def, ...)
+		end
+	end
+end)
 
 -- For tests and scripted moments: start a gust now
 function A.gust_now(peak)

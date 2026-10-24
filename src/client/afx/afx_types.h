@@ -130,6 +130,8 @@ struct Params {
 	float wind = 0.f;            // 0 calm .. ~1.6 gale
 	float rain = 0.f;            // 0..1
 	float night = 0.f;           // 0..1 (from the client's time of day)
+	float rain_front = 1.f;      // 0..1 how much of the storm has reached you
+	v3f rain_front_dir;          // node space, horizontal unit: where it is (coming / going)
 	bool debug = false;          // afx_debug
 	// Bus routing by sound name, comma-separated globs (see afx_mix.h)
 	std::string dry_sounds =     // afx_dry_sounds

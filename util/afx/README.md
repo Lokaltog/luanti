@@ -232,6 +232,25 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
   - It checks per-segment loudness bands, absolute or relative to another segment, and fails on Lua errors.
   - Run it before committing mix changes.
 
+## Round 11: accents
+
+- **Real raindrops.**
+  - The first drops of a shower are single drops cut from real rain recordings: soft ones on leaves and ground, taps on hard surfaces.
+  - The after-rain canopy drip is rebuilt from the same drops.
+  - The pitched-up wet squelch is gone.
+- **Storms that approach.**
+  - The mod sends `rain_front` (0..1) and its direction in `set_afx_world`.
+  - The engine fades the game's rain bed in with it (any Outdoor sound with "rain" in its name), steering it from upwind while you're out in it.
+  - After the rain, the mod's own tail recedes downwind over about 22 s.
+- **Things land** (`landing.lua`):
+  - Dropped items and arrows play the struck node's own footstep, short and light.
+  - Planks over a drop add a small hollow ring.
+  - Nodes without sounds fall back by group.
+- **Windows rattle:** thunder and explosions (`mcl_explosions.explode` and `tnt.boom` are wrapped) set nearby panes buzzing as the sound arrives.
+- **Rain on fire:** exposed lava and fire sizzle in rain (from the game's own extinguish hisses).
+- **Air pressure:** opening a sealed room to the outdoors makes a faint low whoomp (engine, `setAcoustics`).
+- **Scenario:** `accents`. The `walls` listening check uses quiet settings, and its band is the bed level.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

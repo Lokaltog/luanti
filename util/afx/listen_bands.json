@@ -182,20 +182,24 @@
   "timeout": 120,
   "args": [
    "afx_score=0",
-   "afx_mood=0"
+   "afx_mood=0",
+   "afx_roomtone=0",
+   "afx_ambience_beds=false",
+   "afx_ambience_birds=false",
+   "afx_ambience_proximity=false"
   ],
   "segments": {
    "between two walls": {
     "bed_rel": [
      "out in the open again",
-     2,
+     6,
      null
     ]
    },
    "along a wall on the left": {
     "bed_rel": [
      "out in the open again",
-     -2,
+     3,
      null
     ]
    }

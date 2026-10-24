@@ -515,13 +515,15 @@ const Mood &mood() { return s_mood.smoother.current(); }
 static struct {
 	v3f wind_dir;
 	float wind = 0.f, rain = 0.f;
+	float rain_front = 1.f;
+	v3f front_dir;
 } s_world;
 
 void setWorldState(const std::string &state)
 {
 	std::istringstream is(state);
 	std::string kv;
-	float wx = 0.f, wz = 0.f;
+	float wx = 0.f, wz = 0.f, fx = 0.f, fz = 0.f;
 	while (is >> kv) {
 		const size_t eq = kv.find('=');
 		if (eq == std::string::npos)
@@ -534,10 +536,15 @@ void setWorldState(const std::string &state)
 		else if (k == "wind_z") wz = v;
 		else if (k == "wind") s_world.wind = rangelim(v, 0.f, 3.f);
 		else if (k == "rain") s_world.rain = rangelim(v, 0.f, 1.f);
+		else if (k == "rain_front") s_world.rain_front = rangelim(v, 0.f, 1.f);
+		else if (k == "front_x") fx = v;
+		else if (k == "front_z") fz = v;
 	}
 	v3f d(wx, 0.f, wz);
 	if (d.getLengthSQ() > 1e-6f)
 		s_world.wind_dir = d.normalize();
+	v3f f(fx, 0.f, fz);
+	s_world.front_dir = f.getLengthSQ() > 1e-6f ? f.normalize() : v3f();
 }
 
 static struct {
@@ -674,6 +681,8 @@ void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 	q.wind_dir = s_world.wind_dir;
 	q.wind = s_world.wind;
 	q.rain = s_world.rain;
+	q.rain_front = s_world.rain_front;
+	q.rain_front_dir = s_world.front_dir;
 	const float tod = client->getEnv().getTimeOfDayF();
 	q.night = 1.f - std::clamp((0.32f - std::fabs(tod - 0.5f)) / 0.05f, 0.f, 1.f);
 	sound->setAcoustics(std::move(snap), q);
@@ -722,6 +731,8 @@ static void resetSession()
 	s_world.wind_dir = v3f();
 	s_world.wind = 0.f;
 	s_world.rain = 0.f;
+	s_world.rain_front = 1.f;
+	s_world.front_dir = v3f();
 	s_knock.node = v3s16(S16_MAX, S16_MAX, S16_MAX);
 	s_knock.spec = SoundSpec();
 	s_materials = MaterialTable();

@@ -64,6 +64,22 @@ void OpenALSoundManager::setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> 
 		infostream << "afx target: hollow " << target.hollow << " coupling " << target.coupling
 				<< " nb_decay " << target.neighbor_decay << std::endl;
 
+	// A door opens out of a sealed room: the air moves (a faint low
+	// whoomp), and the outdoors swells in (the smoother does that)
+	m_whoomp_cooldown = std::max(0.0f, m_whoomp_cooldown - params.probe_interval);
+	if (m_afx_smoother.valid() && m_last_target_outdoor < 0.02f && target.outdoor_gain > 0.05f &&
+			target.enclosure > 0.6f && !target.submerged && m_whoomp_cooldown <= 0.0f) {
+		m_whoomp_cooldown = 4.0f;
+		std::string w = getLoadedSoundNameFromGroup("afx_dry_whoomp");
+		if (!w.empty()) {
+			auto snd = createPlayingSound(w, false, 0.35f * std::min(1.0f, target.outdoor_gain * 4.0f),
+					1.0f, 0.0f, std::nullopt, afx::Bus::Dry);
+			if (snd)
+				m_internal_sounds.push_back(std::move(snd));
+		}
+	}
+	m_last_target_outdoor = target.outdoor_gain;
+
 	const bool first = !m_afx_smoother.valid();
 	m_afx_smoother.setTarget(target);
 
@@ -229,6 +245,24 @@ void OpenALSoundManager::applyMix(PlayingSound &snd)
 			const f32 att = 1.0f / std::max(1.0f, (from - m_listener_pos_node).getLength());
 			mix.muffle_send *= att;
 			mix.echo_send *= att;
+		}
+	}
+	if (snd.isRain() && m_afx_params.rain_front < 0.999f) {
+		// a storm front: the rain bed comes in (or leaves) from one side
+		const f32 f = std::clamp(m_afx_params.rain_front, 0.0f, 1.0f);
+		const f32 level = f * f * (3.0f - 2.0f * f);
+		mix.direct_gain *= level;
+		mix.muffle_send *= level;
+		mix.reverb_send *= level;
+		const v3f fd = m_afx_params.rain_front_dir;
+		if (fd.getLengthSQ() > 0.5f) {
+			// out in it, it's over there; indoors the opening still decides
+			const f32 out = std::clamp(1.0f - env.enclosure, 0.0f, 1.0f);
+			const f32 w = out * (1.0f - f);
+			v3f dir = env.outdoor_dir * (1.0f - w) + fd * w;
+			if (dir.getLengthSQ() > 1e-4f)
+				env.outdoor_dir = dir.normalize();
+			env.outdoor_focus = std::max(env.outdoor_focus, 0.85f * w);
 		}
 	}
 	if (snd.getBus() == afx::Bus::Dry)

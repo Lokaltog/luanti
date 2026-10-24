@@ -190,6 +190,9 @@ std::shared_ptr<PlayingSound> OpenALSoundManager::createPlayingSound(
 	auto sound = std::make_shared<PlayingSound>(source_id, std::move(lsnd), loop,
 			volume, pitch, start_time, pos_vel_opt, m_exts, bus);
 	sound->setFootstep(footstep);
+	// afx: the rain bed, which a storm front fades and steers
+	if (bus == afx::Bus::Outdoor && sound_name.find("rain") != std::string::npos)
+		sound->setRain(true);
 
 	prepareSound(*sound);
 	sound->play();
