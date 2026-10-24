@@ -386,7 +386,9 @@ void NodeVisuals::updateTextures(ContentFeatures &f, ITextureSource *tsrc,
 	// becomes alpha-blended so its clear pixels still produce fragments to
 	// refract through (purely visual, client-side).
 	const fx::Surface fx_surface = fx::resolveSurface(f);
-	if (fx_surface.kind == fx::SurfaceKind::Glass &&
+	// Water on a non-liquid node (from fx_materials.txt) needs the same: the
+	// surface shaders only work in the transparent pass, where the copy is bound.
+	if (fx_surface.kind != fx::SurfaceKind::None &&
 			drawtype != NDT_LIQUID && drawtype != NDT_FLOWINGLIQUID)
 		material_type = TILE_MATERIAL_ALPHA;
 

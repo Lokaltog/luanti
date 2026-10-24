@@ -41,6 +41,8 @@ CASES=(
 	"tuner|fx_open_tuner_on_start=true"
 	"mood_vibrant|fx_mood=vibrant fxscene_time=0.45"
 	"mood_dark|fx_mood=dark"
+	"testpack_emissive|texture_path=@ROOT@/util/fx/testpack fx_debug_view=2"
+	"testpack_render|texture_path=@ROOT@/util/fx/testpack"
 )
 if [ -n "${ONLY:-}" ]; then
 	mapfile -t CASES < <(printf '%s\n' "${CASES[@]}" | grep -E "^($ONLY)\|")
@@ -68,7 +70,7 @@ debug_log_level = info
 fx_auto_screenshot = $OUT/$name.png
 fx_auto_screenshot_delay = $WAIT
 CONF
-	for kv in $extra; do echo "${kv%%=*} = ${kv#*=}" >> "$CONF"; done
+	for kv in $extra; do kv=${kv//@ROOT@/$ROOT}; echo "${kv%%=*} = ${kv#*=}" >> "$CONF"; done
 	LOG=$WORK/debug.txt
 	rm -f "$OUT/$name.png"
 	timeout $((WAIT + 60)) "$ROOT/bin/luanti" --config "$CONF" --logfile "$LOG" \

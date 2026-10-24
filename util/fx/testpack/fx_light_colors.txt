@@ -1,0 +1,3 @@
+# <node> <#rrggbb> flicker=<0..4>
+# blue lamp re-coloured purple by the table: its light must turn purple
+fxscene:blue #a040ff flicker=0
