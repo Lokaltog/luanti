@@ -67,6 +67,9 @@ BASE_CONF = {
     "max_block_send_distance": "4",
     "max_block_generate_distance": "4",
     "block_send_optimize_distance": "2",
+    # GPU particles are random motion over every scene: off for the golden
+    # cases, the gpu_* cases turn them on (with a fixed seed in test mode)
+    "fx_use_gpu_particles": "false",
 }
 
 

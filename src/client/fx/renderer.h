@@ -24,6 +24,8 @@
 
 namespace video { class IRenderTarget; }
 
+namespace fx { class ParticleSystem; }
+
 namespace fx
 {
 
@@ -190,6 +192,7 @@ public:
 	std::unique_ptr<LightVolume> volume;
 	video::ITexture *neutral_material = nullptr;
 	std::unordered_set<int> surface_materials; // material types of fx surface shaders
+	std::unique_ptr<ParticleSystem> particles; // GPU particles (caps.gpu_particles)
 
 	// shader hot reload
 	float reload_timer = 0.f;

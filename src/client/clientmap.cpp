@@ -1195,6 +1195,10 @@ void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 		vertex_count += descriptor.draw(driver);
 	}
 
+	// fx: GPU particles over the transparent geometry (depth-tested)
+	if (is_transparent_pass)
+		fx::drawParticles(driver);
+
 	g_profiler->avg(prefix + "draw meshes [ms]", tt_draw.stop(true));
 
 	if (pass == scene::ESNRP_SOLID) {

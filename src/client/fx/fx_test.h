@@ -45,4 +45,8 @@ bool wantsRejoin();
 /// fx::init (each Game): a new join starts counting from zero.
 void onGameStart();
 
+/// Frames since the scene settled (meshing idle, light volume current), or
+/// -1 before that / outside test mode. GPU particles prewarm then.
+int framesSinceReady();
+
 } // namespace fx::test

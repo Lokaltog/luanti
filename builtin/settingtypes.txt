@@ -1171,6 +1171,36 @@ fx_glints (Glints) float 0.4 0.0 3.0
 #    the fx_ambience mod.
 fx_particles (Ambient particles) bool true
 
+#    Client-side GPU particles: sparks and embers over lava and fire, falling
+#    leaves that land and get kicked up again, rain with splashes, snow, leaf
+#    drips, dust motes, Nether ash and spores, fireflies. Simulated on the GPU
+#    (float render targets), colliding with the blocks around the camera.
+#    Needs fx_colored_light. With this on, leave the fx_ambience mod's
+#    replaced spawners off (its fx_ambience_legacy_particles setting).
+#    Changing it applies when you next join a world.
+fx_use_gpu_particles (GPU particles) bool true
+
+#    Most GPU particles alive at once. Applies when you next join a world.
+fx_particle_budget (GPU particle budget) int 100000 4096 1048576
+
+#    Overall amount of GPU particles.
+fx_particle_density (Particle density) float 1.0 0.0 4.0
+
+#    Sparks and embers over lava and fire.
+fx_particle_sparks (Sparks and embers) float 1.0 0.0 4.0
+
+#    Leaves falling from leaf blocks with air below.
+fx_particle_leaves (Falling leaves) float 1.0 0.0 8.0
+
+#    Rain drops, splashes, snowflakes and drips from leaves in rain.
+fx_particle_weather (Rain and snow particles) float 1.0 0.0 4.0
+
+#    Dust motes near lights and in daylight, Nether ash and spores, fireflies.
+fx_particle_motes (Dust, ash and fireflies) float 1.0 0.0 4.0
+
+#    How strongly the player stirs up particles when moving past them.
+fx_particle_wake (Player wake) float 1.0 0.0 4.0
+
 #    Heat shimmer above bright emissive sources (lava, fire).
 fx_heat_haze (Heat haze) float 0.5 0.0 3.0
 

@@ -157,6 +157,32 @@ CASES = [
     {"name": "particles_day", "mods": ["fx_ambience"],
      "settings": {**DAY, "fx_particles_density": "4", "fxscene_view": "particles"}, "golden": False},
 
+    # --- GPU particles (fx_use_gpu_particles; off in BASE_CONF) -----------------
+    # fx_test_particle_prewarm: simulate that many seconds before the first
+    # frame, so slow particles (leaves) are on screen at the capture
+    {"name": "gpu_particles", "doc": "GPU particles at night: sparks over lava, falling leaves, dust",
+     "settings": {"fx_use_gpu_particles": "true", "fxscene_view": "particles",
+                  "fx_particle_leaves": "8", "fx_particle_sparks": "2", "fx_test_particle_prewarm": "6"},
+     "golden": False,
+     "compare": [{"with": "gpu_particles_off", "min_mean": 0.2, "name": "particles are visible"}]},
+    {"name": "gpu_particles_off", "doc": "the same scene without GPU particles",
+     "settings": {"fxscene_view": "particles"}, "golden": False},
+    {"name": "gpu_rain", "doc": "GPU rain with splashes and leaf drips at noon, leaves falling",
+     "settings": {**DAY, "fx_use_gpu_particles": "true", "fxscene_view": "particles",
+                  "fx_test_hints": "fx1;dim=overworld;biome=Plains;weather=rain;flash=0;portal=none",
+                  "fx_particle_leaves": "8", "fx_test_particle_prewarm": "6"},
+     "golden": False},
+    {"name": "gpu_snow", "doc": "GPU snow drifting and settling",
+     "settings": {**DAY, "fx_use_gpu_particles": "true", "fxscene_view": "particles",
+                  "fx_test_hints": "fx1;dim=overworld;biome=IcePlains;weather=snow;flash=0;portal=none",
+                  "fx_test_particle_prewarm": "6"},
+     "golden": False},
+    {"name": "gpu_nether", "doc": "GPU particles in the Nether: cinders over the lava",
+     "settings": {"fx_use_gpu_particles": "true", "fxscene_view": "particles",
+                  "fx_test_hints": "fx1;dim=nether;biome=Nether;weather=none;flash=0;portal=none",
+                  "fx_particle_motes": "4", "fx_test_particle_prewarm": "4"},
+     "golden": False},
+
     # --- Mineclonia -------------------------------------------------------------
     {"name": "mcl_night", "world": "mcl", "doc": "real Mineclonia light sources at night",
      "timeout": 600,

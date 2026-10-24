@@ -30,6 +30,7 @@ struct Caps {
 	bool clouds = false;        // volumetric clouds replace the engine's
 	bool materials = false;     // needs array textures
 	bool array_textures = false;
+	bool gpu_particles = false; // particles.cpp: float targets, light volume
 
 	std::string why_disabled;   // for the log and the tuner
 };

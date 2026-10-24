@@ -204,6 +204,8 @@ void bindSceneCopy(video::SMaterial &material);
 void noteSurfaceShader(video::E_MATERIAL_TYPE type);
 void unbindSceneCopy(video::SMaterial &material);
 void bindLightVolume(video::SMaterial &material);
+/// End of ClientMap's transparent pass: draw the GPU particles (if any).
+void drawParticles(video::IVideoDriver *driver);
 
 /*
 	Meshgen (worker threads)

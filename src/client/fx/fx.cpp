@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include "renderer.h"
+#include "particles.h"
 #include "fx_test.h"
 
 #include "client/camera.h"
@@ -93,6 +94,7 @@ Renderer::Renderer(video::IVideoDriver *drv, IWritableShaderSource *src) :
 Renderer::~Renderer()
 {
 	g_settings->deregisterAllChangedCallbacks(this);
+	particles.reset();
 	volume.reset();
 	if (copy.rt)
 		driver->removeRenderTarget(copy.rt);
@@ -108,6 +110,12 @@ void attach(video::IVideoDriver *driver, IWritableShaderSource *shsrc)
 	delete s_renderer;
 	s_renderer = new Renderer(driver, shsrc);
 	registerShaderSetters(*s_renderer);
+	// after the constant setter: the particle shaders need the fx defines
+	if (s_renderer->caps.gpu_particles) {
+		s_renderer->particles = ParticleSystem::create(*s_renderer);
+		if (!s_renderer->particles)
+			s_renderer->caps.gpu_particles = false;
+	}
 	test::onGameStart();
 }
 
@@ -488,6 +496,8 @@ void updateFrame(Client *client, Camera *camera, Sky *sky, float dtime)
 	r->updateLights(client, camera);
 	r->uploadParams();
 	r->uploadFrame();
+	if (r->particles)
+		r->particles->update(client, camera, dtime);
 	r->pollHotReload(dtime);
 }
 

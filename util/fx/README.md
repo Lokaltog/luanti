@@ -71,10 +71,81 @@ rendering.
 | Mood tuner | Pause menu → Mood: a slider per tunable setting, "Save as mood". | |
 | Debug views | 1 light chroma, 2 emissive, 3 HDR luminance (false colour), 4 bloom input, 5 scene copy, 6 scene copy depth, 7 AO. | `fx_debug_view` |
 | Shader hot reload | Recompiles changed `*.glsl` in place; on a compile error the old program keeps running. | `fx_shader_hot_reload` |
-| Ambient particles | `util/fx/mods/fx_ambience` (server mod, enable per world): fireflies at night under the open sky, motes around lights, embers over lava and fire, drips, bubbles, falling leaves, Nether air by biome (crimson and warped spores, soul sand valley and basalt delta ash, cinders in the wastes). One grouped node scan per player per second. | `fx_particles`, `fx_particles_density`, `fx_particles_<kind>` |
+| GPU particles | Client-side, simulated on the GPU (see below): sparks and embers over lava and fire, leaves that tumble down, land, slide and get kicked up again, rain with splashes, snow that drifts and settles, drips off leaves in rain, dust motes, Nether ash and spores by biome, fireflies. All in the foliage's wind field and stirred by the player. | `fx_use_gpu_particles`, `fx_particle_budget`, `fx_particle_density`, `fx_particle_<kind>`, `fx_particle_wake` |
+| Ambient particles | `util/fx/mods/fx_ambience` (server mod, enable per world): drips under water, bubbles, breath fog in the cold (seen by everyone). With `fx_ambience_legacy_particles` (server setting, off by default) also the server-sent fireflies, motes, embers, falling leaves, Nether air and rain drips, for players without GPU particles. One grouped node scan per player per second. | `fx_particles`, `fx_particles_density`, `fx_particles_<kind>`, `fx_ambience_legacy_particles` |
 
 Texture slots (Irrlicht now has 8): 0 base, 1 crack, 2 emissive, 3 shadow map,
-4 and 5 scene copy, 6 light volume, 7 material array.
+4 and 5 scene copy, 6 light volume, 7 material array. Uniform block 4 is the
+GPU particles' FxParticles.
+
+## GPU particles
+
+`src/client/fx/particles.{h,cpp}`, `particle_emit.cpp`, shaders
+`fx_particles_{update,spawn,draw}` and `fx_common/particles.glsl`. Plain
+OpenGL 3.3 (GLSL 1.50): no compute, no SSBOs, no instancing.
+
+- **State** in RGBA32F textures, one texel per slot (512 wide):
+  S0 position (nodes relative to the camera offset) + age, S1 velocity +
+  kind, S2 life, seed, kind parameter, rest age; S3 tint, leaf layer, size,
+  glow. S0..S2 ping-pong between two sets; S3 is written at spawn only.
+  100 000 slots are 196 rows: 11 MB of state.
+- **Update**: one full-target fragment pass per frame (`fx_particles_update`,
+  three render targets): gravity, heat rise, drag towards the air velocity
+  (the foliage's wind field from `nodes_shader`, the same gusts; weaker where
+  the sky is closed), analytic curl turbulence, the player's wake (position
+  and velocity from LocalPlayer; air near a moving player moves with them).
+  Collision is block-exact against the **world texture**, axis by axis and
+  sub-stepped. Rain and drips turn into splashes where they land, leaves and
+  snow come to rest on top faces (leaves float on water), sparks bounce and
+  die in water. Resting leaves slide in gusts, fall off edges, get kicked up
+  by strong gusts and by the player running past, and fade after 10-20 s.
+- **Spawn**: the CPU decides what spawns where and draws one GL point per new
+  particle into the four targets (`fx_particles_spawn`). Slots come from a
+  ring that skips slots the CPU knows are still alive (it knows each
+  particle's longest life), so nothing is read back from the GPU; when the
+  budget is full, spawns are dropped.
+- **World texture**: an RGBA8 atlas laid out like the light volume's
+  (96×48×96 nodes): r solid, g open to the sky, b liquid (water / lava).
+  Rebuilt from the light volume's node snapshot at most 4× a second when it
+  changes; the same scan collects the emitters.
+- **Emitters** (game agnostic, by groups, drawtype and names): lava with air
+  above, fire, leaves with air below (`leaves` group, `waving = 2` or
+  allfaces named `*leaves*`), plants under the open sky (fireflies at
+  night), light sources (dust), plus the weather and world from fx_hints:
+  rain or snow (snow when it rains in a cold biome) in a disc around the
+  camera where the column is open to the sky, drips under canopies in rain,
+  Nether air by biome (as fx_ambience's table), daylight dust.
+- **Draw**: at the end of ClientMap's transparent pass, a static mesh of
+  16384 quads per chunk of slots (chunk index via `materialColor`); the
+  vertex shader fetches the state with `texelFetch` and builds streaks along
+  the velocity (sparks, rain, drips), tumbling or flat leaves (the real leaf
+  tile from an array texture, tinted by the node's palette colour), flat
+  splash rings, or camera-facing dots. Premultiplied alpha, depth-tested,
+  no depth writes; glowing kinds add HDR emission (cooling sparks: white-
+  yellow, orange, dull red) and bloom. Light: sky (open to the sky × the
+  day-night ratio, graded like the sun) and the light volume's coloured
+  artificial light. Soft edges against the opaque scene copy's depth.
+
+Settings: `fx_use_gpu_particles` (restart), `fx_particle_budget` (restart,
+default 100 000), `fx_particle_density`, `fx_particle_sparks`,
+`fx_particle_leaves`, `fx_particle_weather`, `fx_particle_motes`,
+`fx_particle_wake` (tuner sliders and mood keys). Needs `fx_colored_light`
+(the light volume's snapshot) and float render targets.
+
+**fx_ambience with GPU particles**: the client can't tell the server mod what
+it draws, so the mod's replaced spawners are off unless the server sets
+`fx_ambience_legacy_particles = true` (for players without GPU particles;
+those with them then see both). Drips under water, bubbles and breath fog
+stay: other players see breath fog.
+
+Limits: collision and emitters only inside the 96×48×96 window around the
+camera (beyond it particles fly free and fade out by 46 nodes); node boxes
+count as full blocks if walkable (slabs, stairs), plants and air as empty;
+sky light is "open to the sky" per column, not the engine's spread sunlight
+(dust indoors near windows is lit by the ambient term); particles drawn
+after the transparent pass are hidden behind glass and water surfaces, which
+write depth; no sorting between particles (leaves and snow are cut out or
+nearly opaque, the rest adds).
 
 ## Texture packs
 

@@ -102,6 +102,14 @@ public:
 		return m_have_result && m_uploaded_generation == m_generation && m_dirty.empty();
 	}
 
+	/// The main-thread node snapshot (content ids, x fastest, then y, then z;
+	/// CONTENT_IGNORE where unknown), its origin and generation. GPU
+	/// particles build their collision texture and emitters from it.
+	const std::vector<u16> &snapshot() const { return m_content; }
+	v3s16 snapshotOrigin() const { return m_origin; }
+	u32 snapshotGeneration() const { return m_generation; }
+	bool hasSnapshot() const { return m_have_content; }
+
 private:
 	using ContentInfo = LightCell;
 

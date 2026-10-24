@@ -48,10 +48,21 @@ Caps computeCaps(const Params &p, video::IVideoDriver *driver)
 	c.light_volume = c.colored_light; // the volume is how light gets its colour
 	c.array_textures = driver->queryFeature(video::EVDF_TEXTURE_2D_ARRAY);
 	c.materials = p.materials && c.array_textures;
+	// GPU particles: RGBA32F state targets, the light volume's node snapshot
+	// for collision and emitters, an array texture for leaf tiles. Multiple
+	// render targets are core in GL 3.3 (Irrlicht's render target uses
+	// GL_MAX_DRAW_BUFFERS; its EVDF_MULTIPLE_RENDER_TARGETS answer is a
+	// hard-coded false), so they aren't queried.
+	c.gpu_particles = p.use_gpu_particles && c.light_volume && float_rt &&
+			c.array_textures && driver->queryTextureFormat(video::ECF_A32B32G32R32F);
+	if (p.use_gpu_particles && !c.gpu_particles)
+		warningstream << "fx: GPU particles need fx_colored_light and float render "
+			"targets; off" << std::endl;
 
 	infostream << "fx: caps post=" << c.post << " hdr=" << c.hdr << " taa=" << c.taa
 		<< " ao=" << c.ao << " surfaces=" << c.surfaces << " colored_light=" << c.colored_light
-		<< " light_volume=" << c.light_volume << " materials=" << c.materials << std::endl;
+		<< " light_volume=" << c.light_volume << " materials=" << c.materials
+		<< " gpu_particles=" << c.gpu_particles << std::endl;
 	if (p.hdr_composite && !c.hdr)
 		warningstream << "fx: HDR composite needs post-processing and float render "
 			"targets; highlights will clip" << std::endl;

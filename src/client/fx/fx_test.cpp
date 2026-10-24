@@ -140,6 +140,13 @@ void beginFrame(f32 &dtime)
 		dtime = 1.f / 60.f;
 }
 
+int framesSinceReady()
+{
+	if (!active() || s.ready_frame < 0)
+		return -1;
+	return (int)(s.frame - s.ready_frame);
+}
+
 void noteMeshGenerated()
 {
 	s_mesh_counter.fetch_add(1, std::memory_order_relaxed);
