@@ -25,7 +25,7 @@ local function enabled()
 end
 
 local function density()
-	return tonumber(S:get("fx_particles_density") or "") or 1.0
+	return tonumber(S:get("fx_particles_density") or "") or 0.5
 end
 
 -- node name -> list of features it feeds, built once
