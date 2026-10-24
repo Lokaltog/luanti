@@ -13,6 +13,7 @@
 #include "client/texturesource.h"
 #include "util/numeric.h"
 #include "light.h"
+#include "fx/fx.h"
 #include "localplayer.h"
 #include "clientmap.h"
 #include "mapnode.h"
@@ -195,10 +196,19 @@ video::SColor Particle::updateLight(ClientEnvironment *env)
 		light = blend_light(env->getDayNightRatio(), LIGHT_SUN, 0);
 
 	u8 m_light = decode_light(light + m_p.glow);
-	return video::SColor(255,
+	video::SColor col(255,
 		m_light * m_base_color.getRed() / 255,
 		m_light * m_base_color.getGreen() / 255,
 		m_light * m_base_color.getBlue() / 255);
+	// fx: particles take the hue of the light around them (glowing ones
+	// keep their own colour)
+	if (pos_ok && m_p.glow == 0 && fx::caps().light_volume) {
+		const u8 night = n.getLight(LIGHTBANK_NIGHT,
+				env->getGameDef()->ndef()->getLightingFlags(n));
+		const float artificial = std::min(1.f, night / (float)std::max<u8>(light, 1));
+		col = fx::tintParticleLight(p, col, artificial);
+	}
+	return col;
 }
 
 void Particle::updateVertices(ClientEnvironment *env, video::SColor color)

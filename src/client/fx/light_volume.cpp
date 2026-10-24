@@ -276,9 +276,25 @@ void LightVolume::upload(video::IVideoDriver *driver)
 	for (u32 row = 0; row < ATLAS_H; row++)
 		std::memcpy((u8 *)dst + row * pitch, m_result.data() + (size_t)row * ATLAS_W * 4, ATLAS_W * 4);
 	m_texture->unlock();
+	m_uploaded.swap(m_result);
 	m_uploaded_origin = m_result_origin;
 	m_uploaded_generation = m_result_generation;
 	m_have_result = true;
+}
+
+bool LightVolume::sampleLevels(v3s16 node, u8 out[3]) const
+{
+	if (!m_have_result || m_uploaded.empty())
+		return false;
+	const v3s16 v = node - m_uploaded_origin;
+	if (v.X < 0 || v.Y < 0 || v.Z < 0 || v.X >= SX || v.Y >= SY || v.Z >= SZ)
+		return false;
+	const u32 tx = (v.Y % ATLAS_COLS) * SX + v.X, ty = (v.Y / ATLAS_COLS) * SZ + v.Z;
+	const video::SColor c(reinterpret_cast<const u32 *>(m_uploaded.data())[ty * ATLAS_W + tx]);
+	out[0] = c.getRed() / 17;
+	out[1] = c.getGreen() / 17;
+	out[2] = c.getBlue() / 17;
+	return true;
 }
 
 void LightVolume::update(Client *client, v3s16 camera_node, float dtime)

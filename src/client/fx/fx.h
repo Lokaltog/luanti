@@ -146,6 +146,12 @@ struct Surface {
 /// Glass/water surface of a node: pack table, then heuristics.
 Surface resolveSurface(const ContentFeatures &f);
 
+/// Coloured light on particles (drawn by the fixed-function path, so the
+/// colour is applied to their vertex colour): `color` is the particle's lit
+/// colour at `node`; `artificial` the share of its light that is artificial
+/// (0..1). Returns it tinted by the light volume. Main thread.
+video::SColor tintParticleLight(v3s16 node, video::SColor color, float artificial);
+
 /// Tint-aware emissive: record a tile's tint (palette or `color`) in its
 /// vertices so the shader can scale the glow by it. Vertex colour carries
 /// tint x light, inseparable in the dark, so the tint goes into the

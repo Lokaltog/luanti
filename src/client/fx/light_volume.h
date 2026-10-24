@@ -76,6 +76,10 @@ public:
 	bool valid() const { return m_texture != nullptr && m_have_result; }
 	/// Snapshot generation of the uploaded result (bumps on every change).
 	u32 generation() const { return m_uploaded_generation; }
+	/// Light level per channel (0..15) at a node, from the uploaded result.
+	/// False outside the window or before the first result. Main thread.
+	bool sampleLevels(v3s16 node, u8 out[3]) const;
+
 	/// The uploaded result matches the current snapshot (tests wait for it).
 	bool current() const
 	{
@@ -126,6 +130,7 @@ private:
 	float m_timer = 0.f;
 
 	video::ITexture *m_texture = nullptr;
+	std::vector<u8> m_uploaded;          // the atlas last uploaded (CPU copy)
 	v3s16 m_uploaded_origin;
 	u32 m_uploaded_generation = 0;
 	bool m_have_result = false;

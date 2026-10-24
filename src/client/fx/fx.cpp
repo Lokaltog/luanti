@@ -360,6 +360,28 @@ void noteBlockChanged(v3s16 blockpos)
 		r->volume->noteBlockChanged(blockpos);
 }
 
+video::SColor tintParticleLight(v3s16 node, video::SColor color, float artificial)
+{
+	Renderer *r = renderer();
+	u8 l[3];
+	if (!r || !r->volume || artificial <= 0.f || !r->volume->sampleLevels(node, l))
+		return color;
+	const float m = std::max({l[0], l[1], l[2]});
+	if (m <= 0.f)
+		return color;
+	// as fxArtificialLight: chroma at the luminance of white light
+	float c[3] = {l[0] / m, l[1] / m, l[2] / m};
+	const float lum = 0.2126f * c[0] + 0.7152f * c[1] + 0.0722f * c[2];
+	const float k = std::clamp(r->params.light_saturation * artificial, 0.f, 1.5f);
+	u32 out[3];
+	const u32 in[3] = {color.getRed(), color.getGreen(), color.getBlue()};
+	for (int i = 0; i < 3; i++) {
+		const float ch = std::min(c[i] * (1.f / std::max(lum, 0.05f)), 2.4f);
+		out[i] = (u32)std::clamp(in[i] * (1.f + (ch - 1.f) * k), 0.f, 255.f);
+	}
+	return video::SColor(color.getAlpha(), out[0], out[1], out[2]);
+}
+
 bool lightVolumeCurrent()
 {
 	Renderer *r = renderer();

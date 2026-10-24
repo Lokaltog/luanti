@@ -44,7 +44,7 @@ rendering.
 | AgX look | Power and saturation in AgX space, so coloured lights stay coloured. Neutral by default. | `fx_grade_saturation`, `fx_grade_contrast` |
 | Threshold bloom | Soft-knee luminance threshold, added on top. | `fx_bloom_threshold`, `fx_bloom_knee`, `fx_bloom_intensity` |
 | Emissive maps | `<texture>_e.png` companions in a texture array beside the base array (slot 2). Light-source tiles no unlit node uses, without a map, go through `[fx_autoemissive`. Entities glow only with an authored map. Tinted nodes (palette or `color`) glow in their tint, e.g. a wire's power level. | `fx_emissive_strength`, `fx_auto_emissive_threshold` |
-| Coloured light | A 64×48×64-node RGB flood fill around the camera: the engine's light rule per channel on a worker thread, so colour only reaches where light can travel. Stained glass multiplies what passes through it. The snapshot is updated incrementally (re-meshed blocks are re-read, moving the window reads only new slabs) and recomputed only when its generation changes. Map nodes and entities sample it; brightness still comes from the engine's scalar light. Beyond the window light is white. | `fx_colored_light`, `fx_light_saturation` |
+| Coloured light | A 64×48×64-node RGB flood fill around the camera: the engine's light rule per channel on a worker thread, so colour only reaches where light can travel. Stained glass multiplies what passes through it. The snapshot is updated incrementally (re-meshed blocks are re-read, moving the window reads only new slabs) and recomputed only when its generation changes. Map nodes, entities and particles sample it; brightness still comes from the engine's scalar light. Beyond the window light is white. | `fx_colored_light`, `fx_light_saturation` |
 | Flicker | Flickering sources (torches, fire, lava; pack table or name heuristic) go to the shader as a light list with per-light phase. | `fx_flicker`, `fx_light_gather_radius` |
 | Held light | A light-emitting item in hand lights and tints the camera's surroundings. | `fx_held_light` |
 | Sky light | Golden hour warmth and blue moonlight, graded by sun elevation. | `fx_sky_tint` |
@@ -140,7 +140,9 @@ with their unlit twins behind, ores, glass, water and lava).
   mid-bright pixels).
 - Glass behind glass refracts the opaque scene only.
 - Beyond the light volume window (about 32 nodes horizontally) artificial
-  light is white. Particles and the held item don't sample the volume.
+  light is white. The held item doesn't sample the volume; particles take
+  its hue per particle (nearest node), and glowing particles keep their own
+  colour.
 - Cave detection reads the sky light at the camera, so a deep, roofed-over
   build counts as a cave.
 - The flake and devenv have not been run on NixOS yet; run `nix flake lock` /
