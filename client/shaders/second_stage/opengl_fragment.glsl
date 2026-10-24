@@ -26,6 +26,27 @@ uniform float fxBloomIntensity;
 uniform float fxExposure;
 uniform float fxGradeSaturation;
 uniform float fxGradeContrast;
+// Mood from the afx fork's audio: x = tension 0..1, y = cozy 0..1, already
+// scaled by fx_mood_grade (zero when afx is off).
+uniform vec2 fxMood;
+
+// Display-referred mood grade. Dread drains colour, crushes the darks a
+// little, cools the shadows and closes in at the edges; home warms up.
+vec3 fxMoodGrade(vec3 c, vec2 uv)
+{
+	float t = fxMood.x, h = fxMood.y;
+	float luma = dot(c, vec3(0.2126, 0.7152, 0.0722));
+	c = mix(c, vec3(luma), 0.45 * t);
+	c = mix(c, c * c * (3.0 - 2.0 * c), 0.3 * t);     // a little more contrast
+	vec3 cool = vec3(0.86, 0.95, 1.10);
+	c *= mix(vec3(1.0), cool, t * (1.0 - luma));       // cool the shadows
+	vec2 d = uv - 0.5;
+	c *= 1.0 - 0.55 * t * smoothstep(0.25, 0.75, dot(d, d) * 2.2);
+	vec3 warm = vec3(1.07, 1.0, 0.88);
+	c *= mix(vec3(1.0), warm, 0.6 * h);
+	c = mix(c, vec3(luma) + 1.12 * (c - vec3(luma)), h); // a touch richer
+	return clamp(c, 0.0, 1.0);
+}
 
 // AgX, minimal fit by Benjamin Wrensch (MIT), sRGB primaries.
 // Input: linear scene-referred. Output: display-encoded (gamma) in [0,1].
@@ -289,6 +310,7 @@ void main(void)
 #endif
 #endif
 	color.rgb = applySaturation(color.rgb, saturation);
+	color.rgb = fxMoodGrade(color.rgb, uv);
 #ifdef ENABLE_DITHERING
 	color.rgb += screen_space_dither(gl_FragCoord.xy);
 #endif

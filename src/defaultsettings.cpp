@@ -345,6 +345,7 @@ void set_default_settings()
 	settings->setDefault("fx_exposure", "1.5");
 	settings->setDefault("fx_grade_saturation", "1.3");
 	settings->setDefault("fx_grade_contrast", "1.2");
+	settings->setDefault("fx_mood_grade", "1.0");
 	settings->setDefault("fx_bloom_threshold", "1.0");
 	settings->setDefault("fx_bloom_knee", "0.5");
 	settings->setDefault("fx_bloom_intensity", "0.6");

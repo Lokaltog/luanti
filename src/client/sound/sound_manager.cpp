@@ -159,6 +159,13 @@ std::shared_ptr<PlayingSound> OpenALSoundManager::createPlayingSound(
 		m_warned_positional_stereo_sounds.insert(sound_name);
 	}
 
+	// afx: long non-positional sounds nobody named are music, not something
+	// heard in the room: keep them dry. (Ambience beds carry afx_ prefixes or
+	// match the glob lists, so they keep their bus.)
+	if (bus == afx::Bus::Local && !pos_vel_opt.has_value() &&
+			lsnd->m_decode_info.length_seconds > MUSIC_MIN_SECONDS)
+		bus = afx::Bus::Dry;
+
 	ALuint source_id;
 	alGenSources(1, &source_id);
 	if (auto err = warn_if_al_error("createPlayingSound (alGenSources)"); err != AL_NO_ERROR) {

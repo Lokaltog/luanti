@@ -75,6 +75,45 @@ function afx_ambience.rain_at(pos)
 	return state == "thunder" and 1 or 0.7
 end
 
+-- Snowfall 0..1 here: snow weather, or rain falling as snow in a cold biome.
+function afx_ambience.snow_at(pos)
+	if forced_rain then return 0 end
+	local w = rawget(_G, "mcl_weather")
+	if not w then return 0 end
+	local state = w.state
+	if state == "snow" then return 1 end
+	if (state == "rain" or state == "thunder") and w.has_snow then
+		local ok, has = pcall(w.has_snow, pos)
+		if ok and has then return 1 end
+	end
+	return 0
+end
+
+--[[ What the game already plays: don't double it ]]
+
+-- Minetest Game's env_sounds and VoxeLibre's vl_env_sounds already put
+-- positional sounds on flowing water and lava.
+local GAME_HAS_WATER_LAVA = core.get_modpath("vl_env_sounds") ~= nil or
+		core.get_modpath("env_sounds") ~= nil
+
+-- Fires, lit furnaces and campfires, beehives: by name, since games differ
+-- in their groups. Filled once all mods are loaded.
+local HOT_NODES, BEE_NODES = {"group:fire"}, {}
+core.register_on_mods_loaded(function()
+	for name, def in pairs(core.registered_nodes) do
+		local lit = name:find("_active") or name:find("_lit") or name:find(":lit_")
+		if (name:find("furnace") or name:find("smoker") or name:find("campfire") or
+				name:find("blast_furnace")) and lit then
+			HOT_NODES[#HOT_NODES + 1] = name
+		elseif name:find("campfire") and not name:find("_off") and not name:find("unlit") and
+				(def.light_source or 0) > 0 then
+			HOT_NODES[#HOT_NODES + 1] = name
+		elseif name:find("bee_nest") or name:find("beehive") then
+			BEE_NODES[#BEE_NODES + 1] = name
+		end
+	end
+end)
+
 --[[ Exposure: is this air open to the sky? (sunlight 15 at noon) ]]
 
 local function sky_open(pos)
@@ -298,6 +337,7 @@ end
 
 -- What kind of place, 0..1 each, from the biome name and the nodes around.
 local function place(ppos)
+	-- (called above ground only: bed_targets returns early underground)
 	local p = {forest = 0, meadow = 0, jungle = 0, coast = 0, cold = 0, dry = 0, swamp = 0}
 	local bd = CFG.use_biomes and core.get_biome_data and core.get_biome_data(ppos)
 	local bname = bd and core.get_biome_name(bd.biome) or ""
@@ -314,33 +354,46 @@ local function place(ppos)
 	-- open water makes it a shore, flowers make it a meadow.
 	local leaves = count(ppos, 14, -4, 16, {"group:leaves"})
 	p.forest = math.max(p.forest, math.min(1, leaves / 120))
-	local water = count(ppos, 14, -6, 1, {"group:water"})
+	local water = 0
+	if ppos.y > -8 then
+		water = count(ppos, 14, -6, 1, {"group:water"})
+	end
 	p.coast = math.max(p.coast, math.min(1, (water - 40) / 300))
 	local flowers = count(ppos, 10, -3, 3, {"group:flower"})
 	p.meadow = math.max(p.meadow, math.min(1, flowers / 12))
 	return p
 end
 
-local function bed_targets(ppos, wanted, raining)
+local function bed_targets(ppos, wanted, raining, snowing)
 	local tod = core.get_timeofday()
 	local day = math.max(0, math.min(1, (0.32 - math.abs(tod - 0.5)) / 0.05))
 	local night = 1 - day
-	local p = place(ppos)
-	-- Deep underground nothing of this would be audible: free the voices
-	if ppos.y < -40 and not sky_open(vector.round(vector.offset(ppos, 0, 1.6, 0))) then
+	-- Where daylight never reaches, none of this would be audible: free the
+	-- voices (the engine would muffle them to nothing anyway)
+	local ear = vector.round(vector.offset(ppos, 0, 1.6, 0))
+	local dl = core.get_node_light(ear, 0.5)
+	if dl and dl <= 3 and not sky_open(ear) then
 		return
 	end
+	local p = place(ppos)
 	-- Higher and more exposed is windier; floating islands howl
 	local height = math.max(0, math.min(1, (ppos.y - 40) / 60))
-	local calm_birds = raining > 0 and 0 or 1
+	local calm_birds = (raining > 0 or snowing > 0) and 0 or 1
+	-- Snow hushes the world: a fresh blanket on the ground, or snow falling
+	local snow_cover = math.min(1, count(ppos, 8, -3, 1, {"group:snow_cover", "group:snow",
+		"group:snow_layer", "group:top_snow"}) / 60)
+	local hush = 1 - 0.55 * math.max(snowing, snow_cover)
 
-	wanted.b_wind = {sound = "afx_out_wind", gain = 0.35 * (1 - 0.6 * p.forest) + 0.2 * height, fade = 0.2}
-	wanted.b_howl = {sound = "afx_out_wind_howl", gain = 0.7 * height + 0.3 * p.cold, fade = 0.2}
-	wanted.b_trees = {sound = "afx_out_wind_trees", gain = 0.6 * p.forest, fade = 0.2}
+	wanted.b_wind = {sound = "afx_out_wind",
+		gain = hush * (0.35 * (1 - 0.6 * p.forest) + 0.2 * height), fade = 0.2}
+	wanted.b_howl = {sound = "afx_out_wind_howl",
+		gain = 0.7 * height + 0.3 * p.cold + 0.25 * snowing, fade = 0.2}
+	wanted.b_trees = {sound = "afx_out_wind_trees", gain = hush * 0.6 * p.forest, fade = 0.2}
 	wanted.b_birds = {sound = "afx_out_birds_far",
 		gain = day * calm_birds * (0.25 * p.meadow + 0.35 * p.forest) * (1 - height), fade = 0.15}
 	wanted.b_crickets = {sound = "afx_out_crickets",
-		gain = night * calm_birds * 0.45 * math.max(p.meadow, p.forest, p.dry), fade = 0.1}
+		gain = night * calm_birds * hush * 0.45 * math.max(p.meadow, p.forest, p.dry) *
+			(1 - p.cold), fade = 0.1}
 	wanted.b_frogs = {sound = "afx_out_frogs",
 		gain = night * 0.4 * math.max(p.swamp, p.coast * 0.5), fade = 0.1}
 	wanted.b_jungle = {sound = "afx_out_jungle", gain = 0.6 * p.jungle, fade = 0.2}
@@ -373,7 +426,7 @@ local function proximity_emitters(ppos, wanted)
 		end
 	end
 	for _, c in ipairs(nearest(clusters(flowing), ppos, 3)) do
-		if c.n >= 2 then
+		if c.n >= 2 and not GAME_HAS_WATER_LAVA then
 			wanted["rv" .. c.key] = {sound = "afx_river", pos = c.pos, gain = math.min(0.6, 0.1 + 0.04 * c.n)}
 		end
 	end
@@ -389,16 +442,8 @@ local function proximity_emitters(ppos, wanted)
 	end
 
 	-- Bees, fires, lit furnaces and campfires
-	local hot, bees = {}, {}
-	for _, p in ipairs(core.find_nodes_in_area(lo, hi, {"group:fire", "group:bee_nest",
-			"group:beehive", "group:furnace", "group:campfire"})) do
-		local name = core.get_node(p).name
-		if has(name, {"bee"}) then
-			bees[#bees + 1] = p
-		elseif not has(name, {"furnace"}) or has(name, {"active", "lit"}) then
-			hot[#hot + 1] = p
-		end
-	end
+	local hot = core.find_nodes_in_area(lo, hi, HOT_NODES)
+	local bees = #BEE_NODES > 0 and core.find_nodes_in_area(lo, hi, BEE_NODES) or {}
 	for _, c in ipairs(nearest(clusters(hot), ppos, 2)) do
 		wanted["fi" .. c.key] = {sound = "afx_fire", pos = c.pos, gain = math.min(0.6, 0.25 + 0.05 * c.n)}
 	end
@@ -486,11 +531,11 @@ core.register_globalstep(function(dtime)
 		if CFG.rain_surfaces and rain > 0 then
 			rain_emitters(ppos, rain, wanted)
 		end
-		if CFG.lava then
+		if CFG.lava and not GAME_HAS_WATER_LAVA then
 			lava_emitters(ppos, wanted)
 		end
 		if CFG.beds then
-			bed_targets(ppos, wanted, rain)
+			bed_targets(ppos, wanted, rain, afx_ambience.snow_at(ppos))
 		end
 		if CFG.proximity then
 			proximity_emitters(ppos, wanted)

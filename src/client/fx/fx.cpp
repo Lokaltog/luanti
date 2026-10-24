@@ -46,7 +46,7 @@ static Params s_params;
 
 static const char *const SETTING_NAMES[] = {
 	"fx_enable", "fx_hdr_composite", "fx_tonemapper", "fx_exposure",
-	"fx_grade_saturation", "fx_grade_contrast",
+	"fx_grade_saturation", "fx_grade_contrast", "fx_mood_grade",
 	"fx_bloom_threshold", "fx_bloom_knee", "fx_bloom_intensity",
 	"fx_emissive_strength", "fx_auto_emissive_threshold",
 	"fx_colored_light", "fx_light_saturation", "fx_light_gather_radius",
@@ -65,6 +65,7 @@ static void readParams()
 	p.exposure = s->getFloat("fx_exposure");
 	p.grade_saturation = s->getFloat("fx_grade_saturation");
 	p.grade_contrast = s->getFloat("fx_grade_contrast");
+	p.mood_grade = s->getFloat("fx_mood_grade");
 	p.bloom_threshold = s->getFloat("fx_bloom_threshold");
 	p.bloom_knee = s->getFloat("fx_bloom_knee");
 	p.bloom_intensity = s->getFloat("fx_bloom_intensity");
@@ -750,6 +751,14 @@ public:
 	}
 };
 
+static float s_mood[2] = {0.f, 0.f};
+
+void setMood(float tension, float cozy)
+{
+	s_mood[0] = tension;
+	s_mood[1] = cozy;
+}
+
 class FxUniformSetter : public IShaderUniformSetter
 {
 	CachedVertexShaderSetting<int> m_light_count{"fxLightCount"};
@@ -763,6 +772,7 @@ class FxUniformSetter : public IShaderUniformSetter
 	CachedPixelShaderSetting<float> m_exposure{"fxExposure"};
 	CachedPixelShaderSetting<float> m_grade_saturation{"fxGradeSaturation"};
 	CachedPixelShaderSetting<float> m_grade_contrast{"fxGradeContrast"};
+	CachedPixelShaderSetting<float, 2> m_mood{"fxMood"};
 	// M3
 	CachedPixelShaderSetting<float, 16> m_view_proj{"fxViewProj"};
 	CachedPixelShaderSetting<float, 16> m_inv_view_proj{"fxInvViewProj"};
@@ -805,6 +815,8 @@ public:
 			m_exposure.set(&p.exposure, services);
 			m_grade_saturation.set(&p.grade_saturation, services);
 			m_grade_contrast.set(&p.grade_contrast, services);
+			float mood[2] = {s_mood[0] * p.mood_grade, s_mood[1] * p.mood_grade};
+			m_mood.set(mood, services);
 		}
 		// shared by node surfaces and post passes
 		m_view_proj.set(s_cam.view_proj.pointer(), services);

@@ -4,7 +4,8 @@
 # acoustic state, with the afx_ambience content mod running.
 #
 #   util/afx/tour.sh <outdir> <scenario> [key=value ...]
-#   scenarios: hut_rain tunnel_wind forest cavern cliff
+#   scenarios: hut_rain tunnel_wind forest cavern cliff descent meadow beach sky_island
+#   voxelibre: a real-game tour (needs games/voxelibre, e.g. a VoxeLibre checkout)
 #   util/afx/tour.sh /tmp/afx cavern afx_enable=false     # A/B baseline
 #
 # Writes <outdir>/<scenario>.wav (from the scenario start), .mp3 and .log.
@@ -18,7 +19,12 @@ OUT=$(cd "$OUT" && pwd)
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-cp -r "$ROOT/util/afx/testworld" "$WORK/world"
+if [ "$SCEN" = voxelibre ]; then
+	cp -r "$ROOT/util/afx/vltest" "$WORK/world"
+	mkdir -p "$WORK/world/worldmods"
+else
+	cp -r "$ROOT/util/afx/testworld" "$WORK/world"
+fi
 cp -r "$ROOT/util/afx/mods/afx_ambience" "$WORK/world/worldmods/"
 
 cat > "$WORK/alsoft.conf" <<CONF
@@ -57,7 +63,7 @@ if [ "${USE_XVFB:-0}" = 1 ]; then
 fi
 
 LOG=$OUT/$SCEN.log
-ALSOFT_CONF="$WORK/alsoft.conf" timeout 300 "$ROOT/bin/luanti" --config "$CONF" \
+ALSOFT_CONF="$WORK/alsoft.conf" timeout ${TOUR_TIMEOUT:-300} "$ROOT/bin/luanti" --config "$CONF" \
 	--go --info --world "$WORK/world" --name tester --password "" >"$LOG" 2>&1 || true
 
 python3 "$ROOT/util/afx/cut_scenario.py" "$LOG" "$WORK/raw.wav" "$OUT/$SCEN.wav"

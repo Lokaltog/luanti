@@ -866,6 +866,10 @@ fx_grade_saturation (Grade saturation) float 1.3 0.0 2.0
 #    Contrast (power) of the AgX look.
 fx_grade_contrast (Grade contrast) float 1.2 0.5 2.0
 
+#    Let the environmental audio's mood (afx) grade the image: dread drains
+#    colour and closes in at the edges, home warms up. 0 = off.
+fx_mood_grade (Mood grade) float 1.0 0.0 2.0
+
 #    Linear luminance above which pixels bloom.
 fx_bloom_threshold (Bloom threshold) float 1.0 0.0 8.0
 

@@ -49,6 +49,7 @@ struct Params {
 	float exposure = 1.5f;         // fx_exposure
 	float grade_saturation = 1.3f; // fx_grade_saturation (AgX look)
 	float grade_contrast = 1.2f;   // fx_grade_contrast (AgX look power)
+	float mood_grade = 1.0f;       // fx_mood_grade (afx tension/cozy -> grade)
 	float bloom_threshold = 1.0f;  // fx_bloom_threshold (linear luminance)
 	float bloom_knee = 0.5f;       // fx_bloom_knee
 	float bloom_intensity = 0.6f;  // fx_bloom_intensity (additive)
@@ -179,6 +180,9 @@ const FrameLights &frameLights();
 
 std::unique_ptr<IShaderConstantSetter> createConstantSetter();
 std::unique_ptr<IShaderUniformSetterFactory> createUniformSetterFactory();
+
+/// Mood from the afx audio fork (tension, cozy in 0..1), applied as a grade.
+void setMood(float tension, float cozy);
 
 /*
 	Shader hot reload

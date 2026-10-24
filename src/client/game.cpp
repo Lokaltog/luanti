@@ -9,6 +9,7 @@
 #include "client/gameui.h"
 #include "client/fx/fx.h"
 #include "client/afx/afx.h"
+#include "client/afx/afx_mood.h"
 #include "client/inputhandler.h"
 #include "client/texturepaths.h"
 #include "client/keys.h"
@@ -3431,6 +3432,12 @@ void Game::updateFrame(ProfilerGraph *graph, RunStats *stats, f32 dtime,
 		fx: per-frame light list and shader hot reload
 	*/
 	fx::updateFrame(client, camera, dtime);
+	{
+		// afx mood drives the fx grade (zero when environmental audio is off)
+		const afx::Mood &m = afx::mood();
+		const bool on = afx::params().enabled && sound_manager;
+		fx::setMood(on ? m.tension : 0.f, on ? m.cozy : 0.f);
+	}
 	fx::pollShaderHotReload(shader_src, dtime);
 
 	/*

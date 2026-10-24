@@ -180,11 +180,20 @@ struct PathResult {
 };
 
 struct PathScratch {
-	std::vector<u16> dist;    // 2 layers
-	std::vector<u8> parent;   // 0 unvisited, 7 start, else bits 0-2: 1..6 came along
-	                          // NEIGHBORS[k-1], bit 3: predecessor's layer
-	std::vector<float> hf;
+	// One record per (voxel, layer). Valid only when stamp == the current
+	// search's generation, so nothing needs clearing between probes.
+	struct Node {
+		u32 stamp;
+		u16 dist;
+		u8 parent; // 7 start, else bits 0-2: came along NEIGHBORS[k-1], bit 3: prev layer
+		float hf;
+	};
+	std::vector<Node> nodes;
+	u32 gen = 0;
 	std::vector<std::vector<u32>> buckets;
+
+	Node &at(u32 i) { return nodes[i]; }
+	u16 dist(u32 i) const { return nodes[i].stamp == gen ? nodes[i].dist : 0xffff; }
 };
 
 } // namespace
@@ -225,9 +234,15 @@ static void findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear,
 
 	thread_local PathScratch s;
 	const u32 n = (u32)snap.cells.size();
-	s.dist.assign(2 * (size_t)n, 0xffff);
-	s.parent.assign(2 * (size_t)n, 0);
-	s.hf.assign(2 * (size_t)n, 0.f);
+	if (s.nodes.size() != 2 * (size_t)n) {
+		s.nodes.assign(2 * (size_t)n, PathScratch::Node{0, 0xffff, 0, 0.f});
+		s.gen = 0;
+	}
+	if (++s.gen == 0) { // wrapped: clear once every 4 billion probes
+		for (auto &nd : s.nodes)
+			nd.stamp = 0;
+		s.gen = 1;
+	}
 
 	int max_edge = 0;
 	for (const auto &m : MATERIALS)
@@ -239,8 +254,7 @@ static void findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear,
 
 	const int limit = PATH_LIMIT_NODES * COST_SCALE;
 	const u32 si = snap.index(start);
-	s.dist[si] = 0;
-	s.parent[si] = 7;
+	s.at(si) = {s.gen, 0, 7, 0.f};
 	s.buckets[0].push_back(si);
 	size_t pending = 1;
 	u32 pops = 0;
@@ -259,7 +273,7 @@ static void findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear,
 			u32 i = bucket.back();
 			bucket.pop_back();
 			pending--;
-			if (s.dist[i] != cost)
+			if (s.dist(i) != cost)
 				continue; // stale entry
 			if (++pops > PATH_POP_BUDGET) {
 				pending = 0;
@@ -284,11 +298,9 @@ static void findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear,
 				u32 ql = (layer == 1 || solid) ? 1 : 0;
 				u32 qi = qc + ql * n;
 				int nc = cost + (int)std::lround(pc * COST_SCALE);
-				if (nc > limit || nc >= s.dist[qi])
+				if (nc > limit || nc >= s.dist(qi))
 					continue;
-				s.dist[qi] = nc;
-				s.parent[qi] = (u8)((k + 1) | (layer << 3));
-				s.hf[qi] = s.hf[i] + hf;
+				s.at(qi) = {s.gen, (u16)nc, (u8)((k + 1) | (layer << 3)), s.at(i).hf + hf};
 				s.buckets[nc % nb].push_back(qi);
 				pending++;
 			}
@@ -301,17 +313,17 @@ static void findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear,
 			continue;
 		PathResult &res = layer == 0 ? open : wall;
 		res.found = true;
-		res.cost = s.dist[f] / (float)COST_SCALE;
-		res.hf_loss = s.hf[f];
+		res.cost = s.dist(f) / (float)COST_SCALE;
+		res.hf_loss = s.at(f).hf;
 
 		// Walk back to the ear. The direction sound arrives from is where the
 		// path is a few nodes out: the doorway rather than the sky.
 		std::vector<v3s16> path;
 		u32 i = f;
-		while (s.parent[i] != 7 && path.size() < 4096) {
+		while (s.at(i).parent != 7 && path.size() < 4096) {
 			v3s16 p = pos_of(i);
 			path.push_back(p);
-			const u8 par = s.parent[i];
+			const u8 par = s.at(i).parent;
 			v3s16 prev = p - NEIGHBORS[(par & 7) - 1];
 			i = snap.index(prev) + (u32)(par >> 3) * n;
 		}
