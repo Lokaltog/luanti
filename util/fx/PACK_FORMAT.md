@@ -114,8 +114,9 @@ order as texture lookups).
 - Detection without an entry: translucent, non-glowing liquids (a
   `liquidtype` other than `none`, liquid drawtype) are water. Translucent,
   non-glowing nodes with a liquid drawtype that are not liquids (Mineclonia's
-  ice) are glass. Glasslike drawtypes, and non-`normal` drawtypes named
-  `*glass*` without light, are glass. The pattern comes from the name: `fluted`/`reeded`,
+  ice) are glass. Glasslike drawtypes, and non-`normal` drawtypes without light that
+  are named `*glass*` or in group `glass` or `material_glass` (panes), are
+  glass. The pattern comes from the name: `fluted`/`reeded`,
   `frosted` or `ripple`.
 
 ### Diagnostics

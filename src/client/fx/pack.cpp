@@ -8,6 +8,7 @@
 #include "filesys.h"
 #include "log.h"
 #include "nodedef.h"
+#include "itemgroup.h"
 #include "util/string.h"
 #include <IImage.h>
 #include <algorithm>
@@ -525,8 +526,11 @@ Surface detectSurface(const ContentFeatures &f)
 		s.kind = SurfaceKind::Glass;
 	} else if (f.drawtype == NDT_GLASSLIKE || f.drawtype == NDT_GLASSLIKE_FRAMED ||
 			f.drawtype == NDT_GLASSLIKE_FRAMED_OPTIONAL ||
-			(f.name.find("glass") != std::string::npos && f.light_source == 0 &&
-			 f.drawtype != NDT_NORMAL)) {
+			((f.name.find("glass") != std::string::npos ||
+			  itemgroup_get(f.groups, "glass") > 0 ||
+			  itemgroup_get(f.groups, "material_glass") > 0) &&
+			 f.light_source == 0 && f.drawtype != NDT_NORMAL)) {
+		// Mineclonia's panes are nodeboxes named pane_*, in group material_glass
 		s.kind = SurfaceKind::Glass;
 	}
 	if (s.kind == SurfaceKind::Glass) {
