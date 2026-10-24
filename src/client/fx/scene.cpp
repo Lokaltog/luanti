@@ -150,6 +150,10 @@ void Renderer::uploadFrame()
 	b.world[1] = events.end;
 	b.world[2] = events.wet;
 	b.world[3] = events.storm;
+	b.weather[0] = events.snow_cover;
+	b.weather[1] = events.raining;
+	b.weather[2] = events.wind;
+	b.weather[3] = events.wind_angle;
 	driver->setUniformBufferData(UBO_FRAME, &b, sizeof(b));
 }
 

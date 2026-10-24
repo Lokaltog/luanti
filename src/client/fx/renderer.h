@@ -64,8 +64,9 @@ struct FrameBlock {
 	float water[4];             // surface height above the camera (scene space), -, -, -
 	float events[4];            // lightning flash, damage, low health, portal
 	float world[4];             // nether, end, wet (rain/storm), storm
+	float weather[4];           // snow cover, raining now, wind strength, wind angle
 };
-static_assert(sizeof(FrameBlock) == 3 * 64 + 9 * 16, "FxFrame std140 layout");
+static_assert(sizeof(FrameBlock) == 3 * 64 + 10 * 16, "FxFrame std140 layout");
 
 /// std140 mirror of FxLights.
 struct LightsBlock {
@@ -163,6 +164,7 @@ public:
 		float flash = 0.f, damage = 0.f, low_health = 0.f, portal = 0.f;
 		float nether = 0.f, end = 0.f, wet = 0.f, storm = 0.f;
 		float heat = 0.f; // Nether, near lava
+		float snow_cover = 0.f, raining = 0.f, wind = 0.5f, wind_angle = 0.7f;
 		int last_flash = -1;
 		s32 last_hp = -1;
 		float flash_age = 10.f;

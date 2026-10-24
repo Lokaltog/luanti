@@ -465,6 +465,7 @@ vec2 uv_repeat(vec2 v)
 
 #include "fx_common/surface.glsl"
 #include "fx_common/material.glsl"
+#include "fx_common/weather.glsl"
 
 void main(void)
 {
@@ -639,6 +640,9 @@ void main(void)
 	vec3 lin = fxToLinear(col.rgb);
 #ifdef FX_MAT_ACTIVE
 	lin = fxShadeMaterial(lin, base, uv);
+#endif
+#ifdef FX_WEATHER_ACTIVE
+	lin = fxWeatherSurface(lin, fxToLinear(base.rgb), fxSafeNormalize(vNormal));
 #endif
 	// emissive: an HDR multiplier, values above 1 bloom
 #if defined(FX_MAT_ACTIVE)

@@ -190,34 +190,6 @@ vec2 fxHeatHazeUV(vec2 uv, vec2 texel)
 	from the moods (nether.fx_fog_blur = ... in client/fx_moods/).
 */
 
-float fxHash13(vec3 p)
-{
-	p = fract(p * 0.1031);
-	p += dot(p, p.zyx + 31.32);
-	return fract((p.x + p.y) * p.z);
-}
-
-float fxNoise3(vec3 p)
-{
-	vec3 i = floor(p), f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	return mix(mix(mix(fxHash13(i), fxHash13(i + vec3(1, 0, 0)), f.x),
-	               mix(fxHash13(i + vec3(0, 1, 0)), fxHash13(i + vec3(1, 1, 0)), f.x), f.y),
-	           mix(mix(fxHash13(i + vec3(0, 0, 1)), fxHash13(i + vec3(1, 0, 1)), f.x),
-	               mix(fxHash13(i + vec3(0, 1, 1)), fxHash13(i + vec3(1, 1, 1)), f.x), f.y), f.z);
-}
-
-float fxFbm3(vec3 p)
-{
-	float v = 0.0, a = 0.5;
-	for (int i = 0; i < 5; i++) {
-		v += a * fxNoise3(p);
-		p = p * 2.03 + vec3(1.7, 9.2, 3.1);
-		a *= 0.5;
-	}
-	return v;
-}
-
 // Swirl while standing in a portal: the view twists around the centre and
 // breathes, more the longer you stand in it.
 vec2 fxPortalUV(vec2 uv)

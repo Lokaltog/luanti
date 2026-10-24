@@ -46,6 +46,7 @@ VARYING_ highp vec3 eyeVec;
 // Color of the light emitted by the light sources.
 const vec3 artificialLight = vec3(1.04, 1.04, 1.04);
 
+#include "fx_common/color.glsl"
 #include "fx_common/light.glsl"
 
 #ifdef ENABLE_DYNAMIC_SHADOWS
@@ -155,6 +156,9 @@ flat VARYING_ uint varFxEdges; // glass frame edges: U-, U+, V-, V+
 #ifdef FX_ENABLE
 flat VARYING_ vec3 varFxTint; // the tile's tint (display-encoded), white if none
 #endif
+#if defined(FX_ENABLE) && !defined(FX_SURFACE_ACTIVE)
+VARYING_ float fxSkyExp; // fx weather: sky light reaching the vertex, 0..1
+#endif
 
 void main(void)
 {
@@ -183,7 +187,22 @@ void main(void)
 
 	vec4 wpos = mWorld * inVertexPosition;
 // OpenGL < 4.3 does not support continued preprocessor lines
-#if (MATERIAL_TYPE == TILE_MATERIAL_WAVING_LEAVES && ENABLE_WAVING_LEAVES) || (MATERIAL_TYPE == TILE_MATERIAL_WAVING_PLANTS && ENABLE_WAVING_PLANTS)
+#if defined(FX_ENABLE) && defined(FX_ON_USE_WIND) && (MATERIAL_TYPE == TILE_MATERIAL_WAVING_LEAVES || MATERIAL_TYPE == TILE_MATERIAL_WAVING_PLANTS)
+#define FX_WIND 1
+	// fx wind: gusts travel across the land along the wind, on top of a
+	// little flutter; stronger in rain and storms. Works with the engine's
+	// waving settings off.
+	vec3 fxWp = (wpos.xyz + cameraOffset) / FX_BS;
+	vec2 fxWd = vec2(cos(fxWindAngle), sin(fxWindAngle));
+	float fxT = fxTime; // seconds (animationTimer wraps every 1000 s)
+	float fxGust = fxNoise3(vec3(dot(fxWp.xz, fxWd) * 0.08 - fxT * 0.35 * fxWindStrength,
+		dot(fxWp.xz, vec2(-fxWd.y, fxWd.x)) * 0.05, 0.0));
+	float fxSway = fxWindStrength * fxWind * (0.25 + fxGust * fxGust * 1.6);
+	float fxFlutter = sin(fxT * 2.7 + dot(fxWp, vec3(1.3, 0.7, 1.1))) * 0.25
+		+ sin(fxT * 5.3 + dot(fxWp, vec3(0.6, 1.4, 0.9))) * 0.12;
+	float disp_x = (fxWd.x * (fxSway + fxFlutter * 0.3 * fxWindStrength) + fxFlutter * 0.15) * 0.45;
+	float disp_z = (fxWd.y * (fxSway + fxFlutter * 0.3 * fxWindStrength) + fxFlutter * 0.15) * 0.45;
+#elif (MATERIAL_TYPE == TILE_MATERIAL_WAVING_LEAVES && ENABLE_WAVING_LEAVES) || (MATERIAL_TYPE == TILE_MATERIAL_WAVING_PLANTS && ENABLE_WAVING_PLANTS)
 	float disp_x;
 	float disp_z;
 
@@ -207,11 +226,15 @@ void main(void)
 	wavePos.z /= WATER_WAVE_LENGTH * 2.0;
 	wavePos.z += animationTimer * WATER_WAVE_SPEED * 10.0;
 	pos.y += (snoise(wavePos) - 1.0) * WATER_WAVE_HEIGHT * 5.0;
-#elif MATERIAL_TYPE == TILE_MATERIAL_WAVING_LEAVES && ENABLE_WAVING_LEAVES
+#elif MATERIAL_TYPE == TILE_MATERIAL_WAVING_LEAVES && (ENABLE_WAVING_LEAVES || defined(FX_WIND))
+#ifdef FX_WIND
+	disp_x *= 0.5; // leaves are blocks: they sway less than plants
+	disp_z *= 0.5;
+#endif
 	pos.x += disp_x;
 	pos.y += disp_z * 0.1;
 	pos.z += disp_z;
-#elif MATERIAL_TYPE == TILE_MATERIAL_WAVING_PLANTS && ENABLE_WAVING_PLANTS
+#elif MATERIAL_TYPE == TILE_MATERIAL_WAVING_PLANTS && (ENABLE_WAVING_PLANTS || defined(FX_WIND))
 	// bottom of plant doesn't wave
 	if (varTexCoord.y < 0.05) {
 		pos.x += disp_x;
@@ -234,6 +257,11 @@ void main(void)
 
 	// Calculate color.
 	vec4 color = inVertexColor;
+#if defined(FX_ENABLE) && !defined(FX_SURFACE_ACTIVE)
+	// rgb holds max(day, night)/2 (times the tile tint), alpha the share of
+	// sun: any sun share means day >= night, so rgb is the sky light
+	fxSkyExp = smoothstep(0.0, 0.05, color.a) * clamp(max(max(color.r, color.g), color.b) * 2.0, 0.0, 1.0);
+#endif
 	// Red, green and blue components are pre-multiplied with
 	// the brightness, so now we have to multiply these
 	// colors with the color of the incoming light.

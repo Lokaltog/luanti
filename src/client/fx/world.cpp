@@ -4,6 +4,7 @@
 
 #include "renderer.h"
 #include "light_volume.h"
+#include "fx_test.h"
 
 #include "client/client.h"
 #include "client/clientenvironment.h"
@@ -79,8 +80,10 @@ void Renderer::updateWorld(Client *client, float dtime)
 	if (!found && hints.present)
 		hints = Hints(); // the mod went away
 
+	// test mode: everything settles within a few frames
+	const float time_scale = test::active() ? 0.01f : 1.f;
 	auto approach = [&] (float &v, float target, float up_s, float down_s) {
-		const float s = target > v ? up_s : down_s;
+		const float s = (target > v ? up_s : down_s) * time_scale;
 		v += (target - v) * (1.f - std::exp(-dtime / std::max(s, 1e-3f)));
 	};
 	approach(events.nether, hints.dim == "nether" ? 1.f : 0.f, 1.5f, 1.5f);
@@ -88,6 +91,14 @@ void Renderer::updateWorld(Client *client, float dtime)
 	const bool wet = hints.weather == "rain" || hints.weather == "thunder";
 	approach(events.wet, wet ? 1.f : 0.f, 20.f, 40.f); // surfaces wet up, then dry
 	approach(events.storm, hints.weather == "thunder" ? 1.f : 0.f, 3.f, 6.f);
+	// snow settles over a minute and melts over two; rain right now (puddle
+	// ripples); wind grows with the weather and slowly turns
+	approach(events.snow_cover, hints.weather == "snow" ? 1.f : 0.f, 60.f, 120.f);
+	approach(events.raining, wet ? 1.f : 0.f, 1.f, 1.f);
+	const float wind = hints.weather == "thunder" ? 1.8f : wet ? 1.1f :
+			hints.weather == "snow" ? 0.8f : 0.5f;
+	approach(events.wind, wind, 6.f, 10.f);
+	events.wind_angle = std::fmod(events.wind_angle + dtime * 0.004f, 6.2831853f);
 	// a portal pulls in over the ~4 s it takes, and lets go quickly
 	approach(events.portal, hints.portal != "none" ? 1.f : 0.f, 2.5f, 0.4f);
 

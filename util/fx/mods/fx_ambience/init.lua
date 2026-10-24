@@ -296,7 +296,83 @@ function feature.nether_air(name, _, d, ppos)
 	})
 end
 
-local ORDER = {"fireflies", "motes", "embers", "drips", "bubbles", "leaves", "nether_air"}
+-- Rain dripping off leaves (Mineclonia weather)
+local function raining_at(pos)
+	if not (core.get_modpath("mcl_weather") and mcl_weather.state) then return false end
+	local st = mcl_weather.state
+	if st ~= "rain" and st ~= "thunder" then return false end
+	if mcl_weather.has_rain and not mcl_weather.has_rain(pos) then return false end
+	return true
+end
+
+function feature.rain_drips(name, list, d, ppos)
+	if not raining_at(ppos) then return end
+	local n = 0
+	for _, p in ipairs(pick(list, 24)) do
+		if is_air(v(p.x, p.y - 1, p.z)) then
+			spawn(name, {
+				amount = math.ceil(3 * d),
+				pos = {min = v(p.x - 0.45, p.y - 0.55, p.z - 0.45), max = v(p.x + 0.45, p.y - 0.55, p.z + 0.45)},
+				acc = v(0, -9.8, 0),
+				exptime = 1.5,
+				size = 0.8,
+				collisiondetection = true,
+				collision_removal = true,
+				texture = {name = "fx_ambience_drop.png^[multiply:#b0d0ff", blend = "screen"},
+			})
+			n = n + 1
+			if n >= 6 then break end
+		end
+	end
+end
+
+-- Breath fog in the cold: a small puff in front of the face every few
+-- seconds, seen by everyone
+local function cold_at(pos)
+	if core.get_modpath("mcl_weather") and mcl_weather.state == "snow" and mcl_weather.has_snow
+			and mcl_weather.has_snow(pos) then
+		return true
+	end
+	if core.get_modpath("mcl_biome_dispatch") and mcl_biome_dispatch.is_position_cold then
+		local ok, b = pcall(mcl_biome_dispatch.get_biome_name, pos)
+		if ok and b then
+			local ok2, cold = pcall(mcl_biome_dispatch.is_position_cold, b, pos)
+			return ok2 and cold
+		end
+	end
+	return false
+end
+
+local breath_t = {}
+function feature.breath(name, _, d, ppos)
+	breath_t[name] = (breath_t[name] or 0) + 1
+	if breath_t[name] % 3 ~= 0 or not cold_at(ppos) then return end
+	local player = core.get_player_by_name(name)
+	if not player then return end
+	local eye = vector.add(player:get_pos(), v(0, player:get_properties().eye_height or 1.5, 0))
+	local dir = player:get_look_dir()
+	local mouth = vector.add(eye, vector.multiply(dir, 0.35))
+	mouth.y = mouth.y - 0.12
+	core.add_particlespawner({
+		amount = 4,
+		time = 0.6,
+		pos = {min = vector.subtract(mouth, 0.03), max = vector.add(mouth, 0.03)},
+		vel = {min = vector.add(vector.multiply(dir, 0.4), v(-0.05, 0.02, -0.05)),
+			max = vector.add(vector.multiply(dir, 0.7), v(0.05, 0.12, 0.05))},
+		drag = v(1.5, 1.5, 1.5),
+		exptime = {min = 0.8, max = 1.4},
+		size = {min = 1.5, max = 2.5},
+		texture = {
+			name = "fx_ambience_dot.png^[multiply:#e8eef4",
+			alpha_tween = {0.35, 0},
+			scale_tween = {1, 3},
+			blend = "screen",
+		},
+	})
+end
+
+local ORDER = {"fireflies", "motes", "embers", "drips", "bubbles", "leaves", "nether_air",
+	"rain_drips", "breath"}
 
 local timer = 0
 local turn = 0
@@ -335,7 +411,9 @@ core.register_globalstep(function(dtime)
 
 	for _, f in ipairs(ORDER) do
 		local list = lists[f]
-		if (f == "nether_air" or (list and #list > 0)) and S:get_bool("fx_particles_" .. f, true) then
+		if f == "rain_drips" then list = lists["leaves"] end
+		local listless = f == "nether_air" or f == "breath"
+		if (listless or (list and #list > 0)) and S:get_bool("fx_particles_" .. f, true) then
 			local before = spawned
 			feature[f](name, list, d, pp)
 			if debug and spawned > before then

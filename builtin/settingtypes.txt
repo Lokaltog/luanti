@@ -892,6 +892,17 @@ fx_damage_fx (Damage and low health) float 1.0 0.0 2.0
 #    Lightning lights up the scene (needs fx_hints).
 fx_lightning_flash (Lightning flash) float 1.0 0.0 2.0
 
+#    How much rain darkens and glosses surfaces open to the sky, and how
+#    many puddles form (needs fx_hints).
+fx_wetness (Wet surfaces) float 1.0 0.0 2.0
+
+#    Snow settling on top faces while it snows (needs fx_hints).
+fx_snow (Snow cover) float 1.0 0.0 2.0
+
+#    Wind in foliage; it grows with rain and storms (needs fx_hints for the
+#    weather). Sways leaves and plants even with the engine's waving off.
+fx_wind (Wind) float 1.0 0.0 3.0
+
 #    Linear luminance above which pixels bloom.
 fx_bloom_threshold (Bloom threshold) float 1.0 0.0 8.0
 

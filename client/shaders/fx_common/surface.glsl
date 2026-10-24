@@ -241,7 +241,24 @@ vec3 fxSurface(vec3 lit, vec4 base, out vec3 transmitted)
 	float frame = smoothstep(0.85, 0.98, base.a);
 	float F = fresnel * fxReflection * (1.0 - frame);
 	transmitted = behind * tint * 0.96 * (1.0 - frame) * (1.0 - F);
-	return lit * frame * (1.0 - F) + refl * F;
+	vec3 own = lit * frame * (1.0 - F) + refl * F;
+	// frost creeping in from the pane's edges while snow lies (weather)
+	float cold = fxSnowCover * fxSnow;
+	if (cold > 0.001) {
+		vec3 a = abs(N);
+		vec3 U = a.x > 0.5 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+		vec3 W = a.z > 0.5 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+		vec3 wp = (worldPosition + cameraOffset) / FX_BS;
+		vec3 local = wp - floor(wp + 0.5);
+		float u = dot(local, U), v = dot(local, W);
+		float e = min(min(u + 0.5, 0.5 - u), min(v + 0.5, 0.5 - v));
+		float n = fxFbm3(wp * 6.0) - 0.5;
+		float m = smoothstep(0.16 * cold, 0.0, e + n * 0.06) * cold;
+		vec3 frost = vec3(0.85, 0.9, 1.0) * max(fxLuma(lit) * 1.2, 0.03);
+		own = mix(own, frost, m * 0.6);
+		transmitted *= 1.0 - m * 0.5;
+	}
+	return own;
 #endif
 }
 #endif

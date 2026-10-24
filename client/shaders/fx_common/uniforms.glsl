@@ -56,6 +56,14 @@
 #undef fxLightningFlash
 #define fxLightningFlash 0.0
 #endif
+#ifndef FX_ON_USE_WET
+#undef fxWetness
+#define fxWetness 0.0
+#endif
+#ifndef FX_ON_USE_SNOW
+#undef fxSnow
+#define fxSnow 0.0
+#endif
 #ifndef FX_ON_USE_DAMAGE_FX
 #undef fxDamageFx
 #define fxDamageFx 0.0
@@ -74,6 +82,7 @@ layout(std140) uniform FxFrame {
 	vec4 fxWater;
 	vec4 fxEvents;
 	vec4 fxWorld;
+	vec4 fxWeather;
 };
 #define fxEyePos fxEyeTime.xyz          // camera in scene space
 #define fxTime fxEyeTime.w              // seconds, wraps hourly
@@ -98,6 +107,10 @@ layout(std140) uniform FxFrame {
 #define fxEnd fxWorld.y                     // in the End, 0..1 smoothed
 #define fxWet fxWorld.z                     // rained on lately, 0..1
 #define fxStorm fxWorld.w                   // thunderstorm, 0..1
+#define fxSnowCover fxWeather.x             // snow settled on top faces, 0..1
+#define fxRaining fxWeather.y               // raining right now, 0..1
+#define fxWindStrength fxWeather.z          // ~0.5 calm .. 1.8 storm
+#define fxWindAngle fxWeather.w             // radians
 
 layout(std140) uniform FxLights {
 	vec4 fxLightPosRadius[FX_LIGHT_MAX];  // xyz scene space, w radius
