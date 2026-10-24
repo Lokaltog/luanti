@@ -959,6 +959,12 @@ fx_ambient_floor (Ambient floor) float 0.03 0.0 0.15
 #    Rim light on mobs, players and items, so they read against dark backgrounds.
 fx_rim_light (Rim light) float 0.35 0.0 1.0
 
+#    Leak-free coloured light: a client-side RGB flood fill around the camera,
+#    so colour only reaches where light can travel, and stained glass tints
+#    light passing through it. Requires: fx_colored_light. Changing it
+#    requires a restart.
+fx_light_volume (RGB light volume) bool true
+
 #    Mood preset: neutral, vibrant, cozy, dark, or one you saved from the
 #    in-game Mood tuner (pause menu). Selecting one sets the fx values above.
 fx_mood (Mood) string neutral

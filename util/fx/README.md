@@ -1,4 +1,4 @@
-# fx fork: mood renderer (M1 Light & glow, M2 Foundations, M3 Glass & water)
+# fx fork: mood renderer (M1 Light & glow, M2 Foundations, M3 Glass & water, M4 Light volume)
 
 A patch queue on top of upstream Luanti. Everything is client-only: no map, protocol or server changes. Every effect sits behind an `fx_*` setting (Settings → Mood Renderer).
 
@@ -28,6 +28,16 @@ A patch queue on top of upstream Luanti. Everything is client-only: no map, prot
 | Entity lighting | Mobs, players and items get the colored-light tint and a rim light | `fx_rim_light` |
 | Moods | `client/fx_moods/*.conf` (vibrant, cozy, dark, neutral) plus your own in `<user dir>/fx_moods/`. Plain keys are applied as settings when selected. `cave.*`, `night.*` and `underwater.*` keys are targets blended in over about 1.5 s. Cave detection uses the sky light reaching the camera. | `fx_mood` |
 | Mood tuner | Pause menu → Mood: sliders for every tunable `fx_*` value over the running world, plus "Save as mood". The same values are in Settings → Mood Renderer. | |
+
+## What M4 adds
+
+| Feature | How | Setting |
+| --- | --- | --- |
+| RGB light volume | A 64×48×64-node window around the camera. Node content IDs are snapshotted on the main thread (only when the block/mesh signature changes, or the camera moves 8 nodes). A worker thread runs the engine's light rule per RGB channel (−1 per step, opaque stops it) in 1–5 ms. The result is uploaded as a 2D atlas (Y slices, 8 per row) and sampled in the node vertex shader with manual trilinear filtering, half a node in front of each face. | `fx_light_volume` |
+| Leak-free hue | World-light hue comes from the volume, so colour only goes where light can travel. The T1 light list still supplies flicker and the held light. Outside the volume, it falls back to T1. | |
+| Stained glass tints light | Glass multiplies the light that passes through it by its texture's hue; saturation decides how strongly, so clear glass stays neutral | |
+
+Texture slots: Irrlicht now has 8. Slot 6 holds the volume and slot 7 is free (reserved for PACK_FORMAT v2 material maps).
 
 ## What M3 adds
 
@@ -98,7 +108,8 @@ The scripts behind these are `util/fx/abshot.sh` and `util/fx/smoketest.sh`. The
 - Glass behind glass refracts the opaque scene only, so the nearer pane doesn't see the farther one.
 - SSR runs before TAA's resolve but is not itself accumulated. Thin reflected details can still shimmer slightly.
 - Underwater detection uses the node at the camera. Caustics and shafts also apply to anything seen above the surface while submerged.
-- Hue can bleed through thin walls (T1 by design). The M4 RGB light volume fixes this.
+- Entities still use T1 hue: the light volume is only bound to map materials.
+- Beyond the volume window (about 32 nodes horizontally), hue falls back to T1.
 - `fx_debug_view`, `fx_colored_light` and `fx_hdr_composite` are shader defines. Change them and either restart or save a shader file with hot reload on.
 - The flake and devenv have not been run on NixOS yet. If `pkgs.luanti`'s recipe drifts from master's CMake options, adjust the flake's `cmakeFlags`.
 - Cave detection reads the sky light at the camera, so a deep, roofed-over build counts as a cave.

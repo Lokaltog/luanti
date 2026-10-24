@@ -228,9 +228,10 @@ const c8 *const ZWriteNames[] = {
 /** SMaterial might ignore some textures in most function, like assignment and comparison,
 	when SIrrlichtCreationParameters::MaxTextureUnits is set to a lower number.
 */
-// fx fork: 6 (was 4). Slots 4 and 5 carry the opaque scene color/depth copy
-// for refraction and reflections; GL3 and GLES3 guarantee at least 16 units.
-constexpr static u32 MATERIAL_MAX_TEXTURES = 6;
+// fx fork: 8 (was 4). 4/5: opaque scene colour/depth copy (refraction,
+// reflections), 6: RGB light volume, 7: reserved for material maps.
+// GL3 guarantees 16 units; the GLES2 driver asserts <= 8.
+constexpr static u32 MATERIAL_MAX_TEXTURES = 8;
 
 //! Struct for holding parameters for a material renderer
 // Note for implementors: Serialization is in CNullDriver

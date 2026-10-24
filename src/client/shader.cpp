@@ -282,6 +282,8 @@ class MainShaderUniformSetter : public IShaderUniformSetter
 	CachedPixelShaderSetting<SamplerLayer_t> m_texture3{"texture3"};
 	CachedPixelShaderSetting<SamplerLayer_t> m_texture4{"texture4"};
 	CachedPixelShaderSetting<SamplerLayer_t> m_texture5{"texture5"};
+	CachedPixelShaderSetting<SamplerLayer_t> m_texture6{"texture6"};
+	CachedPixelShaderSetting<SamplerLayer_t> m_texture7{"texture7"};
 
 	// common material variables passed to shader
 	video::SColor m_material_color;
@@ -333,6 +335,10 @@ public:
 		m_texture4.set(&tex_id, services);
 		tex_id = 5;
 		m_texture5.set(&tex_id, services);
+		tex_id = 6;
+		m_texture6.set(&tex_id, services);
+		tex_id = 7;
+		m_texture7.set(&tex_id, services);
 
 		video::SColorf colorf(m_material_color);
 		m_material_color_setting.set(colorf, services);

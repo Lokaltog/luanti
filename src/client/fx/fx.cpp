@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include "fx.h"
+#include "light_volume.h"
 
 #include "client/client.h"
 #include "client/camera.h"
@@ -58,7 +59,7 @@ static const char *const SETTING_NAMES[] = {
 	"fx_surfaces", "fx_refraction", "fx_ssr", "fx_reflection",
 	"fx_water_absorption", "fx_caustics", "fx_underwater_shafts",
 	"fx_taa", "fx_taa_blend", "fx_sharpen", "fx_ao", "fx_ao_strength", "fx_ao_radius",
-	"fx_sky_tint", "fx_ambient_floor", "fx_rim_light",
+	"fx_sky_tint", "fx_ambient_floor", "fx_rim_light", "fx_light_volume",
 };
 
 // Float settings that moods and the tuner may change, with slider ranges.
@@ -135,6 +136,7 @@ static void readParams()
 	p.sky_tint = s->getFloat("fx_sky_tint");
 	p.ambient_floor = s->getFloat("fx_ambient_floor");
 	p.rim_light = s->getFloat("fx_rim_light");
+	p.light_volume = s->getBool("fx_light_volume");
 	s_base = p;
 	s_params = p; // situational blend is re-applied next frame
 }
@@ -344,6 +346,7 @@ void init()
 
 void deinit()
 {
+	destroyLightVolume();
 	g_settings->deregisterAllChangedCallbacks(&s_params);
 }
 
@@ -808,6 +811,20 @@ void bindSceneCopy(video::SMaterial &material)
 	d.MagFilter = video::ETMAGF_NEAREST;
 }
 
+void bindLightVolume(video::SMaterial &material)
+{
+	if (!s_params.enabled || !s_params.light_volume)
+		return;
+	LightVolume *vol = lightVolume();
+	if (!vol->valid())
+		return;
+	auto &l = material.TextureLayers[TEXTURE_LAYER_LIGHT_VOLUME];
+	l.Texture = vol->texture();
+	l.TextureWrapU = l.TextureWrapV = video::ETC_CLAMP_TO_EDGE;
+	l.MinFilter = video::ETMINF_LINEAR_MIPMAP_NEAREST;
+	l.MagFilter = video::ETMAGF_LINEAR;
+}
+
 void unbindSceneCopy(video::SMaterial &material)
 {
 	material.TextureLayers[TEXTURE_LAYER_SCENE_COLOR].Texture = nullptr;
@@ -905,6 +922,7 @@ void updateFrame(Client *client, Camera *camera, float dtime)
 
 	const Params &prm = s_params;
 	s_frame.count = 0;
+	s_frame.held_index = -1;
 	if (!prm.enabled)
 		return;
 
@@ -956,6 +974,9 @@ void updateFrame(Client *client, Camera *camera, float dtime)
 		s_cam.frame++;
 		s_cam.frames_since_reset++;
 	}
+
+	if (prm.light_volume && prm.colored_light)
+		lightVolume()->update(client, floatToInt(cam_pos, BS), dtime);
 
 	if (!prm.colored_light)
 		return;
@@ -1041,6 +1062,7 @@ void updateFrame(Client *client, Camera *camera, float dtime)
 				const ContentFeatures &f = ndef->get(id);
 				if (f.light_source > 0 && f.visuals) {
 					v3f pos = cam_pos + camera->getDirection() * (0.6f * BS);
+					s_frame.held_index = s_frame.count;
 					push(pos, (f.light_source + 1.5f) * BS * 0.85f, f.visuals->fx_light.color,
 							std::max(f.visuals->fx_light.flicker, 0.6f), 0.5f, 1.f);
 				}
@@ -1077,6 +1099,8 @@ public:
 		constants["FX_DEBUG_VIEW"] = p.debug_view;
 		// the pipeline skips TAA with MSAA/SSAA; keep the define in sync
 		const std::string aa = g_settings->get("antialiasing");
+		if (p.light_volume && p.colored_light)
+			constants["FX_LIGHT_VOLUME"] = 1;
 		if (p.taa && aa != "fsaa" && aa != "ssaa")
 			constants["FX_TAA"] = 1;
 		if (p.ao)
@@ -1096,6 +1120,9 @@ class FxUniformSetter : public IShaderUniformSetter
 	CachedVertexShaderSetting<float, MAX_LIGHTS * 4, false> m_light_color{"fxLightColorSeed"};
 	CachedVertexShaderSetting<float> m_light_saturation{"fxLightSaturation"};
 	CachedVertexShaderSetting<float> m_ambient_floor{"fxAmbientFloor"};
+	CachedVertexShaderSetting<float, 3> m_volume_origin{"fxVolumeOrigin"};
+	CachedVertexShaderSetting<float> m_volume_valid{"fxVolumeValid"};
+	CachedVertexShaderSetting<int> m_held_index{"fxHeldLightIndex"};
 	CachedPixelShaderSetting<float> m_rim_light{"fxRimLight"};
 	CachedPixelShaderSetting<float> m_emissive_strength{"fxEmissiveStrength"};
 	CachedPixelShaderSetting<float> m_bloom_threshold{"fxBloomThreshold"};
@@ -1145,6 +1172,20 @@ public:
 			m_light_color.set(fl.color_seed, services);
 			m_light_saturation.set(&p.light_saturation, services);
 			m_ambient_floor.set(&p.ambient_floor, services);
+			{
+				LightVolume *vol = p.light_volume ? lightVolume() : nullptr;
+				float valid = vol && vol->valid() ? 1.f : 0.f;
+				// scene-space centre of voxel (0,0,0)
+				const v3s16 o = vol ? vol->origin() : v3s16();
+				float origin[3] = {
+					(float)(o.X - s_cam.offset.X) * BS,
+					(float)(o.Y - s_cam.offset.Y) * BS,
+					(float)(o.Z - s_cam.offset.Z) * BS};
+				m_volume_origin.set(origin, services);
+				m_volume_valid.set(&valid, services);
+				int held = fl.held_index;
+				m_held_index.set(&held, services);
+			}
 			m_rim_light.set(&p.rim_light, services);
 			m_emissive_strength.set(&p.emissive_strength, services);
 			float valid = s_copy.valid ? 1.f : 0.f;

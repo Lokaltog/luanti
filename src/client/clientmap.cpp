@@ -1175,6 +1175,7 @@ void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 
 			if (is_transparent_pass)
 				fx::bindSceneCopy(material);
+			fx::bindLightVolume(material);
 
 			driver->setMaterial(material);
 			++material_swaps;

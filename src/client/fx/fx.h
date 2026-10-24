@@ -41,6 +41,8 @@ constexpr int TEXTURE_LAYER_FX = 2;
 /// Opaque scene copy for refraction and reflections (transparent pass only).
 constexpr int TEXTURE_LAYER_SCENE_COLOR = 4;
 constexpr int TEXTURE_LAYER_SCENE_DEPTH = 5;
+/// RGB light volume atlas (M4), all node materials.
+constexpr int TEXTURE_LAYER_LIGHT_VOLUME = 6;
 
 /// Settings, refreshed from g_settings whenever an fx_* setting changes.
 struct Params {
@@ -80,6 +82,8 @@ struct Params {
 	float sky_tint = 0.8f;         // fx_sky_tint (golden hour, blue moonlight)
 	float ambient_floor = 0.03f;   // fx_ambient_floor
 	float rim_light = 0.35f;       // fx_rim_light (entities)
+	// M4
+	bool light_volume = true;      // fx_light_volume (needs restart: shader define)
 };
 
 /*
@@ -178,6 +182,9 @@ void captureScene(video::IVideoDriver *driver);
 void bindSceneCopy(video::SMaterial &material);
 void unbindSceneCopy(video::SMaterial &material);
 
+/// Bind the RGB light volume (slot 6) to a node material, both passes.
+void bindLightVolume(video::SMaterial &material);
+
 /*
 	Per-block light lists, built during meshgen (worker thread, read-only after)
 */
@@ -205,6 +212,7 @@ void collectBlockLights(const MeshMakeData *data, std::vector<Light> &out);
 
 struct FrameLights {
 	int count = 0;
+	int held_index = -1;     // index of the held-item light, or -1
 	float pos_radius[MAX_LIGHTS * 4] = {}; // xyz in BS units relative to camera offset, w = radius (BS)
 	float color_seed[MAX_LIGHTS * 4] = {};  // rgb linear-ish color, a = flicker seed + amplitude packed
 };

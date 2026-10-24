@@ -106,6 +106,26 @@ core.register_on_joinplayer(function(player)
 				end
 			end
 		end
+		-- M4 leak test: a full-height wall between the lava and a white light.
+		-- With T1 the white side picks up orange through the wall; with the
+		-- light volume it must stay white.
+		for z = 2, 10 do
+			for y = 0, 7 do
+				core.set_node({x = -6, y = y, z = z}, {name = "basenodes:stone"})
+			end
+		end
+		core.set_node({x = -4, y = 0, z = 4}, {name = "testnodes:light14"})
+		-- M4 tint test: light14 boxed in red stained glass; the floor around
+		-- it should turn red
+		for x = 8, 10 do
+			for y = 0, 2 do
+				for z = 5, 7 do
+					if not (x == 9 and y == 0 and z == 6) then
+						core.set_node({x = x, y = y, z = z}, {name = "fxscene:glass_red"})
+					end
+				end
+			end
+		end
 		-- dropped items (entities) in front of the lamps: colored tint + rim light
 		for i, x in ipairs({-6, 0, 6}) do
 			core.add_item({x = x, y = 0.5, z = 11}, "basenodes:cobble")
