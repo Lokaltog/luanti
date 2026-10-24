@@ -37,7 +37,23 @@ A patch queue on top of upstream Luanti. Everything is client-only: no map, prot
 | Leak-free hue | World-light hue comes from the volume, so colour only goes where light can travel. The T1 light list still supplies flicker and the held light. Outside the volume, it falls back to T1. | |
 | Stained glass tints light | Glass multiplies the light that passes through it by its texture's hue; saturation decides how strongly, so clear glass stays neutral | |
 
-Texture slots: Irrlicht now has 8. Slot 6 holds the volume and slot 7 is free (reserved for PACK_FORMAT v2 material maps).
+Texture slots: Irrlicht now has 8. Slot 6 holds the volume and slot 7 the M5 material array.
+
+## What M5 adds
+
+| Feature | How | Setting |
+| --- | --- | --- |
+| Material maps | LabPBR 1.3 companions from the texture pack: `<stem>_n.png` (R,G normal in DirectX/Y-down convention, B AO, A height) and `<stem>_s.png` (R smoothness, G F0 with 230+ meaning metal, A emission with 255 = none). Interleaved per array bunch into one texture array on slot 7 (layer 2i = `_n`, 2i+1 = `_s`). Bunches without maps share a neutral array. Array-texture tiles only (the default renderer path). | `fx_materials` (restart) |
+| Normals | Cotangent frame from screen-space derivatives, so rotated and world-aligned tiles work with no mesher change. Relief is relative to the flat face (sun direction by day, the viewer's side for artificial light), so average brightness stays put. | `fx_normal_strength` |
+| Parallax | 12 texel-stepped steps on the height channel, faded out by 16 nodes | `fx_parallax_depth` |
+| Specular | GGX sun highlight, gated by vertex light as a shadow proxy; metals take F0 from albedo (LabPBR's predefined metals 230–254 are all treated as "albedo") | `fx_specular` |
+| Glints | Hashed per texel and reflection direction on metals and smooth texels | `fx_glints` |
+| Contact shadows | 10-step screen-space march towards the sun in the AO pass (G channel), applied in the TAA resolve to mid-bright pixels | `fx_contact_shadows` (needs `fx_ao`) |
+| Heat haze | Composite UV distortion masked by warm bloom sampled below the pixel, so it shimmers above lava and fire, not the sun | `fx_heat_haze` |
+| Entity emissive | Entity textures with an authored `<stem>_e.png` glow (eyes, lanterns). No auto-emissive on entities. | |
+| Ambient particles | `util/fx/mods/fx_ambience` (enable per world; `fx-install-mods` links it): fireflies at night over plants and leaves, motes around lights, embers over lava and fire, drips under water, bubbles near the player, falling leaves using the leaf node's texture. Game agnostic (node groups). | `fx_particles`, `fx_particles_density`, `fx_particles_<kind>` |
+
+jsl2mcl's fx step derives `_n` (luminance height, Sobel normals, cavity AO) and `_s` (smoothness and F0 from name tags, ore specks) for terrain textures. Authored maps are never overwritten. Override per texture with `[fx."<texture>.png"] material = "<tag>"|"none"` in overrides.toml.
 
 ## What M3 adds
 
@@ -97,6 +113,7 @@ Nodes not listed get their color from their texture's glowing pixels.
 | `fx-smoke` / `devenv test` | Headless smoke test on Mesa: every config and debug view must render without shader or GL errors |
 | `fx-shots [dir]` | A/B screenshots of the test scene on your GPU |
 | `fx-renderdoc` | Frame capture |
+| `fx-install-mods` | Symlinks `util/fx/mods/*` (fx_ambience) into `~/.minetest/mods` |
 
 The scripts behind these are `util/fx/abshot.sh` and `util/fx/smoketest.sh`. The client saves screenshots itself (`fx_auto_screenshot = <path>`, after `fx_auto_screenshot_delay` seconds) and quits, so they work on X11, Wayland or headless.
 
@@ -105,10 +122,14 @@ The scripts behind these are `util/fx/abshot.sh` and `util/fx/smoketest.sh`. The
 ## Known gaps
 
 - Inventory and wield item meshes have no emissive maps.
+- Material maps need the array-texture path. Animated tiles (vertical frame strips) get no maps; jsl2mcl skips non-square textures.
+- Contact shadows don't know whether the sun reaches a pixel, so in daylit caves a floor next to a wall can pick up a faint sun-direction shadow. It's limited to 0.7 nodes and to mid-bright pixels.
+- Particle alpha blending showed dark fringes on llvmpipe, so fx_ambience textures are premultiplied and drawn with add/screen blending.
 - Glass behind glass refracts the opaque scene only, so the nearer pane doesn't see the farther one.
 - SSR runs before TAA's resolve but is not itself accumulated. Thin reflected details can still shimmer slightly.
 - Underwater detection uses the node at the camera. Caustics and shafts also apply to anything seen above the surface while submerged.
 - Entities still use T1 hue: the light volume is only bound to map materials.
+- Heat haze and contact shadows are only verified on llvmpipe stills; their motion and strength need a look on a real GPU.
 - Beyond the volume window (about 32 nodes horizontally), hue falls back to T1.
 - `fx_debug_view`, `fx_colored_light` and `fx_hdr_composite` are shader defines. Change them and either restart or save a shader file with hot reload on.
 - The flake and devenv have not been run on NixOS yet. If `pkgs.luanti`'s recipe drifts from master's CMake options, adjust the flake's `cmakeFlags`.

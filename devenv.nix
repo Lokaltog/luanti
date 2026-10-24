@@ -76,6 +76,8 @@ in
       fx-shots [dir]      A/B screenshots of the test scene on your GPU
       fx-renderdoc        run under RenderDoc for a frame capture
       fx-jsl-test         run the jsl2mcl fx step tests (needs JSL2MCL_DIR)
+      fx-install-mods     symlink util/fx/mods/* (fx_ambience particles) into
+                          ~/.minetest/mods; then enable them per world
       EOF
     '';
 
@@ -84,6 +86,7 @@ in
       cmake -B build -G Ninja \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DRUN_IN_PLACE=TRUE \
+        -DUSE_SDL3=ON \
         -DBUILD_SERVER=FALSE \
         -DBUILD_UNITTESTS=FALSE \
         -DENABLE_GETTEXT=FALSE \
@@ -165,6 +168,15 @@ in
     fx-jsl-test.exec = ''
       [ -n "''${JSL2MCL_DIR:-}" ] || { echo "set JSL2MCL_DIR to your jsl2mcl checkout"; exit 1; }
       python "$JSL2MCL_DIR/tests/test_fx.py" "$DEVENV_ROOT/games/devtest"
+    '';
+
+    fx-install-mods.exec = ''
+      mkdir -p "$LUANTI_MOD_PATH"
+      for m in "$DEVENV_ROOT"/util/fx/mods/*/; do
+        name=$(basename "$m")
+        ln -sfn "$m" "$LUANTI_MOD_PATH/$name"
+        echo "linked $name -> $LUANTI_MOD_PATH/$name (enable it in the world's mod list)"
+      done
     '';
   };
 

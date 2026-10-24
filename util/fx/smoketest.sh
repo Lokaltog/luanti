@@ -45,6 +45,10 @@ CASES=(
 	"mood_dark|fx_mood=dark"
 	"testpack_emissive|texture_path=@ROOT@/util/fx/testpack fx_debug_view=2"
 	"testpack_render|texture_path=@ROOT@/util/fx/testpack"
+	"particles|fx_particles_density=4 fxscene_view=particles fx_particles_debug=true"
+	"underwater_m5off|fxscene_time=0.45 fxscene_view=underwater fx_heat_haze=0 fx_contact_shadows=0 fx_materials=false"
+	"particles_upstream|fx_enable=false fx_particles_density=4 fxscene_view=particles"
+	"particles_day|fx_particles_density=4 fxscene_time=0.45 fxscene_view=particles"
 	"materials|texture_path=@ROOT@/util/fx/testpack fxscene_time=0.35 fxscene_view=materials"
 	"materials_off|texture_path=@ROOT@/util/fx/testpack fxscene_time=0.35 fxscene_view=materials fx_materials=false"
 )
@@ -58,6 +62,7 @@ for case in "${CASES[@]}"; do
 	extra=${case#*|}
 	WORK=$(mktemp -d)
 	cp -r "$ROOT/util/fx/testworld" "$WORK/world"
+	cp -r "$ROOT/util/fx/mods/fx_ambience" "$WORK/world/worldmods/"
 	CONF=$WORK/client.conf
 	cat > "$CONF" <<CONF
 video_driver = opengl3
@@ -80,7 +85,7 @@ CONF
 	timeout $((WAIT + 60)) "$ROOT/bin/luanti" --config "$CONF" --logfile "$LOG" \
 		--go --world "$WORK/world" --name tester --password "" >"$WORK/stdout.txt" 2>&1
 	code=$?
-	errors=$(grep -hE "failed to compile|Failed to compile|GL_INVALID|FBO incomplete|ShaderException|Segmentation|terminate called" \
+	errors=$(grep -hE "failed to compile|Failed to compile|GL_INVALID|FBO incomplete|ShaderException|Segmentation|terminate called|Runtime error|ModError" \
 		"$LOG" "$WORK/stdout.txt" 2>/dev/null | sort -u | head -5)
 	[ -f "$OUT/$name.png" ] || errors+=$'\n(no screenshot, exit code '"$code"')'
 	if [ -n "$errors" ]; then
@@ -89,6 +94,7 @@ CONF
 		cp "$LOG" "$OUT/$name.log" 2>/dev/null
 		fail=1
 	else
+		[ -n "${KEEP_LOGS:-}" ] && cp "$LOG" "$OUT/$name.log"
 		echo "ok   $name"
 	fi
 	rm -rf "$WORK"

@@ -10,6 +10,10 @@ uniform float fxProjScale;    // pixels per scene unit at view distance 1
 uniform float fxAoRadius;     // nodes
 uniform float fxAoStrength;
 uniform float fxFrame;
+uniform mat4 fxViewProj;      // scene space -> clip (jittered, matches the depth buffer)
+uniform vec3 fxSunDir;        // towards the sun
+uniform float fxSunStrength;
+uniform float fxContactShadows;
 
 CENTROID_ VARYING_ mediump vec2 varTexCoord;
 
@@ -83,5 +87,40 @@ void main(void)
 	}
 	float ao = clamp(1.0 - occ / 16.0 * 3.0 * fxAoStrength, 0.0, 1.0);
 	ao = ao * ao; // contact shadows read darker, open areas stay at 1
-	gl_FragColor = vec4(vec3(ao), 1.0);
+
+	// Contact shadows: a short screen-space march towards the sun. Catches
+	// the small detail (grass at a wall, an item on the floor, the step of a
+	// slab) that vertex lighting and the shadow map miss. Stored in G.
+	float cs = 1.0;
+	// faces turned away from the sun are already unlit by it: marching from
+	// them would hit their own block and darken them
+	float sun = smoothstep(0.1, 0.45, fxSunStrength) * step(0.05, fxSunDir.y)
+		* smoothstep(0.05, 0.25, dot(n, fxSunDir))
+		* (1.0 - smoothstep(32.0 * FX_BS, 48.0 * FX_BS, dist));
+	if (fxContactShadows > 0.0 && sun > 0.0) {
+		vec3 start = p + n * (0.03 * FX_BS + dist * 0.002);
+		const int STEPS = 10;
+		float len = 0.7 * FX_BS;
+		float hit = 0.0;
+		for (int i = 1; i <= STEPS; i++) {
+			float t = (float(i) - ign) / float(STEPS);
+			vec3 q = start + fxSunDir * len * t;
+			vec4 c = fxViewProj * vec4(q, 1.0);
+			if (c.w <= 0.0)
+				break;
+			vec2 suv = c.xy / c.w * 0.5 + 0.5;
+			if (any(lessThan(suv, vec2(0.0))) || any(greaterThan(suv, vec2(1.0))))
+				break;
+			vec3 b = scenePos(suv);
+			float dq = length(q - fxEyePos), db = length(b - fxEyePos);
+			// occluder in front of the ray point, but not by much (thickness)
+			float thick = 0.6 * FX_BS + dq * 0.01;
+			if (db < dq - 0.02 * FX_BS - dq * 0.0015 && db > dq - thick) {
+				hit = 1.0 - t * 0.5; // closer occluders shadow harder
+				break;
+			}
+		}
+		cs = 1.0 - hit * fxContactShadows * sun * 0.6;
+	}
+	gl_FragColor = vec4(ao, cs, ao, 1.0);
 }

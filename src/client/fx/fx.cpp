@@ -360,8 +360,13 @@ void init()
 		s_mood = m;
 }
 
+// Owned by the world's TextureSource; forgotten in deinit() so the next world
+// (a new TextureSource, possibly at the same address) never sees a freed one.
+static video::ITexture *s_neutral_mat = nullptr;
+
 void deinit()
 {
+	s_neutral_mat = nullptr;
 	destroyLightVolume();
 	g_settings->deregisterAllChangedCallbacks(&s_params);
 }
@@ -436,6 +441,25 @@ std::string companionName(ITextureSource *tsrc, const std::string &image,
 	return result + suffix;
 }
 
+video::ITexture *entityEmissive(ITextureSource *tsrc, const std::string &image)
+{
+	if (!s_params.enabled || image.empty())
+		return nullptr;
+	// cheap pre-check, so entities without authored maps skip the rewrite
+	bool any = false;
+	for (auto it = std::sregex_iterator(image.begin(), image.end(), s_atom_re);
+			it != std::sregex_iterator(); ++it) {
+		if (tsrc->isKnownSourceImage((*it)[1].str() + "_e.png")) {
+			any = true;
+			break;
+		}
+	}
+	if (!any)
+		return nullptr;
+	return tsrc->getTextureForMesh(companionName(tsrc, image, false,
+			tsrc->getTextureDimensions(image)));
+}
+
 bool materialLayers(ITextureSource *tsrc, const std::string &image,
 		core::dimension2du size, std::string &normal, std::string &specular)
 {
@@ -466,13 +490,9 @@ bool materialLayers(ITextureSource *tsrc, const std::string &image,
 
 video::ITexture *neutralMaterialTexture(ITextureSource *tsrc)
 {
-	static video::ITexture *tex = nullptr;
-	static ITextureSource *owner = nullptr;
-	if (!tex || owner != tsrc) {
-		tex = tsrc->addArrayTexture({"[fill:1x1:#8080ffff", "[fill:1x1:#000000ff"});
-		owner = tsrc;
-	}
-	return tex;
+	if (!s_neutral_mat)
+		s_neutral_mat = tsrc->addArrayTexture({"[fill:1x1:#8080ffff", "[fill:1x1:#000000ff"});
+	return s_neutral_mat;
 }
 
 void applyAutoEmissive(video::IImage *image, float threshold)

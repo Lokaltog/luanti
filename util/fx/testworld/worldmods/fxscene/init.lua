@@ -42,6 +42,17 @@ for _, name in ipairs({"gold_ore", "gold_block"}) do
 	})
 end
 
+-- entity with an authored emissive companion (fxscene_mob_e.png in the test pack)
+core.register_entity("fxscene:mob", {
+	initial_properties = {
+		visual = "cube",
+		textures = {"fxscene_mob.png", "fxscene_mob.png", "fxscene_mob.png",
+			"fxscene_mob.png", "fxscene_mob.png", "fxscene_mob.png"},
+		physical = false,
+		visual_size = {x = 0.8, y = 0.8, z = 0.8},
+	},
+})
+
 -- fxscene_time: time of day 0..1 (default midnight)
 -- fxscene_view: "room" (default) or "underwater"
 core.register_on_joinplayer(function(player)
@@ -139,6 +150,7 @@ core.register_on_joinplayer(function(player)
 		for i, x in ipairs({-6, 0, 6}) do
 			core.add_item({x = x, y = 0.5, z = 11}, "basenodes:cobble")
 		end
+		core.add_entity({x = 3, y = 0.4, z = 9}, "fxscene:mob")
 		-- M5: a row of material samples, only in "materials" view
 		local samples = {"basenodes:stone", "basenodes:cobble", "fxscene:gold_ore",
 			"fxscene:gold_block", "basenodes:ice"}
@@ -146,6 +158,15 @@ core.register_on_joinplayer(function(player)
 			for y = 0, 1 do
 				core.set_node({x = -5 + (i - 1) * 2, y = y, z = 2}, {name = name})
 				core.set_node({x = -4 + (i - 1) * 2, y = y, z = 2}, {name = name})
+			end
+		end
+		-- fx_ambience test props, only in "particles" view
+		if core.settings:get("fxscene_view") == "particles" then
+			for x = -3, -1 do
+				core.set_node({x = x, y = -1, z = 4}, {name = "basenodes:lava_source"})
+			end
+			for x = 1, 3 do
+				core.set_node({x = x, y = 3, z = 5}, {name = "basenodes:leaves"})
 			end
 		end
 		if core.settings:get("fxscene_view") == "materials" then

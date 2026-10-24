@@ -1,0 +1,5 @@
+#    Ambient particles master switch (shared with the fx renderer).
+fx_particles (Ambient particles) bool true
+
+#    Multiplier for how many ambient particles spawn.
+fx_particles_density (Ambient particle density) float 1.0 0.0 4.0

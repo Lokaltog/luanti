@@ -40,10 +40,12 @@ vec3 sampleCurrent(vec2 uv)
 {
 	vec3 c = texture2D(currentTex, uv).rgb;
 #ifdef FX_AO
-	float ao = texture2D(aoTex, uv).r;
+	vec2 aocs = texture2D(aoTex, uv).rg;
 	// emissive and sunlit-bright pixels keep their light
 	float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
-	c *= mix(ao, 1.0, smoothstep(0.9, 3.0, lum));
+	c *= mix(aocs.r, 1.0, smoothstep(0.9, 3.0, lum));
+	// contact shadows only matter where the sun lights the pixel
+	c *= mix(1.0, aocs.g, smoothstep(0.1, 0.4, lum) * (1.0 - smoothstep(2.0, 4.0, lum)));
 #endif
 	return c;
 }

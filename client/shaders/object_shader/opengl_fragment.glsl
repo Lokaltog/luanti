@@ -55,6 +55,9 @@ VARYING_ float vIDiff;
 // fx: rim light so mobs and players read against dark backgrounds
 uniform vec3 cameraPosition;
 uniform float fxRimLight;
+uniform float fxEmissiveStrength;
+#define fxEmissiveTex texture2
+uniform sampler2D fxEmissiveTex; // authored _e companion, unbound (black) if none
 #ifdef FX_COLORED_LIGHT
 VARYING_ vec3 fxChroma;
 #endif
@@ -470,6 +473,14 @@ void main(void)
 	// For high clarity (light fog) we tint the fog color.
 	// For this to not make the fog color artificially dark we need to normalize using the
 	// fog color's brightest value. We then blend our base color with this to make the fog.
+#ifdef FX_ENABLE
+	{
+		vec3 fxE = texture2D(fxEmissiveTex, uv).rgb;
+		vec3 lin = pow(max(col.rgb, vec3(0.0)), vec3(2.2));
+		lin += pow(fxE, vec3(2.2)) * fxEmissiveStrength;
+		col.rgb = pow(lin, vec3(1.0 / 2.2));
+	}
+#endif
 	col = mix(fogColor * pow(fogColor / fogColorMax, vec4(2.0 * clarity)), col, clarity);
 #ifdef FX_ENABLE
 	if (fxRimLight > 0.0 && length(vNormal) > 0.0) {

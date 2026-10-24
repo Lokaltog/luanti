@@ -3,6 +3,7 @@
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "content_cao.h"
+#include "fx/fx.h"
 #include <IBillboardSceneNode.h>
 #include <ICameraSceneNode.h>
 #include <IMeshManipulator.h>
@@ -161,6 +162,8 @@ static bool setMaterialTextureAndFilters(video::SMaterial &material,
 		return false;
 
 	material.setTexture(0, texture);
+	// fx: authored emissive companion (glowing eyes, lanterns, ...)
+	material.setTexture(2, fx::entityEmissive(tsrc, texturestring));
 
 	// don't filter low-res textures, makes them look blurry
 	const core::dimension2d<u32> &size = texture->getOriginalSize();

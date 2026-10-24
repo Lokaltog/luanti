@@ -113,7 +113,7 @@ vec3 fxShadeMaterial(vec3 col, vec4 base, vec2 uv)
 
 	float smoothness = sm.r;
 	if (smoothness > 0.0) {
-		float rough = max((1.0 - smoothness) * (1.0 - smoothness), 0.02);
+		float rough = max((1.0 - smoothness) * (1.0 - smoothness), 0.045);
 		bool metal = sm.g * 255.0 >= 229.5;
 		vec3 F0 = metal ? base.rgb : vec3(sm.g);
 		vec3 H = normalize(L + V);
@@ -127,7 +127,9 @@ vec3 fxShadeMaterial(vec3 col, vec4 base, vec2 uv)
 		vec3 spec = D * F * G / (4.0 * NdV * max(NdL, 1e-3)) * NdL;
 		// only where the sun actually reaches (vertex light as a proxy for shadow)
 		float lit = clamp(dot(varColor.rgb, vec3(0.333)) * 2.0, 0.0, 1.0);
-		col += spec * dayLight * day * lit * fxSpecular;
+		// bounded: this is still added before the HDR encode, and an unbounded
+		// GGX peak overflows the fp16 bloom chain (see the review plan)
+		col += min(spec * dayLight * day * lit * fxSpecular, vec3(4.0));
 
 		// glints: smooth or metal texels sparkle as the view direction changes
 		if (fxGlints > 0.0 && (metal || smoothness > 0.6)) {

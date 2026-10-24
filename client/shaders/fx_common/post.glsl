@@ -147,3 +147,31 @@ vec3 fxFalseColor(float lum)
 	return clamp(vec3(4.0 * s - 2.0, 2.0 - abs(4.0 * s - 2.0), 2.0 - 4.0 * s), 0.0, 1.0);
 }
 #endif
+
+#if defined(FX_ENABLE) && defined(FX_HDR_COMPOSITE)
+// Heat haze: shimmer above strongly blooming sources (lava, fire). The bloom
+// buffer is the mask, sampled a little below the pixel so the shimmer rises
+// above the source instead of sitting on it.
+uniform float fxHeatHaze;
+#ifndef FX_SURFACES
+uniform float fxTime;
+#endif
+
+vec2 fxHeatHazeUV(vec2 uv, vec2 texel)
+{
+	if (fxHeatHaze <= 0.0)
+		return uv;
+	vec3 b = texture2D(bloom, uv - vec2(0.0, 0.035)).rgb
+		+ texture2D(bloom, uv - vec2(0.0, 0.08)).rgb * 0.6;
+	// warm sources only: lava and fire are red-heavy, the sun and white lamps are not
+	float warm = clamp((b.r - b.b) * 1.5, 0.0, 1.0);
+	float mask = smoothstep(0.15, 0.9, dot(b, vec3(0.3, 0.5, 0.2))) * warm;
+	if (mask <= 0.001)
+		return uv;
+	float t = fxTime;
+	vec2 p = uv / texel;
+	vec2 off = vec2(sin(p.y * 0.11 + t * 5.0 + sin(p.x * 0.05 + t)) ,
+		cos(p.x * 0.09 - t * 4.0 + sin(p.y * 0.07)));
+	return uv + off * texel * 2.5 * mask * fxHeatHaze;
+}
+#endif

@@ -104,6 +104,9 @@ vec3 screen_space_dither(highp vec2 frag_coord) {
 void main(void)
 {
 	vec2 uv = varTexCoord.st;
+#if defined(FX_ENABLE) && defined(FX_HDR_COMPOSITE)
+	uv = fxHeatHazeUV(uv, texelSize0);
+#endif
 #ifdef ENABLE_SSAA
 	vec4 color = vec4(0.);
 	for (float dx = 1.; dx < SSAA_SCALE; dx += 2.)
@@ -125,9 +128,11 @@ void main(void)
 	}
 #if defined(FX_AO) && !defined(FX_TAA)
 	{
-		float ao = texture2D(fxAoTex, uv).r;
+		vec2 aocs = texture2D(fxAoTex, uv).rg;
+		float ao = aocs.r;
 		float lum = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
 		color.rgb *= mix(ao, 1.0, smoothstep(0.9, 3.0, lum));
+		color.rgb *= mix(1.0, aocs.g, smoothstep(0.1, 0.4, lum) * (1.0 - smoothstep(2.0, 4.0, lum)));
 #if defined(FX_DEBUG_VIEW) && FX_DEBUG_VIEW == 7
 		gl_FragColor = vec4(vec3(ao), 1.0);
 		return;

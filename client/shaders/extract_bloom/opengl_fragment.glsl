@@ -52,5 +52,5 @@ void main(void)
 #endif
 #endif
 
-	gl_FragColor = vec4(color, 1.0); // force full alpha to avoid holes in the image.
+	gl_FragColor = vec4(min(color, vec3(60000.0)), 1.0); // force full alpha to avoid holes in the image. fx: clamp below fp16 max so one hot pixel cannot become Inf
 }

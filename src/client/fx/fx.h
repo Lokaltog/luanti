@@ -134,6 +134,10 @@ void deinit();
 std::string companionName(ITextureSource *tsrc, const std::string &image,
 		bool auto_emissive, core::dimension2du size = {0, 0});
 
+/// Emissive companion for an entity (object) texture, or null when none of
+/// its atoms has an authored `_e.png` (entities never get auto-emissive).
+video::ITexture *entityEmissive(ITextureSource *tsrc, const std::string &image);
+
 /// Material maps (M5, PACK_FORMAT v2 item 5, LabPBR layout) for the base atom
 /// of `image`: `<stem>_n.png` and `<stem>_s.png`, each resized to `size`,
 /// neutral fills where missing. Returns false if neither map is authored.
