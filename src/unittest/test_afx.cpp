@@ -51,6 +51,8 @@ public:
 	void testBuriedSilent();
 	void testKnock();
 	void testWeather();
+	void testSkybridge();
+	void testShortTunnel();
 };
 
 static TestAfx g_test_instance;
@@ -78,6 +80,8 @@ void TestAfx::runTests(IGameDef *gamedef)
 	TEST(testBuriedSilent);
 	TEST(testKnock);
 	TEST(testWeather);
+	TEST(testSkybridge);
+	TEST(testShortTunnel);
 }
 
 void TestAfx::testOpenField()
@@ -118,9 +122,10 @@ void TestAfx::testDoor()
 		return w.probe(v3f(0, 1.6f, 0));
 	};
 	Acoustics gap = hutWith(0), closed = hutWith(1), swung = hutWith(2);
-	UASSERT(gap.outdoor_gain > 0.2f);
+	// a doorway is a small window on the outdoors: clearly there, well down
+	UASSERT(gap.outdoor_gain > 0.05f && gap.outdoor_gain < 0.3f);
 	UASSERT(gap.outdoor_dir.Z < -0.7f);
-	UASSERT(swung.outdoor_gain > 0.2f);
+	UASSERT(swung.outdoor_gain > 0.05f);
 	UASSERT(closed.outdoor_gain < 0.01f);
 	// a door is the thin spot of the wall
 	UASSERT(closed.outdoor_wall > 0.04f);
@@ -638,4 +643,34 @@ void TestAfx::testWeather()
 	Mix wet;
 	carryWeather(wet, v3f(30, 0, 0), rain);
 	UASSERT(wet.air_absorption > 3.f && wet.direct_gain < 1.f);
+}
+
+void TestAfx::testShortTunnel()
+{
+	// Two nodes into rock, a 1x2 mouth to open air: near, but a small window
+	World w = openField();
+	w.fill({-32, 0, -32}, {31, 20, 31}, Material::Stone);
+	w.fill({0, 0, 0}, {0, 1, 3}, Material::Air);      // tunnel along +z, out at z=3
+	w.fill({-32, 0, 4}, {31, 20, 31}, Material::Air);  // open land beyond
+	w.markSky();
+	const Acoustics a = w.probe(v3f(0, 1.5f, 1));
+	UASSERT(a.outdoor_path < 4.f);
+	UASSERT(a.outdoor_gain < 0.35f);
+	UASSERT(a.outdoor_gain > 0.03f);
+	UASSERT(a.outdoor_hf < 0.8f);
+}
+
+void TestAfx::testSkybridge()
+{
+	// A 3-wide plank bridge high in the air, nothing else around: no reverb
+	World w;
+	w.fill({-32, 0, -1}, {31, 0, 1}, Material::Wood);
+	w.markSky();
+	const Acoustics a = w.probe(v3f(0, 1.6f, 0));
+	UASSERT(a.wet < 0.04f);
+	UASSERT(a.decay < 0.6f);
+	// while a meadow keeps its faint long tail
+	const Acoustics m = openField().probe(v3f(0, 1.6f, 0));
+	UASSERT(m.wet > 0.1f);
+	UASSERT(m.decay > 1.2f);
 }

@@ -458,6 +458,7 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 	float sum_abs = 0, hit_abs = 0, hit_hf = 0, glass = 0;
 	float hit_d = 0;
 	float natural = 0;
+	float far_hits = 0; // hits beyond arm's reach: terrain that makes a tail
 	std::vector<float> hit_dists;
 	v3f pan;
 	float pan_w = 0;
@@ -472,6 +473,8 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 			sum_abs += mp.absorption;
 			hit_abs += mp.absorption;
 			hit_hf += mp.hf;
+			if (d > 3.f)
+				far_hits += 1;
 			if (r.mat == Material::Stone || r.mat == Material::Earth ||
 					r.mat == Material::Snow || r.mat == Material::Lava || r.mat == Material::Water)
 				natural += 1;
@@ -513,8 +516,12 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 	// corridor a cathedral. Escaped rays only add absorption.
 	const float v_over_s = (hits > 0 ? hit_d / hits : max_t) / 3.f;
 	const float rt60 = 0.161f * v_over_s / avg_abs;
-	// Open land still has a faint, long, distant tail (the "big outdoors").
-	const float open_tail = lerpf(1.8f, 0.f, out.enclosure);
+	// Open land still has a faint, long, distant tail (the "big outdoors"):
+	// the ground and hills further off. Standing on a skybridge or a pillar
+	// there is none: the planks right under you are a reflection, not a tail.
+	// A meadow has about a quarter of the rays hitting ground beyond 3 nodes.
+	const float terrain = clampf((far_hits / n) / 0.22f, 0.f, 1.f);
+	const float open_tail = lerpf(1.8f * terrain, 0.f, out.enclosure);
 	out.decay = clampf(std::max(rt60, open_tail), 0.1f, std::max(0.2f, params.max_decay));
 	out.decay_hf_ratio = clampf(0.3f + 0.9f * hit_hf_avg, 0.1f, 2.f);
 	out.density = clampf(1.2f - out.mean_free_path / 20.f, 0.3f, 1.f);
@@ -537,7 +544,7 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 	out.reflections_gain = clampf((0.05f + out.enclosure * (1.f - hit_abs_avg)) *
 			clampf(6.f / std::max(1.f, hit_d_avg), 0.2f, 1.5f), 0.f, 3.16f);
 	out.late_gain = clampf(1.2f * (1.f - hit_abs_avg), 0.2f, 3.f);
-	out.wet = clampf(params.reverb * lerpf(0.3f, 1.f, out.enclosure) * liveness, 0.f, 1.f);
+	out.wet = clampf(params.reverb * lerpf(0.3f * terrain, 1.f, out.enclosure) * liveness, 0.f, 1.f);
 	if (pan_w > 0) {
 		v3f p = pan / pan_w;
 		out.reflections_pan = p * std::min(1.f, 1.f - out.enclosure * 0.5f);
@@ -592,9 +599,20 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 		findSky(snap, ear_cell, ear, open, wall);
 		const float sky_frac = sky / n;
 		if (open.found) {
+			// How much of the outdoors the opening shows: a doorway or a
+			// tunnel mouth is a small window on the world, however close it
+			// is. The share of rays that get out, against the half that do
+			// on open ground. A porch keeps most; a cave mouth -15 dB or so.
+			// The path loss covers long tunnels; this covers short ones,
+			// where the way out is near but narrow: the smaller wins.
+			const float aperture = std::max(0.08f,
+					std::pow(clampf(sky_frac / 0.5f, 0.f, 1.f), 0.5f));
 			out.outdoor_path = open.cost;
-			out.outdoor_gain = std::exp(-open.cost * k / PATH_LAMBDA);
-			out.outdoor_hf = std::exp(-open.hf_loss * k);
+			out.outdoor_gain = std::min(std::exp(-open.cost * k / PATH_LAMBDA),
+					lerpf(1.f, aperture, std::min(1.f, k)));
+			// a small opening passes the lows round its edges, not the highs
+			out.outdoor_hf = std::exp(-open.hf_loss * k) *
+					lerpf(1.f, 0.4f + 0.6f * aperture, std::min(1.f, k));
 			out.outdoor_dir = open.dir;
 			out.outdoor_focus = clampf(1.f - 2.f * sky_frac, 0.f, 1.f) *
 					clampf(open.steps / 4.f, 0.f, 1.f);
