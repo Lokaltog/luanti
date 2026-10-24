@@ -6,9 +6,13 @@
 // channel, client-side, so colour only goes where light can travel, and
 // stained glass multiplies what passes through it.
 //
-// Main thread: snapshot node content IDs around the camera, upload results.
-// Worker thread: per-channel BFS. The result is a 2D atlas texture (Y slices
-// tiled in a grid) sampled with manual trilinear filtering in the shaders.
+// Main thread: keeps a snapshot of node content IDs around the camera,
+// updated incrementally (blocks the client re-meshes are marked dirty and
+// re-read; moving the window only reads the newly exposed slabs). Each change
+// bumps a generation counter; a new fill is handed to the worker only when
+// the generation moved. Worker thread: per-channel BFS over the snapshot.
+// The result is a 2D atlas texture (Y slices tiled in a grid), sampled with
+// hardware bilinear in XZ and a manual lerp in Y.
 
 #pragma once
 
@@ -20,6 +24,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 class Client;
@@ -48,7 +53,7 @@ class LightVolume
 {
 public:
 	// Volume size in nodes. Light reaches 14 nodes, so this covers what the
-	// camera sees up close; beyond it the shaders fall back to T1 chroma.
+	// camera sees up close; beyond it light is white (upstream).
 	static constexpr s16 SX = 64, SY = 48, SZ = 64;
 	static constexpr s16 ATLAS_COLS = 8;
 	static constexpr u32 ATLAS_W = SX * ATLAS_COLS;
@@ -57,27 +62,41 @@ public:
 	explicit LightVolume(video::IVideoDriver *driver);
 	~LightVolume();
 
-	/// Main thread, once per frame: decide whether to recompute, snapshot,
-	/// hand off to the worker, and upload a finished result.
+	/// Main thread, once per frame: follow the camera, re-read dirty blocks,
+	/// hand a changed snapshot to the worker, upload a finished result.
 	void update(Client *client, v3s16 camera_node, float dtime);
+
+	/// Main thread: the client changed this block (new data or a node edit).
+	void noteBlockChanged(v3s16 blockpos) { m_dirty.insert(blockpos); }
 
 	/// The texture to bind (null until the first result is uploaded).
 	video::ITexture *texture() const { return m_texture; }
 	/// Node coordinate of voxel (0,0,0) of the uploaded result.
 	v3s16 origin() const { return m_uploaded_origin; }
 	bool valid() const { return m_texture != nullptr && m_have_result; }
+	/// Snapshot generation of the uploaded result (bumps on every change).
+	u32 generation() const { return m_uploaded_generation; }
+	/// The uploaded result matches the current snapshot (tests wait for it).
+	bool current() const
+	{
+		return m_have_result && m_uploaded_generation == m_generation && m_dirty.empty();
+	}
 
 private:
 	using ContentInfo = LightCell;
 
 	struct Job {
 		v3s16 origin;
+		u32 generation = 0;
 		std::vector<u16> content;   // SX*SY*SZ content ids (CONTENT_IGNORE = unknown)
 	};
 
 	void buildTables(Client *client);
-	u64 signature(Client *client, v3s16 origin);
-	void snapshot(Client *client, v3s16 origin, Job &job);
+	/// Re-read the nodes of [lo, hi] (inclusive, node coordinates, clipped
+	/// to the window) into m_content. True if anything was in the window.
+	bool readBox(Client *client, v3s16 lo, v3s16 hi);
+	/// Move the window to `origin`, keeping the overlap.
+	void moveTo(Client *client, v3s16 origin);
 	void compute(const Job &job, std::vector<u8> &out_rgba);
 	void workerLoop();
 	void upload(video::IVideoDriver *driver);
@@ -93,17 +112,23 @@ private:
 	std::unique_ptr<Job> m_pending;      // main -> worker
 	std::vector<u8> m_result;            // worker -> main (RGBA atlas)
 	v3s16 m_result_origin;
+	u32 m_result_generation = 0;
 	bool m_result_ready = false;
 	std::atomic<bool> m_busy{false};
 
-	// main-thread state
+	// main-thread state: the snapshot window
 	video::IVideoDriver *m_driver;
+	std::vector<u16> m_content;
+	v3s16 m_origin;
+	bool m_have_content = false;
+	std::unordered_set<v3s16> m_dirty;
+	u32 m_generation = 0, m_job_generation = 0;
+	float m_timer = 0.f;
+
 	video::ITexture *m_texture = nullptr;
 	v3s16 m_uploaded_origin;
+	u32 m_uploaded_generation = 0;
 	bool m_have_result = false;
-	v3s16 m_job_origin{-32768, -32768, -32768};
-	u64 m_job_signature = 0;
-	float m_timer = 0.f;
 };
 
 } // namespace fx

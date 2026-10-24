@@ -83,51 +83,73 @@ void LightVolume::buildTables(Client *client)
 	infostream << "fx: light volume tables built for " << ndef->size() << " contents" << std::endl;
 }
 
-// Cheap change detection: block and mesh pointers in the region. The mesh
-// pointer changes whenever a block is re-meshed (edited, lit, loaded).
-u64 LightVolume::signature(Client *client, v3s16 origin)
+bool LightVolume::readBox(Client *client, v3s16 lo, v3s16 hi)
 {
+	const v3s16 last = m_origin + v3s16(SX - 1, SY - 1, SZ - 1);
+	lo = v3s16(std::max(lo.X, m_origin.X), std::max(lo.Y, m_origin.Y), std::max(lo.Z, m_origin.Z));
+	hi = v3s16(std::min(hi.X, last.X), std::min(hi.Y, last.Y), std::min(hi.Z, last.Z));
+	if (lo.X > hi.X || lo.Y > hi.Y || lo.Z > hi.Z)
+		return false;
 	ClientMap &map = client->getEnv().getClientMap();
-	const v3s16 b0 = getNodeBlockPos(origin);
-	const v3s16 b1 = getNodeBlockPos(origin + v3s16(SX - 1, SY - 1, SZ - 1));
-	u64 sig = 1469598103934665603ULL;
+	const v3s16 b0 = getNodeBlockPos(lo), b1 = getNodeBlockPos(hi);
 	v3s16 bp;
 	for (bp.Z = b0.Z; bp.Z <= b1.Z; bp.Z++)
 	for (bp.Y = b0.Y; bp.Y <= b1.Y; bp.Y++)
 	for (bp.X = b0.X; bp.X <= b1.X; bp.X++) {
 		MapBlock *block = map.getBlockNoCreateNoEx(bp);
-		sig ^= (u64)(uintptr_t)block + 0x9e3779b97f4a7c15ULL + (sig << 6) + (sig >> 2);
-		sig ^= (u64)(uintptr_t)(block ? block->mesh : nullptr) + (sig << 6) + (sig >> 2);
-	}
-	return sig;
-}
-
-void LightVolume::snapshot(Client *client, v3s16 origin, Job &job)
-{
-	ClientMap &map = client->getEnv().getClientMap();
-	job.origin = origin;
-	job.content.assign(VOXELS, CONTENT_IGNORE);
-	const v3s16 last = origin + v3s16(SX - 1, SY - 1, SZ - 1);
-	const v3s16 b0 = getNodeBlockPos(origin), b1 = getNodeBlockPos(last);
-	v3s16 bp;
-	for (bp.Z = b0.Z; bp.Z <= b1.Z; bp.Z++)
-	for (bp.Y = b0.Y; bp.Y <= b1.Y; bp.Y++)
-	for (bp.X = b0.X; bp.X <= b1.X; bp.X++) {
-		MapBlock *block = map.getBlockNoCreateNoEx(bp);
-		if (!block)
-			continue;
 		const v3s16 base = bp * MAP_BLOCKSIZE;
-		const v3s16 lo(std::max(base.X, origin.X), std::max(base.Y, origin.Y), std::max(base.Z, origin.Z));
-		const v3s16 hi(std::min<s16>(base.X + MAP_BLOCKSIZE - 1, last.X),
-				std::min<s16>(base.Y + MAP_BLOCKSIZE - 1, last.Y),
-				std::min<s16>(base.Z + MAP_BLOCKSIZE - 1, last.Z));
-		for (s16 z = lo.Z; z <= hi.Z; z++)
-		for (s16 y = lo.Y; y <= hi.Y; y++)
-		for (s16 x = lo.X; x <= hi.X; x++) {
-			const MapNode n = block->getNodeNoCheck(x - base.X, y - base.Y, z - base.Z);
-			job.content[vidx(x - origin.X, y - origin.Y, z - origin.Z)] = n.getContent();
+		const v3s16 l(std::max(base.X, lo.X), std::max(base.Y, lo.Y), std::max(base.Z, lo.Z));
+		const v3s16 h(std::min<s16>(base.X + MAP_BLOCKSIZE - 1, hi.X),
+				std::min<s16>(base.Y + MAP_BLOCKSIZE - 1, hi.Y),
+				std::min<s16>(base.Z + MAP_BLOCKSIZE - 1, hi.Z));
+		for (s16 z = l.Z; z <= h.Z; z++)
+		for (s16 y = l.Y; y <= h.Y; y++) {
+			const size_t row = vidx(0, y - m_origin.Y, z - m_origin.Z);
+			for (s16 x = l.X; x <= h.X; x++)
+				m_content[row + (x - m_origin.X)] = block ? block->getNodeNoCheck(x - base.X, y - base.Y, z - base.Z).getContent()
+						: CONTENT_IGNORE;
 		}
 	}
+	return true;
+}
+
+void LightVolume::moveTo(Client *client, v3s16 origin)
+{
+	const v3s16 size(SX, SY, SZ);
+	const v3s16 d = origin - m_origin;
+	std::vector<u16> old;
+	old.swap(m_content);
+	m_content.assign(VOXELS, CONTENT_IGNORE);
+	m_origin = origin;
+	// the overlap of the old and new windows, in new-window coordinates
+	v3s16 lo, hi;
+	bool overlap = true;
+	for (int a = 0; a < 3; a++) {
+		const s16 da = a == 0 ? d.X : a == 1 ? d.Y : d.Z;
+		const s16 n = a == 0 ? size.X : a == 1 ? size.Y : size.Z;
+		const s16 l = std::max<s16>(0, -da), h = std::min<s16>(n - 1, n - 1 - da);
+		overlap &= l <= h;
+		(a == 0 ? lo.X : a == 1 ? lo.Y : lo.Z) = l;
+		(a == 0 ? hi.X : a == 1 ? hi.Y : hi.Z) = h;
+	}
+	if (!overlap) {
+		readBox(client, origin, origin + size - v3s16(1, 1, 1));
+		return;
+	}
+	for (s16 z = lo.Z; z <= hi.Z; z++)
+	for (s16 y = lo.Y; y <= hi.Y; y++)
+		std::memcpy(&m_content[vidx(lo.X, y, z)], &old[vidx(lo.X + d.X, y + d.Y, z + d.Z)],
+				(hi.X - lo.X + 1) * sizeof(u16));
+	// read the newly exposed slabs: X outside the overlap, then Y within
+	// its X range, then Z within its X and Y range
+	const v3s16 o = origin, e = origin + size - v3s16(1, 1, 1);
+	const v3s16 olo = origin + lo, ohi = origin + hi;
+	if (olo.X > o.X) readBox(client, o, v3s16(olo.X - 1, e.Y, e.Z));
+	if (ohi.X < e.X) readBox(client, v3s16(ohi.X + 1, o.Y, o.Z), e);
+	if (olo.Y > o.Y) readBox(client, v3s16(olo.X, o.Y, o.Z), v3s16(ohi.X, olo.Y - 1, e.Z));
+	if (ohi.Y < e.Y) readBox(client, v3s16(olo.X, ohi.Y + 1, o.Z), v3s16(ohi.X, e.Y, e.Z));
+	if (olo.Z > o.Z) readBox(client, v3s16(olo.X, olo.Y, o.Z), v3s16(ohi.X, ohi.Y, olo.Z - 1));
+	if (ohi.Z < e.Z) readBox(client, v3s16(olo.X, olo.Y, ohi.Z + 1), v3s16(ohi.X, ohi.Y, e.Z));
 }
 
 void floodFillRGB(s16 sx, s16 sy, s16 sz, const u16 *content,
@@ -225,6 +247,7 @@ void LightVolume::workerLoop()
 			std::lock_guard lock(m_mutex);
 			m_result = std::move(result);
 			m_result_origin = job->origin;
+			m_result_generation = job->generation;
 			m_result_ready = true;
 		}
 		m_busy = false;
@@ -253,6 +276,7 @@ void LightVolume::upload(video::IVideoDriver *driver)
 		std::memcpy((u8 *)dst + row * pitch, m_result.data() + (size_t)row * ATLAS_W * 4, ATLAS_W * 4);
 	m_texture->unlock();
 	m_uploaded_origin = m_result_origin;
+	m_uploaded_generation = m_result_generation;
 	m_have_result = true;
 }
 
@@ -270,28 +294,50 @@ void LightVolume::update(Client *client, v3s16 camera_node, float dtime)
 		}
 	}
 
-	// 2. decide whether to start a new job (never two at once)
-	m_timer += dtime;
-	if (m_busy)
-		return;
+	// 2. follow the camera: re-centre when it is 8 nodes (6 vertically) off
+	// centre, origin snapped to 4 nodes
 	const v3s16 half(SX / 2, SY / 2, SZ / 2);
-	const v3s16 center = m_job_origin + half;
-	const bool moved = std::abs(camera_node.X - center.X) > 8 ||
-			std::abs(camera_node.Y - center.Y) > 6 || std::abs(camera_node.Z - center.Z) > 8;
-	if (!moved && m_timer < 0.25f)
+	v3s16 want = camera_node - half;
+	want = v3s16(want.X & ~3, want.Y & ~3, want.Z & ~3);
+	if (!m_have_content) {
+		m_origin = want;
+		m_content.assign(VOXELS, CONTENT_IGNORE);
+		readBox(client, m_origin, m_origin + v3s16(SX - 1, SY - 1, SZ - 1));
+		m_have_content = true;
+		m_dirty.clear();
+		m_generation++;
+	} else {
+		const v3s16 c = m_origin + half;
+		if (std::abs(camera_node.X - c.X) > 8 || std::abs(camera_node.Y - c.Y) > 6 ||
+				std::abs(camera_node.Z - c.Z) > 8) {
+			moveTo(client, want);
+			m_generation++;
+		}
+	}
+
+	// 3. re-read blocks the client changed
+	if (!m_dirty.empty()) {
+		bool changed = false;
+		for (const v3s16 bp : m_dirty) {
+			const v3s16 base = bp * MAP_BLOCKSIZE;
+			changed |= readBox(client, base, base + v3s16(1, 1, 1) * (MAP_BLOCKSIZE - 1));
+		}
+		m_dirty.clear();
+		if (changed)
+			m_generation++;
+	}
+
+	// 4. hand a changed snapshot to the worker (never two at once, at most
+	// every 0.1 s while things keep changing)
+	m_timer += dtime;
+	if (m_generation == m_job_generation || m_busy || m_timer < 0.1f)
 		return;
 	m_timer = 0.f;
-
-	// snap the origin to 4 nodes so small moves don't shift the whole field
-	v3s16 origin = camera_node - half;
-	origin = v3s16(origin.X & ~3, origin.Y & ~3, origin.Z & ~3);
-	const u64 sig = signature(client, origin);
-	if (!moved && origin == m_job_origin && sig == m_job_signature)
-		return; // nothing changed
 	auto job = std::make_unique<Job>();
-	snapshot(client, origin, *job);
-	m_job_origin = origin;
-	m_job_signature = sig;
+	job->origin = m_origin;
+	job->generation = m_generation;
+	job->content = m_content;
+	m_job_generation = m_generation;
 	m_busy = true;
 	{
 		std::lock_guard lock(m_mutex);

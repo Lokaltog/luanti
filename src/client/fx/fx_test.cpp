@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include "fx_test.h"
+#include "fx.h"
 
 #include "gui/mainmenumanager.h"
 #include "log.h"
@@ -160,7 +161,7 @@ void endFrame(video::IVideoDriver *driver, bool &show_hud, bool &show_chat)
 	s.frame++;
 
 	const u32 meshes = s_mesh_counter.load();
-	s.idle = meshes == s.last_mesh ? s.idle + 1 : 0;
+	s.idle = meshes == s.last_mesh && lightVolumeCurrent() ? s.idle + 1 : 0;
 	s.last_mesh = meshes;
 
 	if (s.ready_frame < 0) {
@@ -177,7 +178,7 @@ void endFrame(video::IVideoDriver *driver, bool &show_hud, bool &show_chat)
 		if (ready && s.frame >= s.min_frames && settled) {
 			s.ready_frame = s.frame;
 			infostream << "fx test: scene ready at frame " << s.frame
-					<< (s.idle >= s.settle_frames ? " (meshing idle)" : " (max wait)") << std::endl;
+					<< (s.idle >= s.settle_frames ? " (meshing idle, light volume current)" : " (max wait)") << std::endl;
 		}
 		return;
 	}

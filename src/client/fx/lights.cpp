@@ -47,7 +47,9 @@ void collectBlockLights(const MeshMakeData *data, std::vector<Light> &out)
 	for (p.X = base.X; p.X < base.X + n; p.X++) {
 		MapNode node = data->m_vmanip.getNodeNoExNoEmerge(p);
 		const ContentFeatures &f = ndef->get(node);
-		if (f.light_source == 0 || !f.visuals)
+		// the light volume gives every light its colour; the list only
+		// carries what moves: flicker (and the held light, per frame)
+		if (f.light_source == 0 || !f.visuals || f.visuals->fx_light.flicker <= 0.f)
 			continue;
 		const v3s16 cell(
 			(p.X - base.X) / LIGHT_CLUSTER_CELL,

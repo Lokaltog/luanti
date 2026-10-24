@@ -1,7 +1,8 @@
 // fx: artificial light hue and flicker for node and object vertex shaders.
 // Included by nodes_shader and object_shader opengl_vertex.glsl after the
-// declaration of `artificialLight`. Object shaders #undef FX_LIGHT_VOLUME
-// first: the volume is only bound to map materials.
+// declaration of `artificialLight`. The volume is bound to map materials and
+// to entity materials (GenericCAO); where it isn't bound the sampler reads
+// zero, which leaves the light white.
 #include "fx_common/uniforms.glsl"
 
 #if defined(FX_ENABLE) && defined(FX_COLORED_LIGHT)
@@ -43,14 +44,12 @@ vec4 fxVolumeSample(vec3 p)
 
 // Hue (and flicker) of the artificial light at p. Intensity is NOT changed here:
 // the engine's flood-filled scalar light stays authoritative.
-// With the light volume (M4) the hue of world lights comes from the leak-free
-// RGB flood fill; the light list still provides flicker and the held light.
-// Without it (T1), the hue is a distance-weighted mix of nearby lights and
-// can bleed through walls.
+// The hue of world lights comes from the leak-free RGB light volume; outside
+// it (or before its first fill) light is white, like upstream. The light
+// list carries only what changes per frame: flickering sources (amplitude,
+// weighted by distance) and the held light, whose hue is added near it.
 vec3 fxArtificialLight(vec3 p, vec3 n, float seconds)
 {
-	vec3 acc = vec3(0.0);
-	float wsum = 0.0;
 	float flick = 0.0;
 	float fsum = 0.0;
 	vec3 held_acc = vec3(0.0);
@@ -68,22 +67,20 @@ vec3 fxArtificialLight(vec3 p, vec3 n, float seconds)
 		// sharper ownership near a light: inverse square in nodes (BS = 10)
 		float w = fall * fall / (dist2 * 0.01 + 1.0);
 		vec4 cs = fxLightColorSeed[i];
+		if (i == fxHeldLightIndex) {
+			held_acc += w * cs.rgb;
+			held_w += w;
+		}
 		float amp = floor(cs.a) * 0.01;
 		float seed = fract(cs.a) * 97.0;
 		float nz = sin(seconds * 7.3 + seed) * 0.5
 			+ sin(seconds * 13.7 + seed * 1.7) * 0.3
 			+ sin(seconds * 23.1 + seed * 2.3) * 0.2;
-		acc += w * cs.rgb;
-		wsum += w;
 		flick += w * amp * nz;
 		fsum += w;
-#ifdef FX_LIGHT_VOLUME
-		if (i == fxHeldLightIndex) {
-			held_acc += w * cs.rgb;
-			held_w += w;
-		}
-#endif
 	}
+	vec3 acc = held_acc;
+	float wsum = held_w;
 #ifdef FX_LIGHT_VOLUME
 	if (fxVolumeValid > 0.5) {
 		vec4 vs = fxVolumeSample(p + n * 5.0); // half a node in front of the face
@@ -91,20 +88,21 @@ vec3 fxArtificialLight(vec3 p, vec3 n, float seconds)
 			float m = max(vs.r, max(vs.g, vs.b));
 			// world lights from the volume, weighted by how strong they are here
 			float vw = m * 4.0;
-			acc = (m > 0.001 ? vs.rgb / m : vec3(1.0)) * vw + held_acc;
-			wsum = vw + held_w;
+			acc += (m > 0.001 ? vs.rgb / m : vec3(1.0)) * vw;
+			wsum += vw;
 		}
 	}
 #endif
+	float f = 1.0 + (fsum > 0.0 ? flick / fsum : 0.0);
 	if (wsum <= 1e-5) {
 		fxChroma = vec3(1.0);
-		return artificialLight;
+		return artificialLight * f;
 	}
 	vec3 chroma = acc / wsum;
 	fxChroma = chroma;
 	// keep the luminance of upstream's white light so exposure is unchanged
 	float lum = dot(chroma, vec3(0.2126, 0.7152, 0.0722));
 	chroma = min(chroma * (1.04 / max(lum, 0.05)), vec3(2.4));
-	return mix(artificialLight, chroma, fxLightSaturation) * (1.0 + (fsum > 0.0 ? flick / fsum : 0.0));
+	return mix(artificialLight, chroma, fxLightSaturation) * f;
 }
 #endif

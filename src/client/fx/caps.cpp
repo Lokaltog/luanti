@@ -42,7 +42,7 @@ Caps computeCaps(const Params &p, video::IVideoDriver *driver)
 	c.ao = p.ao && c.hdr; // applied in the linear HDR composite
 	c.surfaces = p.surfaces && c.post;
 	c.colored_light = p.colored_light;
-	c.light_volume = p.light_volume && p.colored_light;
+	c.light_volume = c.colored_light; // the volume is how light gets its colour
 	c.array_textures = driver->queryFeature(video::EVDF_TEXTURE_2D_ARRAY);
 	c.materials = p.materials && c.array_textures;
 

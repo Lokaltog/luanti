@@ -11,6 +11,7 @@
 #include "map.h"
 #include "util/directiontables.h"
 #include "porting.h"
+#include "fx/fx.h"
 
 /*
 	QueuedMeshUpdate
@@ -376,6 +377,7 @@ void MeshUpdateManager::updateBlock(Map *map, v3s16 p, bool ack_block_to_server,
 				<< p << std::endl;
 		return;
 	}
+	fx::noteBlockChanged(p); // only p's nodes changed; neighbours just re-mesh
 	if (update_neighbors) {
 		if (many_neighbors) {
 			for (v3s16 dp : g_26dirs)

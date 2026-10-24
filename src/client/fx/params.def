@@ -53,7 +53,6 @@ FX_FLOAT(ao_radius,               1.5f,  0.25f, 4.f,  LIVE, TUNE,    "Ambient oc
 FX_FLOAT(sky_tint,                0.6f,  0.f, 1.5f,   LIVE, TUNE,    "Sky light tint")
 FX_FLOAT(ambient_floor,           0.03f, 0.f, 0.15f,  LIVE, TUNE,    "Ambient floor")
 FX_FLOAT(rim_light,               0.25f, 0.f, 1.f,    LIVE, TUNE,    "Rim light (mobs)")
-FX_BOOL (light_volume,            true,               RESTART)
 FX_BOOL (materials,               true,               RESTART)
 FX_FLOAT(normal_strength,         1.0f,  0.f, 2.f,    LIVE, TUNE,    "Normal maps")
 FX_FLOAT(parallax_depth,          0.05f, 0.f, 0.2f,   LIVE, TUNE,    "Parallax depth")

@@ -353,6 +353,19 @@ void gradeSunlight(float rgb[3], float tod)
 	Per frame
 */
 
+void noteBlockChanged(v3s16 blockpos)
+{
+	Renderer *r = renderer();
+	if (r && r->volume)
+		r->volume->noteBlockChanged(blockpos);
+}
+
+bool lightVolumeCurrent()
+{
+	Renderer *r = renderer();
+	return !r || !r->volume || r->volume->current();
+}
+
 void updateFrame(Client *client, Camera *camera, Sky *sky, float dtime)
 {
 	Renderer *r = s_renderer;

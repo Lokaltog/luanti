@@ -51,8 +51,9 @@ CASES = [
 
     # --- features off / variants -------------------------------------------
     {"name": "no_taa_ao", "settings": {"fx_taa": "false", "fx_ao": "false"}},
-    {"name": "night_t1", "doc": "light volume off: T1 chroma only",
-     "settings": {"fx_light_volume": "false"}},
+    {"name": "night_white", "doc": "fx_colored_light off: white artificial light",
+     "settings": {"fx_colored_light": "false"},
+     "compare": [{"with": "night", "min_mean": 2.0, "name": "colour changes the image"}]},
     {"name": "materials", "doc": "M5 material maps in daylight",
      "settings": {**DAY, "texture_path": PACK, "fxscene_time": "0.35", "fxscene_view": "materials"},
      "compare": [{"with": "materials_off", "min_mean": 2.0, "name": "maps change the image"}]},

@@ -882,14 +882,16 @@ fx_emissive_strength (Emissive strength) float 2.5 0.0 32.0
 #    Changing it applies when you next join a world.
 fx_auto_emissive_threshold (Auto-emissive threshold) float 0.55 0.0 0.99
 
-#    Tint artificial light by the color of nearby light sources.
-#    Changing it applies when you next join a world.
+#    Coloured artificial light: a client-side RGB flood fill around the camera
+#    (64 x 48 x 64 nodes), so colour only reaches where light can travel and
+#    stained glass tints light passing through it. Beyond that window light
+#    is white. Changing it applies when you next join a world.
 fx_colored_light (Colored light) bool true
 
 #    How strongly artificial light takes the color of its source (0 = white).
 fx_light_saturation (Light saturation) float 0.85 0.0 1.5
 
-#    Radius in nodes around the camera to gather light sources from.
+#    Radius in nodes around the camera to gather flickering light sources from.
 fx_light_gather_radius (Light gather radius) float 48.0 16.0 128.0
 
 #    Flicker amplitude for torches, fire and lava.
@@ -960,12 +962,6 @@ fx_ambient_floor (Ambient floor) float 0.03 0.0 0.15
 
 #    Rim light on mobs, players and items, so they read against dark backgrounds.
 fx_rim_light (Rim light) float 0.25 0.0 1.0
-
-#    Leak-free coloured light: a client-side RGB flood fill around the camera,
-#    so colour only reaches where light can travel, and stained glass tints
-#    light passing through it. Requires: fx_colored_light. Changing it
-#    applies when you next join a world.
-fx_light_volume (RGB light volume) bool true
 
 #    Material maps: LabPBR-style <name>_n.png (normal, AO, height) and
 #    <name>_s.png (smoothness, F0/metal, emission) companions from the

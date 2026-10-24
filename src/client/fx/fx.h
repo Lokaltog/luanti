@@ -67,6 +67,12 @@ const Caps &caps();
 /// Effective parameters this frame (settings + mood blend). Main thread.
 const Params &params();
 
+/// The client changed a map block (new data or a node edit). Main thread.
+void noteBlockChanged(v3s16 blockpos);
+
+/// No light volume, or its texture matches the map (test mode waits for it).
+bool lightVolumeCurrent();
+
 /// Once per frame before drawing: settings, moods, camera, lights, light
 /// volume, uniform buffers, shader hot reload.
 void updateFrame(Client *client, Camera *camera, Sky *sky, float dtime);

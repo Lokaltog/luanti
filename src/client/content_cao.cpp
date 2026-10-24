@@ -994,6 +994,13 @@ void GenericCAO::updateNodePos()
 
 void GenericCAO::step(float dtime, ClientEnvironment *env)
 {
+	// fx: entities take the hue of the light volume, like map nodes
+	if (fx::caps().light_volume) {
+		if (scene::ISceneNode *node = getSceneNode())
+			for (u32 i = 0; i < node->getMaterialCount(); i++)
+				fx::bindLightVolume(node->getMaterial(i));
+	}
+
 	// Handle model animations and update positions instantly to prevent lags
 	if (m_is_local_player) {
 		LocalPlayer *player = m_env->getLocalPlayer();

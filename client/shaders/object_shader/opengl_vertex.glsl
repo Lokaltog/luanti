@@ -33,8 +33,6 @@ VARYING_ float nightRatio;
 // Color of the light emitted by the light sources.
 const vec3 artificialLight = vec3(1.04, 1.04, 1.04);
 
-// fx: the light volume is bound to map materials only
-#undef FX_LIGHT_VOLUME
 #include "fx_common/light.glsl"
 VARYING_ float vIDiff;
 

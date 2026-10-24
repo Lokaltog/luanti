@@ -508,9 +508,13 @@ Surface resolveSurface(const ContentFeatures &f)
 	if (const auto *e = lookup(r->pack.surfaces, f))
 		return e->value;
 	Surface s;
-	const bool liquid = f.drawtype == NDT_LIQUID || f.drawtype == NDT_FLOWINGLIQUID;
-	if (liquid && f.light_source == 0 && f.alpha != ALPHAMODE_OPAQUE) {
+	const bool liquid_draw = f.drawtype == NDT_LIQUID || f.drawtype == NDT_FLOWINGLIQUID;
+	const bool translucent = f.alpha != ALPHAMODE_OPAQUE;
+	if (liquid_draw && f.isLiquid() && f.light_source == 0 && translucent) {
 		s.kind = SurfaceKind::Water;
+	} else if (liquid_draw && !f.isLiquid() && f.light_source == 0 && translucent) {
+		// liquid drawtype on a solid (Mineclonia's ice): see-through, not water
+		s.kind = SurfaceKind::Glass;
 	} else if (f.drawtype == NDT_GLASSLIKE || f.drawtype == NDT_GLASSLIKE_FRAMED ||
 			f.drawtype == NDT_GLASSLIKE_FRAMED_OPTIONAL ||
 			(f.name.find("glass") != std::string::npos && f.light_source == 0 &&
