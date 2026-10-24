@@ -191,8 +191,17 @@ std::shared_ptr<PlayingSound> OpenALSoundManager::createPlayingSound(
 			volume, pitch, start_time, pos_vel_opt, m_exts, bus);
 	sound->setFootstep(footstep);
 	// afx: the rain bed, which a storm front fades and steers
-	if (bus == afx::Bus::Outdoor && sound_name.find("rain") != std::string::npos)
-		sound->setRain(true);
+	if (bus == afx::Bus::Outdoor) {
+		// "rain" as a word in the name (not terrain, train, drain, grain)
+		for (size_t p = sound_name.find("rain"); p != std::string::npos;
+				p = sound_name.find("rain", p + 1)) {
+			if (p == 0 || sound_name[p - 1] == '_' || sound_name[p - 1] == '/' ||
+					sound_name[p - 1] == '-' || sound_name[p - 1] == '.') {
+				sound->setRain(true);
+				break;
+			}
+		}
+	}
 
 	prepareSound(*sound);
 	sound->play();
@@ -383,6 +392,7 @@ OpenALSoundManager::~OpenALSoundManager()
 	m_sounds_playing.clear();
 	m_internal_sounds.clear();
 	m_roomtone.reset();
+	m_moan.reset();
 	m_efx.reset();
 	// HRTF we switched on stays on the device after us: hand it back
 	if (m_hrtf_set == 1)
@@ -430,6 +440,8 @@ void OpenALSoundManager::pauseAll()
 		snd->pause();
 	if (m_roomtone)
 		m_roomtone->pause();
+	if (m_moan)
+		m_moan->pause();
 	m_is_paused = true;
 }
 
@@ -443,6 +455,8 @@ void OpenALSoundManager::resumeAll()
 		snd->resume();
 	if (m_roomtone)
 		m_roomtone->resume();
+	if (m_moan)
+		m_moan->resume();
 	m_is_paused = false;
 }
 
@@ -553,9 +567,11 @@ void OpenALSoundManager::stepDelayed(f32 dtime)
 		m_delayed.pop_back();
 		std::optional<std::pair<v3f, v3f>> pos_vel({
 				swap_handedness(ready.pos), swap_handedness(ready.vel)});
+		m_playing_echo = ready.echo;
 		playSoundGeneric(ready.id, ready.spec.name, ready.spec.loop, ready.spec.gain,
 				ready.spec.fade, ready.spec.pitch, ready.spec.use_local_fallback,
 				ready.spec.start_time, pos_vel);
+		m_playing_echo = false;
 		if (ready.fade)
 			fadeSound(ready.id, ready.fade->first, ready.fade->second);
 	}

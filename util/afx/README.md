@@ -251,6 +251,52 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
 - **Air pressure:** opening a sealed room to the outdoors makes a faint low whoomp (engine, `setAcoustics`).
 - **Scenario:** `accents`. The `walls` listening check uses quiet settings, and its band is the bed level.
 
+## Round 12: second review pass, nature, terrain
+
+- **Mixer:**
+  - The numbers follow the sliders (the panel redraws on every change and keeps its scroll position).
+  - It scrolls in a small-screen window.
+  - Layers have short names with tooltips.
+- **Second review, engine:**
+  - **Gain staging.** Positional sources ran at 3× and saturated at `AL_MAX_GAIN` 1, so every source sent the same level into the effects. `AL_MAX_GAIN` is now 3 while afx runs. The direct path keeps the old near-field clamp (`min(1, 1/(3g))`), and the sends scale `min(0.667, 0.5/g)`.
+  - **Walls:**
+    - quieter, so they no longer comb-filter;
+    - the probe uses horizontal distance and needs a cluster of rays that spreads sideways, so trunks, posts and ceilings no longer count;
+    - no flutter in a 1-wide tunnel;
+    - the send follows the source's own distance law (send-auto off, no extra 1/d).
+  - **Whoomp:** only when the listener hasn't moved, never in the first seconds.
+  - **Lava:** muffles fully again.
+  - **Just under the surface:** the outdoors reaches you at 0.3/0.12 and dull, and so does the world bus.
+  - **Remote and next-door slots:** fed less by far sources.
+  - **Storm front:** under open sky it uses the front's direction alone, and "rain" must be a word in the name.
+  - **Batching:** the 30 Hz source updates are batched with `AL_SOFT_deferred_updates`.
+- **Second review, mod:**
+  - **Weather:**
+    - snow weather is only snow where it's cold, and rain isn't rain in snowy biomes;
+    - rain keeps going across biome edges.
+  - **Flood control:**
+    - rattles are capped and merged;
+    - item impacts have a budget and per-node dedupe.
+  - **Diving sounds** are non-positional and quieter.
+  - **First drops** try up to 4 spots.
+  - **Creatures:** zombified piglins don't startle, and a non-string voice can no longer error.
+  - **Rivers** don't double underground, and flowing water is scanned by name.
+  - **Frogs** only by ponds in meadows, forests and swamps.
+  - **Cleanup:** discovery state is cached, and per-player state is cleaned up on leave.
+  - **Review tour:** the house goes where it actually rains.
+- **New (nature.lua, kept in the background):**
+  - gusts sweeping through the trees from upwind (an invisible moving emitter);
+  - crickets around you at night that fall silent as you come near and start again behind you;
+  - singing ice on frozen lakes, more at dusk and at night;
+  - your clothes rustling and your breath settling after a run, where it's really quiet.
+- **New (engine):**
+  - **Heightfield:** a coarse map of the land, ±192 nodes at 4-node cells, refreshed 8 rows per probe and shipped with the snapshot.
+  - **Over the hills:** far sounds bend over the top of a ridge, dull and faint, where the rock in between would block them.
+  - **Thunder rolls:** it echoes back off up to 3 visible high grounds 48..190 nodes away, each as late as its detour.
+  - **Cave mouths moan in gusts:** pitch from the cave's size and the opening.
+  - **Fly-bys:** fast objects passing within 3 nodes whizz by, with Doppler.
+- **Scenario:** `nature`.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

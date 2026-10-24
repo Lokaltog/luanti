@@ -100,6 +100,10 @@ EfxRig::EfxRig(ALCdevice *device, int sends) : m_sends(sends)
 			alEffecti(m_echo_effect, AL_EFFECT_TYPE, AL_EFFECT_ECHO);
 		alGenAuxiliaryEffectSlots(1, &m_echo_slot);
 		alAuxiliaryEffectSlotf(m_echo_slot, AL_EFFECTSLOT_GAIN, 0.f);
+		// walls: the send follows the source's own distance law, not the
+		// reverb's decay-scaled one
+		if (m_walls)
+			alAuxiliaryEffectSloti(m_echo_slot, AL_EFFECTSLOT_AUXILIARY_SEND_AUTO, AL_FALSE);
 	}
 
 	if (m_sends >= 3) {
@@ -351,7 +355,8 @@ void EfxRig::applyWalls(const afx::Acoustics &env, const ListenerFrame &frame)
 	// Inside a closed room the room's own reverb is these walls already;
 	// beside a wall outdoors, along a corridor, the slap stands out.
 	const float open = 1.f - 0.7f * clampf(env.enclosure, 0.f, 1.f);
-	const float level = clampf(env.wall_near * open * (1.f - env.submerged), 0.f, 1.f);
+	// a reflection is fainter than what made it: its longer path shows
+	const float level = clampf(0.35f * env.wall_near * open * (1.f - env.submerged), 0.f, 1.f);
 	alAuxiliaryEffectSlotf(m_echo_slot, AL_EFFECTSLOT_GAIN, level);
 	if (level < 0.01f && m_walls_last_level < 0.01f)
 		return;
@@ -361,8 +366,9 @@ void EfxRig::applyWalls(const afx::Acoustics &env, const ListenerFrame &frame)
 	const float t_near = clampf(2.f * env.wall_near_dist / 343.f, 0.003f, 0.3f);
 	const float t_far = clampf(2.f * env.wall_far_dist / 343.f, t_near, t_near + 0.1f);
 	// parallel walls close by ring back and forth a little
-	const float flutter = env.wall_far > 0.2f ? clampf(env.wall_far * (8.f - env.wall_far_dist) / 6.f,
-			0.f, 1.f) : 0.f;
+	// (not in a 1-wide tunnel: that's the room itself, not two walls)
+	const float flutter = env.wall_far > 0.2f && env.wall_far_dist >= 1.5f ?
+			clampf(env.wall_far * (8.f - env.wall_far_dist) / 6.f, 0.f, 1.f) : 0.f;
 	if (std::fabs(t_near - m_walls_t[0]) < 0.0015f && std::fabs(t_far - m_walls_t[1]) < 0.002f &&
 			(near_pan - m_walls_pan[0]).getLengthSQ() < 4e-3f &&
 			(far_pan - m_walls_pan[1]).getLengthSQ() < 4e-3f &&
@@ -380,13 +386,13 @@ void EfxRig::applyWalls(const afx::Acoustics &env, const ListenerFrame &frame)
 	alEffectf(e, AL_EAXREVERB_GAINHF, clampf(0.4f + 0.5f * env.hf, 0.f, 1.f));
 	alEffectf(e, AL_EAXREVERB_DECAY_TIME, 0.1f + 0.5f * flutter);
 	alEffectf(e, AL_EAXREVERB_DECAY_HFRATIO, 0.5f);
-	alEffectf(e, AL_EAXREVERB_REFLECTIONS_GAIN, 2.2f);
+	alEffectf(e, AL_EAXREVERB_REFLECTIONS_GAIN, 0.5f);
 	alEffectf(e, AL_EAXREVERB_REFLECTIONS_DELAY, t_near);
 	ALfloat rp[3] = {near_pan.X, near_pan.Y, near_pan.Z};
 	alEffectfv(e, AL_EAXREVERB_REFLECTIONS_PAN, rp);
 	// the far wall: the "late" part, later by the difference, from across
-	alEffectf(e, AL_EAXREVERB_LATE_REVERB_GAIN, clampf(1.6f * env.wall_far / std::max(0.1f, env.wall_near),
-			0.f, 2.f));
+	alEffectf(e, AL_EAXREVERB_LATE_REVERB_GAIN, clampf(0.6f * env.wall_far / std::max(0.1f, env.wall_near),
+			0.f, 0.6f));
 	alEffectf(e, AL_EAXREVERB_LATE_REVERB_DELAY, clampf(t_far - t_near, 0.f, 0.1f));
 	ALfloat lp[3] = {far_pan.X, far_pan.Y, far_pan.Z};
 	alEffectfv(e, AL_EAXREVERB_LATE_REVERB_PAN, lp);

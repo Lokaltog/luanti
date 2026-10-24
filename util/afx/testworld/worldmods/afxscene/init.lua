@@ -341,6 +341,33 @@ function BUILD.accents(b)
 	b.fill(v(-12, -1, -14), v(-8, -1, -10), "afxscene:planks")
 end
 
+core.register_entity("afxscene:dart", {
+	initial_properties = {physical = false, pointable = false, visual = "sprite",
+		textures = {"[fill:4x4:#ff0000"}, visual_size = {x = 0.2, y = 0.2}, static_save = false},
+	on_step = function(self, dtime)
+		self.t = (self.t or 0) + dtime
+		if self.t > 3 then self.object:remove() end
+	end,
+})
+
+function BUILD.nature(b)
+	b.fill(v(MIN.x, -30, MIN.z), v(MAX.x, -2, MAX.z), "basenodes:stone")
+	b.fill(v(MIN.x, -1, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	-- a wood to the west
+	for _, t in ipairs({{-44, -30}, {-38, -24}, {-32, -34}, {-26, -26}, {-40, -40}, {-30, -18},
+			{-20, -32}, {-44, -16}, {-24, -42}, {-36, -10}}) do tree(b, t[1], t[2], 6) end
+	-- a meadow of tall grass in the middle south
+	b.fill(v(-14, 0, -46), v(14, 0, -20), "afxscene:tallgrass")
+	-- a frozen lake to the south east
+	b.fill(v(22, -1, -44), v(44, -1, -24), "basenodes:ice")
+	-- a ridge running north-south at x = 0..6, north half
+	b.fill(v(0, 0, 0), v(6, 24, 46), "basenodes:stone")
+	-- a cave in a hill to the north east, its mouth facing west
+	b.fill(v(30, 0, 10), v(60, 16, 46), "basenodes:stone")
+	b.fill(v(36, 0, 18), v(56, 10, 40), "air")
+	b.fill(v(30, 0, 28), v(36, 2, 30), "air")
+end
+
 function BUILD.bridge(b)
 	b.fill(v(MIN.x, -20, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:stone")
 	b.fill(v(-30, -1, -1), v(-30, -1, 1), "basenodes:stone")
@@ -778,6 +805,46 @@ TIMELINE.mixer = {
 	end, wait = 5, log = "reverb dragged to 170%"},
 }
 
+local function dart_past(p, dir)
+	local o = core.add_entity(vector.add(p, vector.multiply(dir, -18)), "afxscene:dart")
+	if o then o:set_velocity(vector.multiply(dir, 30)) end
+end
+
+TIMELINE.nature = {
+	{fn = function()
+		core.set_timeofday(0.5)
+		afx_ambience.wind_override = {dir = {x = 1, y = 0, z = 0}, wind = 1.2}
+		P():set_pos(v(-28, 0, -28))
+	end, wait = 6, log = "in the wood, a breeze"},
+	{fn = function() afx_ambience.gust_now(1.3) end, wait = 9, log = "a gust comes through the trees"},
+	{fn = function() afx_ambience.gust_now(1.4) end, wait = 9, log = "another"},
+	{fn = function() afx_ambience.wind_override = {dir = {x = 1, y = 0, z = 0}, wind = 0.7}
+		core.set_timeofday(0.95); P():set_pos(v(0, 0, -33)) end, wait = 12, log = "night meadow: crickets"},
+	{walk = v(10, 0, -33), speed = 1.6, steps = "default_grass_footstep", log = "walking through them"},
+	{wait = 8},
+	{fn = function() P():set_pos(v(33, 0, -34)) end, wait = 30, log = "a frozen lake at night"},
+	{fn = function() core.set_timeofday(0.5); P():set_pos(v(-24, 0, 20)) end, wait = 4,
+		log = "west of a ridge, a voice beyond it"},
+	{fn = function() core.sound_play("afxscene_growl", {pos = v(40, 0.5, 20), gain = 1, max_hear_distance = 128}, true) end, wait = 3},
+	{fn = function() core.sound_play("afxscene_growl", {pos = v(40, 0.5, 20), gain = 1, max_hear_distance = 128}, true) end, wait = 3},
+	{fn = function() P():set_pos(v(-24, 0, -20)) end, wait = 3, log = "the same voice, nothing in between"},
+	{fn = function() core.sound_play("afxscene_growl", {pos = v(40, 0.5, -20), gain = 1, max_hear_distance = 128}, true) end, wait = 3},
+	{fn = function() core.sound_play("afxscene_growl", {pos = v(40, 0.5, -20), gain = 1, max_hear_distance = 128}, true) end, wait = 3},
+	{fn = function() P():set_pos(v(-30, 0, 10)); afx_ambience.thunder_at(v(-200, 40, 0)) end, wait = 9,
+		log = "thunder rolls back off the ridge"},
+	{fn = function() P():set_pos(v(-10, 0, -10)); dart_past(v(-10, 1.6, -11.5), {x = 1, y = 0, z = 0}) end,
+		wait = 2, log = "something flies past"},
+	{fn = function() dart_past(v(-10, 1.7, -9), {x = -1, y = 0, z = 0}) end, wait = 3},
+	{fn = function() afx_ambience.wind_override = {dir = {x = 1, y = 0, z = 0}, wind = 1.5}
+		P():set_pos(v(46, 0, 29)) end, wait = 4, log = "in the cave, gusts across its mouth"},
+	{fn = function() afx_ambience.gust_now(1.5) end, wait = 10},
+	{walk = v(52, 0, 22), speed = 11, steps = "default_hard_footstep", log = "a run in the quiet cave"},
+	{walk = v(40, 0, 36), speed = 11, steps = "default_hard_footstep"},
+	{fn = function() afx_ambience.wind_override = {dir = {x = 1, y = 0, z = 0}, wind = 0.5} end, wait = 10,
+		log = "standing still, getting your breath back"},
+	{fn = function() afx_ambience.wind_override = nil end, wait = 1},
+}
+
 TIMELINE.bridge = {
 	{walk = v(-8, 0, 0), speed = 2, steps = "default_hard_footstep", log = "on rock"},
 	{walk = v(6, 0, 0), speed = 2, steps = "default_wood_footstep", log = "on the bridge"},
@@ -848,7 +915,7 @@ TIMELINE.cinema = {
 }
 
 local START = {
-	cinema = v(0, 0, 0), voices = v(-24, 0, -20), knock = v(-4, 0, -1), music = v(-14, 0, -2), walls = v(-26, 0, -14), accents = v(0, 0, -10), mixer = v(0, 0, 0),
+	cinema = v(0, 0, 0), voices = v(-24, 0, -20), knock = v(-4, 0, -1), music = v(-14, 0, -2), walls = v(-26, 0, -14), accents = v(0, 0, -10), mixer = v(0, 0, 0), nature = v(-28, 0, -28),
 	details = v(-24, 0, 0),
 	corner = v(-16, 0, 0), nextdoor = v(0, 0, -4), bridge = v(-16, 0, 0), draft = v(0, 0, 0),
 	steps = v(0, 0, 0),

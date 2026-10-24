@@ -67,7 +67,12 @@ void OpenALSoundManager::setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> 
 	// A door opens out of a sealed room: the air moves (a faint low
 	// whoomp), and the outdoors swells in (the smoother does that)
 	m_whoomp_cooldown = std::max(0.0f, m_whoomp_cooldown - params.probe_interval);
-	if (m_afx_smoother.valid() && m_last_target_outdoor < 0.02f && target.outdoor_gain > 0.05f &&
+	// (not a teleport, a respawn, a new world: only when you're still)
+	const bool still = (m_listener_pos_node - m_whoomp_last_ear).getLength() < 1.5f;
+	m_whoomp_last_ear = m_listener_pos_node;
+	if (!m_afx_smoother.valid() || !m_afx_active)
+		m_whoomp_cooldown = 3.0f;
+	if (still && m_afx_smoother.valid() && m_last_target_outdoor < 0.02f && target.outdoor_gain > 0.05f &&
 			target.enclosure > 0.6f && !target.submerged && m_whoomp_cooldown <= 0.0f) {
 		m_whoomp_cooldown = 4.0f;
 		std::string w = getLoadedSoundNameFromGroup("afx_dry_whoomp");
@@ -140,6 +145,8 @@ void OpenALSoundManager::deactivateAcoustics()
 	alDopplerFactor(1.0f); // OpenAL's default, what the engine had before afx
 	m_afx_doppler_set = false;
 	m_roomtone.reset();
+	m_moan.reset();
+	m_moan_level = 0.0f;
 	m_remote = m_remote_target = afx::RemoteSpace();
 	m_efx->applyRemote(m_remote, m_listener_frame);
 	m_afx_active = false;
@@ -161,6 +168,27 @@ afx::Occlusion OpenALSoundManager::computeOcclusion(const PlayingSound &snd)
 		}
 		afx::routeAround(*m_afx_snap, m_afx_field, m_listener_pos_node, snd.getPosNode(), o);
 	}
+	// Far off, over the land: a ridge between you and it bends the sound
+	// over its top, duller the higher it rises above the line
+	const v3f src = snd.getPosNode();
+	if (m_afx_snap->heights && o.path < 0.5f &&
+			(src - m_listener_pos_node).getLengthSQ() > 24.0f * 24.0f) {
+		const f32 e = afx::terrainExcess(*m_afx_snap->heights, m_listener_pos_node, src);
+		if (e > 0.5f) {
+			const f32 g = std::exp(-e / 10.0f), hf = std::exp(-e / 4.0f);
+			// blocked through the rock: over the top is the way it comes; in
+			// the clear nearby but a ridge further on: the ridge decides
+			const bool blocked = o.amount > 0.5f;
+			if ((blocked && g > o.wall) || (!blocked && 1.0f - g > o.amount)) {
+				o.amount = 1.0f;
+				o.wall = 0.0f;
+				o.path = 1.0f;
+				o.path_gain = g;
+				o.path_hf = hf;
+				o.virt_pos = src;
+			}
+		}
+	}
 	return o;
 }
 
@@ -175,7 +203,24 @@ static bool anyGlob(const std::string &name, std::initializer_list<const char *>
 void OpenALSoundManager::noteImpact(const std::string &group, f32 gain,
 		const std::optional<std::pair<v3f, v3f>> &pos_vel)
 {
-	if (!m_afx_active || group.rfind("afx_", 0) == 0)
+	if (!m_afx_active || m_playing_echo)
+		return;
+	// Thunder rolls back off the mountains around: a few late, dull taps
+	// from the high ground, each as late as its detour
+	if (pos_vel && anyGlob(group, {"*thunder*"}) && m_afx_snap && m_afx_snap->heights &&
+			m_afx_params.echo > 0.0f) {
+		const v3f src = swap_handedness(pos_vel->first);
+		const v3f ear = m_listener_pos_node;
+		for (const v3f &m : afx::echoPeaks(*m_afx_snap->heights, ear, src, 3)) {
+			const f32 detour = (src - m).getLength() + (m - ear).getLength();
+			SoundSpec spec(group, std::min(1.0f, gain) * 0.32f * m_afx_params.echo, false);
+			spec.pitch = 0.94f;
+			DelayedSound d{0, spec, m, v3f(), detour / 343.0f, std::nullopt};
+			d.echo = true;
+			m_delayed.push_back(std::move(d));
+		}
+	}
+	if (group.rfind("afx_", 0) == 0)
 		return;
 	const bool blast = anyGlob(group, {"*explo*", "*tnt*", "*blast*"});
 	if (!blast && !anyGlob(group, {"*hurt*", "*damage*", "*death*", "*thunder*"}))
@@ -239,12 +284,36 @@ void OpenALSoundManager::applyMix(PlayingSound &snd)
 			const afx::Occlusion &o = snd.getOcclusion();
 			const v3f from = o.path > 0.5f ? o.virt_pos : snd.getPosNode();
 			afx::carryWeather(mix, from - m_listener_pos_node, m_afx_params);
-			// OpenAL only distance-attenuates sends into reverbs; the muffle
-			// EQ and the echo slot get the source's full level at any range.
-			// Give them the direct path's 1/d (reference distance 1 node).
-			const f32 att = 1.0f / std::max(1.0f, (from - m_listener_pos_node).getLength());
+			// OpenAL only distance-attenuates sends into reverbs (and barely);
+			// the muffle EQ gets the source's full level at any range. Give it
+			// the direct path's 1/d (reference distance 1 node). The walls
+			// slot follows the source's own distance law (send auto off).
+			const f32 dist = (from - m_listener_pos_node).getLength();
+			const f32 att = 1.0f / std::max(1.0f, dist);
 			mix.muffle_send *= att;
-			mix.echo_send *= att;
+			if (!m_efx->hasWalls())
+				mix.echo_send *= att;
+			// the far space and the space next door: a far source feeds them less
+			const f32 far = std::min(1.0f, 6.0f / std::max(1.0f, dist));
+			mix.remote_send *= far;
+			mix.neighbor_send *= far;
+			// Gain staging. The engine plays positional sounds at 3x (its
+			// reference distance was cut from 3 nodes to 1); with AL_MAX_GAIN
+			// at 1 that saturates, and every source from a footstep to a
+			// blast sent the same level into the effects. Let AL_GAIN reach 3,
+			// keep the direct path where it was (clamped up close as before),
+			// and let the sends follow the source's level.
+			const f32 g = std::max(1e-4f, snd.getGainCached());
+			const f32 near = std::min(1.0f, 1.0f / (3.0f * g));
+			mix.direct_gain *= near;
+			mix.muffle_send *= near;
+			const f32 sf = std::min(0.667f, 0.5f / g);
+			mix.reverb_send *= sf;
+			mix.echo_send *= sf;
+			mix.neighbor_send *= sf;
+			mix.remote_send *= sf;
+			mix.hollow_send *= sf;
+			alSourcef(snd.getSourceId(), AL_MAX_GAIN, 3.0f);
 		}
 	}
 	if (snd.isRain() && m_afx_params.rain_front < 0.999f) {
@@ -259,7 +328,8 @@ void OpenALSoundManager::applyMix(PlayingSound &snd)
 			// out in it, it's over there; indoors the opening still decides
 			const f32 out = std::clamp(1.0f - env.enclosure, 0.0f, 1.0f);
 			const f32 w = out * (1.0f - f);
-			v3f dir = env.outdoor_dir * (1.0f - w) + fd * w;
+			// under open sky there's no opening to blend with: just the front
+			v3f dir = out > 0.5f ? fd : env.outdoor_dir * (1.0f - w) + fd * w;
 			if (dir.getLengthSQ() > 1e-4f)
 				env.outdoor_dir = dir.normalize();
 			env.outdoor_focus = std::max(env.outdoor_focus, 0.85f * w);
@@ -354,6 +424,50 @@ void OpenALSoundManager::stepSourceSpaces(f32 dtime, bool recast)
 	}
 }
 
+void OpenALSoundManager::stepCaveMoan(f32 dtime)
+{
+	const afx::Acoustics &env = m_afx_smoother.current();
+	// In a cave with its mouth in earshot, when the wind gusts across it.
+	// The bigger the cave and the smaller the mouth, the lower it moans.
+	const f32 g = env.outdoor_gain;
+	const f32 cave = std::clamp((env.enclosure - 0.6f) / 0.3f, 0.0f, 1.0f) *
+			std::clamp((env.natural - 0.4f) / 0.3f, 0.0f, 1.0f);
+	const f32 mouth = std::clamp(g * 8.0f, 0.0f, 1.0f) * std::clamp((0.6f - g) / 0.4f, 0.0f, 1.0f);
+	const f32 gust = std::clamp((m_afx_params.wind - 0.9f) / 0.6f, 0.0f, 1.0f);
+	const f32 target = 0.05f * cave * mouth * gust * (1.0f - env.submerged) * (1.0f - m_deafen);
+	const f32 k = 1.0f - std::exp(-dtime / 1.5f); // it swells and fades with the gust
+	m_moan_level += (target - m_moan_level) * k;
+	if (!m_moan) {
+		m_moan_retry -= dtime;
+		if (m_moan_level < 0.003f || m_moan_retry > 0.0f || m_is_paused)
+			return;
+		m_moan_retry = 10.0f;
+		const std::string name = getLoadedSoundNameFromGroup("afx_cave_moan");
+		if (name.empty())
+			return;
+		m_moan = createPlayingSound(name, true, 0.0f, 1.0f, 0.0f,
+				std::make_pair(swap_handedness(m_listener_pos_node), v3f()), afx::Bus::World);
+		if (!m_moan)
+			return;
+		if (m_moan->isStreaming())
+			m_sounds_streaming_next_bigstep.push_back(m_moan);
+	}
+	if (m_moan_level < 0.002f && target < 0.002f) {
+		m_moan.reset();
+		return;
+	}
+	// heard from the mouth, a few nodes off toward the way out
+	const v3f at = m_listener_pos_node + env.outdoor_dir * std::clamp(env.outdoor_path, 2.0f, 10.0f);
+	m_moan->updatePosVel(swap_handedness(at), v3f());
+	m_moan->setGain(m_moan_level);
+	const f32 pitch = std::clamp(1.4f - 0.05f * env.mean_free_path - 0.5f * g, 0.55f, 1.5f);
+	m_moan->setPitch(pitch);
+	afx::Mix mix;
+	mix.reverb_send = 1.0f;
+	mix.reverb_hf = 0.6f;
+	m_efx->applySource(m_moan->getSourceId(), mix, true, false, env, m_listener_frame);
+}
+
 void OpenALSoundManager::stepRoomTone(f32 dtime)
 {
 	afx::Acoustics env = m_afx_smoother.current();
@@ -432,11 +546,22 @@ void OpenALSoundManager::stepAcoustics(f32 dtime)
 		m_afx_apply_timer = AFX_APPLY_INTERVAL;
 		afx::Acoustics env = m_afx_smoother.current();
 		env.deafen = m_deafen;
+		// one batch: every source's sends change together, in one update
+		static const bool defer = alIsExtensionPresent("AL_SOFT_deferred_updates");
+		static auto defer_fn = defer ?
+				reinterpret_cast<void (AL_APIENTRY *)()>(alGetProcAddress("alDeferUpdatesSOFT")) : nullptr;
+		static auto process_fn = defer ?
+				reinterpret_cast<void (AL_APIENTRY *)()>(alGetProcAddress("alProcessUpdatesSOFT")) : nullptr;
+		if (defer_fn)
+			defer_fn();
 		m_efx->applyEnvironment(env, m_listener_frame);
 		m_efx->applyRemote(m_remote, m_listener_frame);
 		for (auto &[id, snd] : m_sounds_playing)
 			applyMix(*snd);
+		if (process_fn)
+			process_fn();
 		stepRoomTone(AFX_APPLY_INTERVAL);
+		stepCaveMoan(AFX_APPLY_INTERVAL);
 	}
 
 	if (m_afx_params.debug) {

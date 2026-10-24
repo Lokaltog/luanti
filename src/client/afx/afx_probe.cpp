@@ -559,35 +559,61 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 	if (!full)
 		return out; // a neighbour's room: the reverb is all we need
 
-	// Walls beside you: the nearest roughly horizontal hit, and the nearest
-	// across from it. Close and hard is loud; far and soft fades out.
+	// Walls beside you: the nearest roughly horizontal surface that's a wall
+	// and not a post: several rays agreeing on it (a cone of ~30 degrees)
 	{
+		auto flat = [](const RayHit &r) { return r.dist * std::sqrt(std::max(0.f, 1.f - r.dir.Y * r.dir.Y)); };
+		auto usable = [&](const RayHit &r, float maxd) {
+			return r.hit && std::fabs(r.dir.Y) < 0.35f && flat(r) <= maxd && props(r.mat).absorption < 0.4f;
+		};
+		// how many rays agree on it, and only if it spreads sideways (a wall,
+		// not a trunk or a post): rays at least ~17 degrees apart around you
+		auto cluster = [&](const RayHit &c) {
+			int k = 0;
+			float hx = c.dir.X, hz = c.dir.Z;
+			const float hl = std::sqrt(hx * hx + hz * hz);
+			if (hl < 1e-4f)
+				return 0;
+			hx /= hl;
+			hz /= hl;
+			float widest = 1.f;
+			for (const auto &r : rays) {
+				if (!usable(r, 16.f) || r.dir.dotProduct(c.dir) < 0.8f ||
+						std::fabs(flat(r) - flat(c)) > 0.35f * flat(c) + 0.5f)
+					continue;
+				k++;
+				const float rl = std::sqrt(r.dir.X * r.dir.X + r.dir.Z * r.dir.Z);
+				if (rl > 1e-4f)
+					widest = std::min(widest, (r.dir.X * hx + r.dir.Z * hz) / rl);
+			}
+			return widest < 0.94f ? k : 0;
+		};
 		const RayHit *near = nullptr, *far = nullptr;
 		for (const auto &r : rays) {
-			// a wall at body height, not the ground or the ceiling
-			if (!r.hit || std::fabs(r.dir.Y * r.dist) > 1.f || r.dist < 0.8f || r.dist > 14.f)
+			if (!usable(r, 14.f) || cluster(r) < 3)
 				continue;
-			if (!near || r.dist < near->dist)
+			if (!near || flat(r) < flat(*near))
 				near = &r;
 		}
 		if (near) {
 			for (const auto &r : rays) {
-				if (!r.hit || std::fabs(r.dir.Y * r.dist) > 1.f || r.dist < 0.8f || r.dist > 16.f)
+				if (!usable(r, 16.f) || r.dir.dotProduct(near->dir) > -0.6f || cluster(r) < 3)
 					continue;
-				if (r.dir.dotProduct(near->dir) < -0.6f && (!far || r.dist < far->dist))
+				if (!far || flat(r) < flat(*far))
 					far = &r;
 			}
-			auto strength = [](const RayHit &r) {
+			auto strength = [&](const RayHit &r) {
 				const MaterialProps &mp = props(r.mat);
-				return clampf((1.f - mp.absorption) * clampf((12.f - r.dist) / 10.f, 0.f, 1.f),
+				const float share = clampf(cluster(r) / 5.f, 0.f, 1.f);
+				return clampf((1.f - mp.absorption) * share * clampf((12.f - flat(r)) / 10.f, 0.f, 1.f),
 						0.f, 1.f);
 			};
 			out.wall_near = strength(*near);
-			out.wall_near_dist = near->dist;
+			out.wall_near_dist = std::max(0.5f, flat(*near));
 			out.wall_near_dir = near->dir;
 			if (far) {
 				out.wall_far = strength(*far);
-				out.wall_far_dist = far->dist;
+				out.wall_far_dist = std::max(0.5f, flat(*far));
 				out.wall_far_dir = far->dir;
 			}
 		}
@@ -625,8 +651,11 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 	// Outdoors
 	const float k = std::max(0.f, params.outdoor_muffle);
 	if (out.underwater || out.in_lava) {
-		out.outdoor_gain = 0.f;
-		out.outdoor_hf = 0.05f;
+		// just under the surface the world above still reaches you, dull;
+		// a few nodes down only a rumble does
+		const bool shallow = out.underwater && out.water_depth <= 2.f;
+		out.outdoor_gain = shallow ? (out.water_depth <= 1.f ? 0.3f : 0.12f) : 0.f;
+		out.outdoor_hf = shallow ? 0.2f : 0.05f;
 		out.outdoor_wall = 0.2f; // dull rumble through the water
 	} else if (cellSky(snap.at(ear_cell))) {
 		out.outdoor_gain = 1.f;
@@ -1077,6 +1106,70 @@ static float floorHollowness(const VoxelSnapshot &snap, v3s16 ear_cell)
 	if (total == 0)
 		return 0.f;
 	return clampf(mat * (air / (float)total) * (thick == 1 ? 1.f : 0.5f) * 1.4f, 0.f, 1.f);
+}
+
+float terrainExcess(const HeightField &hf, v3f from, v3f to)
+{
+	v3f d = to - from;
+	const float len = std::sqrt(d.X * d.X + d.Z * d.Z);
+	if (len < 16.f)
+		return 0.f;
+	float worst = -1e9f;
+	const float step = HeightField::CELL;
+	for (float t = 8.f; t < len - 8.f; t += step) {
+		const float k = t / len;
+		const float x = from.X + d.X * k, z = from.Z + d.Z * k;
+		const s16 h = hf.at(x, z);
+		if (h == HeightField::UNKNOWN)
+			continue;
+		const float line = from.Y + d.Y * k;
+		worst = std::max(worst, (float)h + 1.f - line);
+	}
+	return worst;
+}
+
+std::vector<v3f> echoPeaks(const HeightField &hf, v3f ear, v3f src, int max)
+{
+	struct Cand { v3f p; float score; };
+	std::vector<Cand> cands;
+	for (s16 j = 0; j < HeightField::N; j += 2)
+	for (s16 i = 0; i < HeightField::N; i += 2) {
+		const s16 h = hf.h[(size_t)j * HeightField::N + i];
+		if (h == HeightField::UNKNOWN)
+			continue;
+		const v3f p(hf.x0 + i * HeightField::CELL + 2.f, (float)h, hf.z0 + j * HeightField::CELL + 2.f);
+		const float rise = p.Y - ear.Y;
+		v3f flat = p - ear;
+		flat.Y = 0.f;
+		const float dist = flat.getLength();
+		if (rise < 12.f || dist < 48.f || dist > 190.f)
+			continue;
+		// a face you can see: nothing in between rises higher
+		if (terrainExcess(hf, ear, p - v3f(0, 3.f, 0)) > 0.f)
+			continue;
+		cands.push_back({p, rise / std::sqrt(dist)});
+	}
+	std::sort(cands.begin(), cands.end(), [](const Cand &a, const Cand &b) { return a.score > b.score; });
+	std::vector<v3f> out;
+	for (const Cand &c : cands) {
+		v3f dir = c.p - ear;
+		dir.Y = 0.f;
+		dir.normalize();
+		bool spread = true;
+		for (const v3f &o : out) {
+			v3f od = o - ear;
+			od.Y = 0.f;
+			od.normalize();
+			if (od.dotProduct(dir) > 0.5f)
+				spread = false;
+		}
+		if (spread)
+			out.push_back(c.p);
+		if ((int)out.size() >= max)
+			break;
+	}
+	(void)src;
+	return out;
 }
 
 } // namespace afx

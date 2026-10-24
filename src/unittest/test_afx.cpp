@@ -54,6 +54,7 @@ public:
 	void testSkybridge();
 	void testShortTunnel();
 	void testWalls();
+	void testTerrain();
 };
 
 static TestAfx g_test_instance;
@@ -84,6 +85,7 @@ void TestAfx::runTests(IGameDef *gamedef)
 	TEST(testSkybridge);
 	TEST(testShortTunnel);
 	TEST(testWalls);
+	TEST(testTerrain);
 }
 
 void TestAfx::testOpenField()
@@ -699,9 +701,47 @@ void TestAfx::testWalls()
 	const Acoustics k = cor.probe(v3f(0, 1.6f, 0));
 	UASSERT(k.wall_near > 0.5f && k.wall_far > 0.5f);
 	UASSERT(k.wall_near_dir.dotProduct(k.wall_far_dir) < -0.6f);
+	// A lone tree trunk or a post isn't a wall; nor is a low ceiling
+	World trunk = openField();
+	trunk.fill({4, 0, 0}, {4, 5, 0}, Material::Wood); // a few steps away
+	trunk.markSky();
+	UASSERT(trunk.probe(v3f(0, 1.6f, 0)).wall_near < 0.3f);
+	World porch = openField();
+	porch.fill({-6, 2, -6}, {6, 2, 6}, Material::Wood);
+	porch.markSky();
+	UASSERT(porch.probe(v3f(0, 1.6f, 0)).wall_near < 0.3f);
 	// Wool walls barely answer
 	World wool = openField();
 	wool.fill({2, 0, -32}, {31, 20, 31}, Material::Soft);
 	wool.markSky();
 	UASSERT(wool.probe(v3f(0, 1.6f, 0)).wall_near < 0.4f);
+}
+
+void TestAfx::testTerrain()
+{
+	HeightField hf;
+	hf.x0 = -192;
+	hf.z0 = -192;
+	for (auto &h : hf.h) h = 0;
+	// a ridge 20 high across the land at x = 40..48
+	for (s16 j = 0; j < HeightField::N; j++)
+		for (s16 i = 0; i < HeightField::N; i++) {
+			const float x = hf.x0 + i * HeightField::CELL + 2.f;
+			if (x >= 40 && x < 48)
+				hf.h[(size_t)j * HeightField::N + i] = 20;
+		}
+	const v3f ear(0, 2, 0);
+	UASSERT(terrainExcess(hf, ear, v3f(100, 2, 0)) > 15.f); // behind the ridge
+	UASSERT(terrainExcess(hf, ear, v3f(-100, 2, 0)) <= 0.f); // across open land
+	UASSERT(terrainExcess(hf, ear, v3f(0, 2, 100)) <= 0.f);
+	// thunder from the west comes back off the ridge to the east
+	const auto peaks = echoPeaks(hf, ear, v3f(-300, 40, 0), 3);
+	UASSERT(!peaks.empty());
+	UASSERT(peaks[0].X > 39.f && peaks[0].X < 49.f);
+	// lava: as sealed off from the world as deep water
+	Acoustics lava;
+	lava.in_lava = true;
+	lava.submerged = 1.f;
+	Mix m = mixFor(Bus::World, lava, Occlusion(), Params());
+	UASSERT(m.direct_gain < 0.05f);
 }

@@ -71,8 +71,15 @@ end
 A.register_layer(function(ctx, wanted)
 	if ctx.dimension ~= "overworld" or ctx.underground then return end
 	local shore = ctx.shore
-	if not shore or #shore < 4 then return end
+	if not shore or #shore < 8 then return end
 	local st = ctx.st
+	-- frogs live by ponds in meadows, forests and swamps; not on the sea
+	-- shore, in the snow or the desert
+	local p = st.last_place
+	if not p or p.coast > 0.3 or p.cold > 0.5 or p.dry > 0.5 or
+			math.max(p.swamp, p.meadow, p.forest) < 0.3 then
+		return
+	end
 	local now = ctx.now
 
 	-- Coming close to the water's edge: the nearest frogs plop in and the
@@ -117,7 +124,7 @@ A.register_layer(function(ctx, wanted)
 	local villagers = 0
 	for _, obj in ipairs(core.get_objects_inside_radius(ctx.ppos, 40)) do
 		local ent = obj:get_luaentity()
-		if ent and ent.name and ent.name:find("villager") then
+		if ent and ent.name and ent.name:find("villager") and not ent.name:find("zombie") then
 			villagers = villagers + 1
 		end
 	end

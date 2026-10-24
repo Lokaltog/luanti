@@ -135,12 +135,19 @@ end)
 
 --[[ First discoveries: a soft rising chime, once ever per kind of place ]]
 
+local seen_cache = {}
 local function seen(player)
-	local s = player:get_meta():get_string("afx_seen")
-	return s ~= "" and core.deserialize(s) or {}
+	local name = player:get_player_name()
+	if not seen_cache[name] then
+		local s = player:get_meta():get_string("afx_seen")
+		seen_cache[name] = s ~= "" and core.deserialize(s) or {}
+	end
+	return seen_cache[name]
 end
+core.register_on_leaveplayer(function(p) seen_cache[p:get_player_name()] = nil end)
 
 local function remember(player, t)
+	seen_cache[player:get_player_name()] = t
 	player:get_meta():set_string("afx_seen", core.serialize(t))
 end
 

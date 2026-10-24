@@ -123,7 +123,22 @@ local function tour()
 	local g = SP.plains
 	local gr1, gr2, gr3 = vector.offset(g, 0, 0, 0), vector.offset(g, 0, 0, 8), vector.offset(g, 0, 0, 16)
 	strip(gr1, 40, nil); strip(gr2, 40, "tall"); strip(gr3, 40, "double")
+	-- the house goes where it actually rains (the biome next door may be dry)
 	local hc = vector.offset(g, 0, 0, 30)
+	local w = rawget(_G, "mcl_weather")
+	if w and w.has_rain then
+		for r = 30, 90, 10 do
+			local found = false
+			for a = 0, 7 do
+				local q = vector.offset(g, math.floor(r * math.cos(a * math.pi / 4)), 0,
+					math.floor(r * math.sin(a * math.pi / 4)))
+				local ok, rainy = pcall(w.has_rain, q)
+				local ok2, snowy = pcall(w.has_snow or function() return false end, q)
+				if ok and rainy and not (ok2 and snowy) then hc, found = ground(q) or q, true break end
+			end
+			if found then break end
+		end
+	end
 	local jc = SP.jungle
 	run({
 		{log = "grass control (no plants), walk 4.3/s", wait = 9, fn = function()

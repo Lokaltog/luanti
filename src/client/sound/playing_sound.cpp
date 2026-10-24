@@ -271,6 +271,7 @@ void PlayingSound::stepOcclusion(f32 dtime, f32 tau)
 
 void PlayingSound::setGain(f32 gain) noexcept
 {
+	m_gain_cached = gain;
 	// AL_REFERENCE_DISTANCE was once reduced from 3 nodes to 1 node.
 	// We compensate this by multiplying the volume by 3.
 	if (m_is_positional)

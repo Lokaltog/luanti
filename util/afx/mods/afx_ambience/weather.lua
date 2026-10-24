@@ -18,6 +18,7 @@ local function step_gust(dtime)
 		gust.next = gust.next - dtime
 		if gust.next <= 0 then
 			gust.phase, gust.t, gust.peak = "rise", 0, L.rand(0.6, 1.4)
+			if A.on_gust then A.on_gust(gust.peak) end
 		end
 	elseif gust.phase == "rise" then
 		gust.level = gust.peak * math.min(1, gust.t / 3)
@@ -91,7 +92,9 @@ local function rain_layer(ctx, wanted)
 	local raining = ctx.rain > 0
 	local rain = rain_of(ctx.st)
 	if raining and not rain.on then
-		rain.on, rain.since = true, now
+		-- back in it after a moment out (a biome edge): the storm carries on
+		if now - rain.stopped > 30 then rain.since = now end
+		rain.on = true
 	elseif not raining and rain.on then
 		rain.on, rain.stopped = false, now
 	end
@@ -144,6 +147,7 @@ local function rain_layer(ctx, wanted)
 			for _ = 1, 4 do
 				local c = vector.round(vector.offset(ctx.ppos, L.rand(-5, 5), 3, L.rand(-5, 5)))
 				-- down to the first solid top under open sky
+				local played = false
 				for dy = 0, -6, -1 do
 					local q = vector.offset(c, 0, dy, 0)
 					if solid_top(q) then
@@ -158,11 +162,12 @@ local function rain_layer(ctx, wanted)
 								{pos = vector.offset(q, 0, 0.5, 0), to_player = ctx.pname,
 								gain = L.rand(0.2, 0.45), pitch = L.rand(0.92, 1.12),
 								max_hear_distance = 16}, true)
+							played = true
 						end
 						break
 					end
 				end
-				break
+				if played then break end
 			end
 		end
 	end
@@ -277,19 +282,24 @@ A.thunder_at = on_strike
 
 --[[ Windows rattle when a big sound arrives: thunder, a blast ]]
 
+local rattle_until = {}
 local function rattle(pos, loudness)
+	local now = core.get_us_time() / 1e6
 	for _, player in ipairs(core.get_connected_players()) do
 		local ppos = player:get_pos()
 		local d = vector.distance(ppos, pos)
 		local k = loudness * math.min(1, 60 / math.max(1, d))
-		if k > 0.12 then
+		local pn = player:get_player_name()
+		-- a string of blasts rattles the panes once, not once per blast
+		if k > 0.12 and now >= (rattle_until[pn] or 0) then
+			rattle_until[pn] = now + 0.6
 			local panes = core.find_nodes_in_area(vector.offset(ppos, -8, -3, -8),
 					vector.offset(ppos, 8, 6, 8), {"group:pane", "group:glass"})
 			local pname = player:get_player_name()
 			local arrive = d / 343 + 0.05
-			for i = 1, math.min(3, #panes) do
+			for i = 1, math.min(2, #panes) do
 				local p = panes[math.random(#panes)]
-				local taps = math.random(6, 10)
+				local taps = math.random(4, 6)
 				for t = 0, taps - 1 do
 					core.after(arrive + t * L.rand(0.035, 0.06) + i * 0.02, function()
 						A.play("afx_raindrop_hard", {pos = p, to_player = pname,
@@ -314,7 +324,8 @@ core.register_on_mods_loaded(function()
 		end
 	end
 	local tnt = rawget(_G, "tnt")
-	if tnt and tnt.boom then
+	-- (where tnt goes through mcl_explosions, that wrap already hears it)
+	if tnt and tnt.boom and not (ex and ex.explode) then
 		local boom = tnt.boom
 		tnt.boom = function(pos, def, ...)
 			rattle(pos, 1.2)
@@ -326,6 +337,7 @@ end)
 -- For tests and scripted moments: start a gust now
 function A.gust_now(peak)
 	gust.phase, gust.t, gust.peak = "rise", 0, peak or 1.2
+	if A.on_gust then A.on_gust(gust.peak) end
 end
 
 --[[ Drafts: gaps in walls whistle when the wind is up ]]

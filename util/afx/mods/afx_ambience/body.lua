@@ -93,9 +93,9 @@ A.register_tick(function(player, dtime)
 	end
 	if core.get_item_group(head, "water") > 0 then
 		if st.last_breath and breath < st.last_breath then
-			afx_ambience.play("afx_bubbles", {pos = vector.offset(pos, 0, 1.8, 0), to_player = pname,
-				gain = breath <= 3 and 0.7 or 0.4, pitch = L.rand(0.9, 1.15),
-				max_hear_distance = 8}, true)
+			-- at the ear: non-positional (a positional sound this close clips)
+			afx_ambience.play("afx_bubbles", {to_player = pname,
+				gain = breath <= 3 and 0.22 or 0.13, pitch = L.rand(0.9, 1.15)}, true)
 		end
 	end
 	st.last_breath = breath

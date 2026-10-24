@@ -23,8 +23,21 @@ local function hollow_under(pos)
 	return d and not d.walkable
 end
 
+-- A chest broken open drops twenty things at once: a few clatter, not all
+local budget_t, budget_n, recent = 0, 0, {}
+
 -- The impact of something small on node `p`, at `speed` nodes/s
 local function impact(p, speed, small)
+	local now = core.get_us_time() / 1e6
+	if now - budget_t > 0.1 then budget_t, budget_n = now, 0 end
+	if budget_n >= 4 then return end
+	local key = core.hash_node_position(p)
+	if now - (recent[key] or -1) < 0.15 then return end
+	budget_n = budget_n + 1
+	recent[key] = now
+	if budget_n == 1 and math.random() < 0.05 then
+		for k, t in pairs(recent) do if now - t > 1 then recent[k] = nil end end
+	end
 	local node = core.get_node_or_nil(p)
 	if not node then return end
 	local def = core.registered_nodes[node.name]

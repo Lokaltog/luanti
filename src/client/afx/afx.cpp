@@ -7,6 +7,8 @@
 #include "afx_score.h"
 
 #include "client/client.h"
+#include "client/clientobject.h"
+#include "client/clientenvironment.h"
 #include "client/camera.h"
 #include "sound_spec.h"
 #include "util/numeric.h"
@@ -610,6 +612,121 @@ SoundSpec knockSound(Client *client, v3s16 node, v3s16 normal)
 	return last;
 }
 
+/*
+	The land around (coarse heights), refreshed a few rows per probe
+*/
+
+static std::shared_ptr<HeightField> s_hf;
+static int s_hf_row = 0;
+
+static bool surfaceNode(const ContentFeatures &f)
+{
+	const Material m = classifyNode(f);
+	return m == Material::Stone || m == Material::Earth || m == Material::Wood ||
+			m == Material::Snow || m == Material::Glass || m == Material::Soft;
+}
+
+static std::shared_ptr<const HeightField> updateHeights(Client *client, v3s16 center)
+{
+	constexpr s16 C = HeightField::CELL, N = HeightField::N;
+	const s16 half = N * C / 2;
+	if (!s_hf || std::abs(center.X - (s_hf->x0 + half)) > 48 ||
+			std::abs(center.Z - (s_hf->z0 + half)) > 48) {
+		auto hf = std::make_shared<HeightField>();
+		hf->x0 = (s16)(std::floor((center.X - half) / (float)C) * C);
+		hf->z0 = (s16)(std::floor((center.Z - half) / (float)C) * C);
+		// keep what's known where the old field overlaps the new
+		if (s_hf) {
+			for (s16 j = 0; j < N; j++)
+			for (s16 i = 0; i < N; i++) {
+				const s16 h = s_hf->at(hf->x0 + i * C + 2.f, hf->z0 + j * C + 2.f);
+				hf->h[(size_t)j * N + i] = h;
+			}
+		}
+		s_hf = hf;
+		s_hf_row = 0;
+	}
+	ClientMap &map = client->getEnv().getClientMap();
+	const NodeDefManager *ndef = client->getNodeDefManager();
+	for (int r = 0; r < 8; r++, s_hf_row = (s_hf_row + 1) % N) {
+		const s16 j = (s16)s_hf_row;
+		for (s16 i = 0; i < N; i++) {
+			const s16 x = s_hf->x0 + i * C + 2, z = s_hf->z0 + j * C + 2;
+			s16 &h = s_hf->h[(size_t)j * N + i];
+			s16 top = h != HeightField::UNKNOWN ? (s16)(h + 12) : (s16)(center.Y + 48);
+			// risen since (a mountain built, a hill we started inside): climb
+			for (int k = 0; k < 32; k++) {
+				bool ok = false;
+				MapNode n = map.getNode(v3s16(x, top, z), &ok);
+				if (!ok || n.getContent() == CONTENT_IGNORE || !surfaceNode(ndef->get(n)))
+					break;
+				top++;
+			}
+			s16 found = HeightField::UNKNOWN;
+			bool known = false;
+			for (s16 y = top; y > center.Y - 96; y--) {
+				bool ok = false;
+				MapNode n = map.getNode(v3s16(x, y, z), &ok);
+				if (!ok || n.getContent() == CONTENT_IGNORE)
+					continue;
+				known = true;
+				if (surfaceNode(ndef->get(n))) {
+					found = y;
+					break;
+				}
+			}
+			if (known)
+				h = found;
+		}
+	}
+	return std::make_shared<const HeightField>(*s_hf);
+}
+
+/*
+	Fly-bys: something fast passing close to the ear whizzes by (arrows,
+	fireballs, a thrown thing), with the doppler of its own speed
+*/
+
+static std::unordered_map<u16, float> s_whizzed; // object id -> when
+
+static void updateFlyBys(Client *client, ISoundManager *sound, v3f ear, float dtime)
+{
+	static float t = 0.f;
+	t += dtime;
+	if (!sound->hasSoundGroup("afx_whizz"))
+		return;
+	std::vector<DistanceSortedActiveObject> objs;
+	client->getEnv().getActiveObjects(ear * BS, 24.f * BS, objs);
+	for (auto &d : objs) {
+		ClientActiveObject *o = d.obj;
+		if (!o || o->isLocalPlayer() || o->getParent())
+			continue;
+		const v3f vel = o->getVelocity() / BS;
+		const float v2 = vel.getLengthSQ();
+		if (v2 < 14.f * 14.f)
+			continue;
+		const v3f rel = o->getPosition() / BS - ear;
+		// when it comes closest, and how close
+		const float tc = -rel.dotProduct(vel) / v2;
+		if (tc < 0.f || tc > 0.12f)
+			continue;
+		const float miss = (rel + vel * tc).getLength();
+		if (miss > 3.f)
+			continue;
+		auto it = s_whizzed.find(o->getId());
+		if (it != s_whizzed.end() && t - it->second < 1.5f)
+			continue;
+		s_whizzed[o->getId()] = t;
+		SoundSpec spec("afx_whizz", 0.3f * (1.f - miss / 3.f) + 0.05f);
+		spec.pitch = 0.9f + 0.2f * std::min(1.f, std::sqrt(v2) / 40.f);
+		sound->playSoundAt(0, spec, ear + rel + vel * (tc * 0.5f), vel);
+	}
+	if (s_whizzed.size() > 64) {
+		for (auto it = s_whizzed.begin(); it != s_whizzed.end();)
+			it = t - it->second > 3.f ? s_whizzed.erase(it) : std::next(it);
+	}
+}
+
 /// Tell the server what the player hears, so server mods (afx_ambience)
 /// agree with it: indoors or out, a cave, under water. Twice a second.
 static void sendState(Client *client, ISoundManager *sound, float dtime)
@@ -657,6 +774,7 @@ void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 
 	updateMood(client, sound, ear, dtime, p);
 	sendState(client, sound, dtime);
+	updateFlyBys(client, sound, ear, dtime);
 
 	// With afx_debug, log the state every 2 s (for headless runs and tuning)
 	static float log_timer = 0.f;
@@ -674,7 +792,9 @@ void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 
 	auto t0 = std::chrono::steady_clock::now();
 	v3s16 center = floatToInt(ear * BS, BS);
-	std::shared_ptr<const VoxelSnapshot> snap = buildSnapshot(client, center, p.probe_radius);
+	std::shared_ptr<VoxelSnapshot> snap_w = buildSnapshot(client, center, p.probe_radius);
+	snap_w->heights = updateHeights(client, center);
+	std::shared_ptr<const VoxelSnapshot> snap = std::move(snap_w);
 	s_build_ms = std::chrono::duration<float, std::milli>(
 			std::chrono::steady_clock::now() - t0).count();
 	Params q = p;
@@ -736,6 +856,9 @@ static void resetSession()
 	s_knock.node = v3s16(S16_MAX, S16_MAX, S16_MAX);
 	s_knock.spec = SoundSpec();
 	s_materials = MaterialTable();
+	s_hf.reset();
+	s_whizzed.clear();
+	s_hf_row = 0;
 	s_timer = 0.f;
 	s_was_enabled = true;
 	s_last_homey = 0;

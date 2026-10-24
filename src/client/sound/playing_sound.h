@@ -39,6 +39,7 @@ class PlayingSound final
 	afx::Bus m_bus;
 	bool m_footstep = false;
 	bool m_rain = false;
+	f32 m_gain_cached = 1.0f;
 	v3f m_pos_node;            // node space, for occlusion
 	afx::Occlusion m_occ_target, m_occ;
 	afx::SourceSpace m_space;  // the surroundings it sits in
@@ -73,6 +74,8 @@ public:
 	void setGain(f32 gain) noexcept;
 
 	f32 getGain() noexcept;
+	/// The logical gain last set (no AL round trip), for the mix
+	f32 getGainCached() const noexcept { return m_gain_cached; }
 
 	void setPitch(f32 pitch);
 
@@ -147,6 +150,7 @@ public:
 			const v3f s = swap_handedness(m_pos_node);
 			alSource3f(m_source_id, AL_POSITION, s.X, s.Y, s.Z);
 			alSourcef(m_source_id, AL_AIR_ABSORPTION_FACTOR, 0.0f);
+			alSourcef(m_source_id, AL_MAX_GAIN, 1.0f);
 		} else {
 			alSource3f(m_source_id, AL_POSITION, 0.0f, 0.0f, 0.0f);
 		}

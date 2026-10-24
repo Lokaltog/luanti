@@ -14,6 +14,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <cmath>
 
 namespace afx
 {
@@ -87,7 +88,34 @@ inline bool materialPorous(Material m)
 
 /// A cube of voxels around the listener, copied on the main thread.
 /// Immutable once published; shared with the sound thread by shared_ptr.
+/// The land around, coarse: the surface height every few nodes over a few
+/// hundred nodes. For what the voxel snapshot can't reach: a ridge between
+/// you and a far bell, the mountains thunder rolls back from.
+struct HeightField {
+	static constexpr s16 CELL = 4;  // nodes per cell
+	static constexpr s16 N = 96;    // cells per side (±192 nodes)
+	static constexpr s16 UNKNOWN = -32768;
+	s16 x0 = 0, z0 = 0;             // node position of cell (0, 0)'s corner
+	std::vector<s16> h = std::vector<s16>((size_t)N * N, UNKNOWN); // surface top y
+
+	s16 at(float x, float z) const {
+		const int i = (int)std::floor((x - x0) / CELL), j = (int)std::floor((z - z0) / CELL);
+		if (i < 0 || j < 0 || i >= N || j >= N) return UNKNOWN;
+		return h[(size_t)j * N + i];
+	}
+};
+
+/// How far the land rises above the straight line from `from` to `to`
+/// (nodes; <= 0: in plain sight over the terrain). Ignores the first and
+/// last few nodes, where the voxel snapshot does better.
+float terrainExcess(const HeightField &hf, v3f from, v3f to);
+
+/// Up to `max` mountainsides around `ear` that a sound from `src` would
+/// come back from: high ground, 48..190 nodes away, well spread around.
+std::vector<v3f> echoPeaks(const HeightField &hf, v3f ear, v3f src, int max);
+
 struct VoxelSnapshot {
+	std::shared_ptr<const HeightField> heights; // may be null
 	v3s16 origin;          // node position of cells[0]
 	s16 size = 0;          // edge length in nodes
 	std::vector<u8> cells; // size³, x fastest, then y, then z

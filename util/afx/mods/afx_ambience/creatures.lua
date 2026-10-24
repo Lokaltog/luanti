@@ -20,6 +20,7 @@ local KINDS = {
 local function kind_of(ent)
 	if not ent or not ent.name then return nil end
 	if ent.type and ent.type ~= "animal" and ent.type ~= "npc" then return nil end -- monsters don't startle
+	if ent.name:find("zombi") or ent.name:find("piglin") or ent.passive == false then return nil end
 	for _, k in ipairs(KINDS) do
 		if ent.name:find(k[1], 1, true) then return k end
 	end
@@ -28,8 +29,9 @@ end
 local function voice_of(ent)
 	local s = ent.child and ent.sounds_child or ent.sounds
 	if type(s) ~= "table" then return nil end
-	local v = s.random or s.damage or s.distance
+	local v = s.random or s.damage
 	if type(v) == "table" then v = v.name end
+	if type(v) ~= "string" then return nil end
 	return v, (s.base_pitch or 1) * (ent.child and not ent.sounds_child and 1.5 or 1)
 end
 
@@ -116,6 +118,16 @@ A.register_tick(function(player, dtime)
 			end
 		end
 	end
+end)
+
+core.register_on_mods_loaded(function()
+	-- forget mobs that are gone, now and then
+	local function sweep()
+		local now = core.get_us_time() / 1e6
+		for k, t in pairs(last_startle) do if now - t > 30 then last_startle[k] = nil end end
+		core.after(30, sweep)
+	end
+	core.after(30, sweep)
 end)
 
 A.add_report(function()

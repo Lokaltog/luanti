@@ -44,13 +44,12 @@ end
 local function underground_rivers(ctx, wanted)
 	local r = 22
 	local flowing = {}
+	if #A.FLOWING == 0 then return end
 	for _, p in ipairs(core.find_nodes_in_area(vector.offset(ctx.ppos, -r, -12, -r),
-			vector.offset(ctx.ppos, r, 12, r), {"group:water"})) do
-		if core.get_node(p).name:find("flowing") then
-			-- the game plays the ones close by (vl_env_sounds, env_sounds)
-			if not L.GAME_HAS_WATER_LAVA or vector.distance(p, ctx.ppos) > 9 then
-				flowing[#flowing + 1] = p
-			end
+			vector.offset(ctx.ppos, r, 12, r), A.FLOWING)) do
+		-- the game plays the ones close by (vl_env_sounds, env_sounds)
+		if not L.GAME_HAS_WATER_LAVA or vector.distance(p, ctx.ppos) > 9 then
+			flowing[#flowing + 1] = p
 		end
 	end
 	for _, c in ipairs(L.nearest(L.clusters(flowing), ctx.ppos, 2)) do
@@ -94,7 +93,7 @@ A.register_tick(function(player, dtime)
 	-- In: a plunge, bigger the faster you hit the water
 	if in_water and not st.was_in_water and vel.y < -3 then
 		afx_ambience.play("afx_splash_in", {pos = pos, to_player = pname,
-			gain = math.min(0.9, 0.3 + (-vel.y) / 18), pitch = L.rand(0.9, 1.05),
+			gain = math.min(0.3, 0.1 + (-vel.y) / 60), pitch = L.rand(0.9, 1.05),
 			max_hear_distance = 32}, true)
 	end
 	-- Head goes under / comes up
@@ -102,8 +101,8 @@ A.register_tick(function(player, dtime)
 		st.under_since = now
 	elseif not under and st.was_under then
 		local held = now - (st.under_since or now)
-		afx_ambience.play("afx_splash_out", {pos = vector.offset(pos, 0, 1.4, 0), to_player = pname,
-			gain = 0.45, pitch = L.rand(0.95, 1.1), max_hear_distance = 20}, true)
+		afx_ambience.play("afx_splash_out", {to_player = pname,
+			gain = 0.18, pitch = L.rand(0.95, 1.1)}, true)
 		-- a long dive, or out of breath: a gasp as you break the surface
 		local breath, max_breath = player:get_breath(), player:get_properties().breath_max or 10
 		if held > 6 or breath < max_breath - 2 then
@@ -120,8 +119,8 @@ A.register_tick(function(player, dtime)
 	if (under or (in_water and is_water(core.get_node(vector.round(vector.offset(pos, 0, -0.6, 0))).name)))
 			and speed > 1 and st.swim_d > 1.6 then
 		st.swim_d = 0
-		afx_ambience.play("afx_swim", {pos = vector.offset(pos, 0, 0.8, 0), to_player = pname,
-			gain = under and 0.22 or 0.3, pitch = L.rand(0.9, 1.1), max_hear_distance = 14}, true)
+		afx_ambience.play("afx_swim", {to_player = pname,
+			gain = under and 0.1 or 0.14, pitch = L.rand(0.9, 1.1)}, true)
 	end
 	st.was_in_water = in_water
 	st.was_under = under

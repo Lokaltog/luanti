@@ -84,7 +84,12 @@ private:
 	std::shared_ptr<PlayingSound> m_roomtone;
 	f32 m_roomtone_retry = 0.0f;
 	f32 m_roomtone_quiet = 0.0f, m_roomtone_pitch = -1.0f;
-	f32 m_last_target_outdoor = 1.0f, m_whoomp_cooldown = 0.0f;
+	f32 m_last_target_outdoor = 1.0f, m_whoomp_cooldown = 3.0f;
+	v3f m_whoomp_last_ear;
+	// a cave mouth moaning in the gusts, like a bottle
+	std::shared_ptr<PlayingSound> m_moan;
+	f32 m_moan_level = 0.0f, m_moan_retry = 0.0f;
+	void stepCaveMoan(f32 dtime);
 	// HRTF: -1 = never touched (OpenAL Soft's own config decides)
 	int m_hrtf_set = -1;
 	void applyHrtf(bool on);
@@ -109,7 +114,9 @@ private:
 		v3f pos, vel;   // node space
 		f32 due;        // seconds left
 		std::optional<std::pair<f32, f32>> fade; // step, target
+		bool echo = false; // a mountain's echo: makes no echoes of its own
 	};
+	bool m_playing_echo = false;
 	std::vector<DelayedSound> m_delayed;
 	bool takeDelayed(sound_handle_t id, DelayedSound **out);
 	void stepDelayed(f32 dtime);

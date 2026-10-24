@@ -67,11 +67,13 @@ end
 function afx_ambience.volume(k) return VOL[k] or 1 end
 
 local CATEGORY = {
-	{"^afx_out_", "beds"}, {"^afx_in_", "beds"},
+	{"^afx_out_", "beds"}, {"^afx_in_", "beds"}, {"^afx_gust", "beds"}, {"^afx_cricket", "beds"},
+	{"^afx_ice_", "water"}, {"^afx_cloth", "body"}, {"^afx_dry_breath", "body"},
 	{"^afx_rain_", "rain"}, {"^afx_raindrop", "rain"}, {"^afx_gutter", "rain"}, {"^afx_drip_after", "rain"},
 	{"^afx_bird_", "birds"},
 	{"^afx_shore", "water"}, {"^afx_river", "water"}, {"^afx_waterfall", "water"},
 	{"^afx_plop", "water"}, {"^afx_bubbles", "water"}, {"^afx_frog", "water"},
+	{"^afx_splash", "water"}, {"^afx_swim", "water"}, {"^afx_dry_gasp", "water"},
 	{"^afx_thunder", "thunder"},
 	{"^afx_bowl", "chimes"}, {"^mcl_bells", "chimes"},
 	{"^afx_dry_heart", "heart"},
@@ -149,7 +151,13 @@ function afx_ambience.rain_at(pos)
 	if w.has_rain then
 		local ok, has = pcall(w.has_rain, pos)
 		if ok and not has then
-			return 0 -- dry or snowy biome
+			return 0 -- dry biome
+		end
+	end
+	if w.has_snow then
+		local ok, has = pcall(w.has_snow, pos)
+		if ok and has then
+			return 0 -- cold biome: it falls as snow
 		end
 	end
 	return state == "thunder" and 1 or 0.7
@@ -161,7 +169,12 @@ function afx_ambience.snow_at(pos)
 	local w = rawget(_G, "mcl_weather")
 	if not w then return 0 end
 	local state = w.state
-	if state == "snow" then return 1 end
+	if state == "snow" then
+		-- snow weather only snows where it's cold enough
+		if not w.has_snow then return 1 end
+		local ok, has = pcall(w.has_snow, pos)
+		return (ok and has) and 1 or 0
+	end
 	if (state == "rain" or state == "thunder") and w.has_snow then
 		local ok, has = pcall(w.has_snow, pos)
 		if ok and has then return 1 end
@@ -456,6 +469,8 @@ local function has(name, words)
 	return false
 end
 
+local st_for_place -- the player place() is looking around for
+
 -- Sea level, for telling the sea from a cave lake or a pond up a hill
 local WATER_LEVEL = tonumber(core.get_mapgen_setting and core.get_mapgen_setting("water_level") or "") or 1
 
@@ -495,6 +510,7 @@ local function place(ppos, under_sky)
 	-- Local evidence beats the biome map: trees around make it a forest,
 	-- open water makes it a shore, flowers make it a meadow.
 	local leaves = count(ppos, 14, -4, 16, {"group:leaves"})
+	if st_for_place then st_for_place.trees = leaves end
 	p.forest = math.max(p.forest, math.min(1, leaves / 120))
 	-- The sea: a wide sheet of water at sea level, open to the sky. A cave
 	-- lake, a river or a pond on a hill is not the coast.
@@ -526,7 +542,11 @@ local function bed_targets(ctx, wanted)
 	elseif ctx.underground then
 		return
 	end
+	st_for_place = ctx.st
 	local p = place(ppos, ctx.under_sky or ctx.exposure > 0.3)
+	st_for_place = nil
+	ctx.place = p
+	ctx.st.last_place = p
 	-- Higher and more exposed is windier; floating islands howl
 	local height = math.max(0, math.min(1, (ppos.y - 40) / 60))
 	local calm_birds = (raining > 0 or snowing > 0) and 0 or (ctx.birds_back or 1)
@@ -548,9 +568,10 @@ local function bed_targets(ctx, wanted)
 	wanted.b_birds = {sound = "afx_out_birds_far",
 		gain = math.max(day, dawn) * calm_birds * (0.25 * p.meadow + 0.35 * p.forest) *
 			(1 + 0.8 * dawn) * (1 - height), fade = 0.15}
+	-- (the crickets right around you are their own emitters; nature.lua)
 	wanted.b_crickets = {sound = "afx_out_crickets",
 		gain = night * calm_birds * hush * 0.45 * math.max(p.meadow, p.forest, p.dry) *
-			(1 - p.cold), fade = 0.1}
+			(1 - p.cold) * ((ctx.crickets_near or 0) > 0 and 0.65 or 1), fade = 0.1}
 	wanted.b_frogs = {sound = "afx_out_frogs",
 		gain = night * 0.4 * math.max(p.swamp, p.coast * 0.5) * (ctx.frogs_quiet and 0 or 1),
 		fade = ctx.frogs_quiet and 0.6 or 0.1}
@@ -563,22 +584,31 @@ end
 
 --[[ Proximity: things that sound where they are ]]
 
-local function proximity_emitters(ppos, wanted)
+-- Flowing water nodes, by name (a scan for them, not all water and a
+-- get_node on each)
+local FLOWING = {}
+core.register_on_mods_loaded(function()
+	for name, def in pairs(core.registered_nodes) do
+		if def.liquidtype == "flowing" and (def.groups or {}).water then
+			FLOWING[#FLOWING + 1] = name
+		end
+	end
+end)
+afx_ambience.FLOWING = FLOWING
+
+local function proximity_emitters(ppos, wanted, underground)
 	local r = CFG.radius + 2
 	local lo, hi = vector.subtract(ppos, r), vector.add(ppos, r)
 	local day = math.abs(core.get_timeofday() - 0.5) < 0.27
 
 	-- Running water: flowing nodes; a waterfall where flow falls onto flow
 	local flowing, falls = {}, {}
-	for _, p in ipairs(core.find_nodes_in_area(lo, hi, {"group:water"})) do
-		local name = core.get_node(p).name
-		if name:find("flowing") then
-			local below = core.get_node(vector.offset(p, 0, -1, 0)).name
-			if below:find("flowing") or below == "air" then
-				falls[#falls + 1] = p
-			else
-				flowing[#flowing + 1] = p
-			end
+	for _, p in ipairs(#FLOWING > 0 and core.find_nodes_in_area(lo, hi, FLOWING) or {}) do
+		local below = core.get_node(vector.offset(p, 0, -1, 0)).name
+		if below:find("flowing") or below == "air" then
+			falls[#falls + 1] = p
+		else
+			flowing[#flowing + 1] = p
 		end
 	end
 	for _, c in ipairs(nearest(clusters(falls), ppos, 2)) do
@@ -587,7 +617,8 @@ local function proximity_emitters(ppos, wanted)
 		end
 	end
 	for _, c in ipairs(nearest(clusters(flowing), ppos, 3)) do
-		if c.n >= 2 and not GAME_HAS_WATER_LAVA then
+		-- (underground, water.lua's rivers through the rock have it)
+		if c.n >= 2 and not GAME_HAS_WATER_LAVA and not underground then
 			wanted["rv" .. c.key] = {sound = "afx_river", pos = c.pos, gain = math.min(0.6, 0.1 + 0.04 * c.n)}
 		end
 	end
@@ -748,7 +779,7 @@ end
 
 local modpath = core.get_modpath(core.get_current_modname())
 for _, f in ipairs({"mixer.lua", "weather.lua", "water.lua", "life.lua", "places.lua", "body.lua",
-		"cinema.lua", "music.lua", "creatures.lua", "landing.lua"}) do
+		"cinema.lua", "music.lua", "creatures.lua", "landing.lua", "nature.lua"}) do
 	dofile(modpath .. "/" .. f)
 end
 
@@ -853,7 +884,7 @@ core.register_globalstep(function(dtime)
 			bed_targets(ctx, wanted)
 		end
 		if CFG.proximity then
-			proximity_emitters(ppos, wanted)
+			proximity_emitters(ppos, wanted, ctx.underground)
 		end
 		underwater_bed(player, wanted)
 		reconcile(pname, st, wanted)
@@ -867,6 +898,7 @@ end)
 
 core.register_on_leaveplayer(function(player)
 	players[player:get_player_name()] = nil
+	PLACE[player:get_player_name()] = nil
 end)
 
 core.register_chatcommand("afx_rain", {
