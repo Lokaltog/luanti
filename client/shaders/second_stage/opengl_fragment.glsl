@@ -155,10 +155,15 @@ void main(void)
 	return;
 #endif
 #endif
-#ifdef FX_GI
+	// the chroma and emissive debug views show the scene's own output:
+	// nothing in the air over it
+#if !defined(FX_DEBUG_VIEW) || (FX_DEBUG_VIEW != 1 && FX_DEBUG_VIEW != 2)
+#define FX_AIR_EFFECTS 1
+#endif
+#if defined(FX_GI) && defined(FX_AIR_EFFECTS)
 	color.rgb = fxApplyGI(color.rgb, uv);
 #endif
-#ifdef FX_VOLUMETRICS
+#if defined(FX_VOLUMETRICS) && defined(FX_AIR_EFFECTS)
 	color.rgb = fxApplyVolumetrics(color.rgb, uv);
 #endif
 	float fxExpo = exposureParams.compensationFactor * fxExposure;
@@ -168,12 +173,14 @@ void main(void)
 	color.rgb *= fxExpo;
 	color.rgb += fxEndSkyColor(uv);
 	color.rgb = fxApplySky(color.rgb, uv);
+#ifdef FX_AIR_EFFECTS
 	color.rgb = fxApplyBolt(color.rgb, uv); // behind the clouds in front of it
 #ifdef FX_CLOUDS
 	// over the sky (which replaces sky pixels), exposed like the scene
 	color.rgb = fxApplyClouds(color.rgb, uv, fxExpo);
 #endif
 	color.rgb = fxApplyRainSheets(color.rgb, uv, fxExpo);
+#endif
 	color.rgb *= 1.0 - fxDropMask * 0.15; // the drops darken their rim a little
 	color.rgb = fxApplyFlash(color.rgb);
 	vec3 fxTrans = vec3(1.0);
