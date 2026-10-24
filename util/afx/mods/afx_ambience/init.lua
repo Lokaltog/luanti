@@ -38,18 +38,19 @@ local CFG = {
 
 --[[ Per-layer volumes (the /afx mixer); live, saved as settings ]]
 
+-- {key, short label, what's in it (tooltip)}
 local LAYERS = {
-	{"beds", "Background (wind, birds far off, crickets, waves)"},
-	{"rain", "Rain on roofs, windows, gutters"},
-	{"birds", "Birds"},
-	{"water", "Shores, rivers, splashes, frogs"},
-	{"places", "Fires, furnaces, drips, creaks, chains, clocks"},
-	{"body", "Rushing air, brushing plants, held items"},
-	{"thunder", "Thunder"},
-	{"chimes", "Wind chimes, bells"},
-	{"heart", "Heartbeat"},
-	{"drafts", "Drafts"},
-	{"music", "Note stones, music boxes, discovery chimes"},
+	{"beds", "Background", "Wind, birds far off, crickets, waves, the jungle"},
+	{"rain", "Rain on things", "Rain on roofs and windows, gutters, first drops, the receding tail"},
+	{"birds", "Birds", "Birds in the trees, flushed from leaves"},
+	{"water", "Water", "Shores, rivers, waterfalls, splashes, frogs, swimming"},
+	{"places", "Places", "Fires, furnaces, drips, creaks, chains, clocks, things landing"},
+	{"body", "Your body", "Rushing air, brushing plants, held items"},
+	{"thunder", "Thunder", "Thunder near and far, windows rattling"},
+	{"chimes", "Chimes & bells", "Wind chimes, bells"},
+	{"heart", "Heartbeat", "Heartbeat when hurt or something's close in the dark"},
+	{"drafts", "Drafts", "Gaps in walls whistling in the wind"},
+	{"music", "Music", "Note stones, music boxes, discovery chimes"},
 }
 afx_ambience.LAYERS = LAYERS
 

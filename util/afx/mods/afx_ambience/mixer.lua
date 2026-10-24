@@ -27,22 +27,25 @@ local function get(key, default)
 	return tonumber(core.settings:get(key) or "") or default
 end
 
-local function slider(y, name, label, value, max)
+local function slider(y, name, label, value, max, tip)
 	local pct = math.floor(value * 100 + 0.5)
 	return ("label[0.4,%f;%s]"):format(y + 0.25, F(label)) ..
+		(tip and ("tooltip[%s;%s]"):format(name, F(tip)) or "") ..
 		("scrollbaroptions[min=0;max=%d;smallstep=5;largestep=25]"):format(max * 100) ..
-		("scrollbar[6.2,%f;4.6,0.45;horizontal;%s;%d]"):format(y, name, pct) ..
-		("label[11,%f;%d%%]"):format(y + 0.25, pct)
+		("scrollbar[6.6,%f;3.9,0.45;horizontal;%s;%d]"):format(y, name, pct) ..
+		("label[10.7,%f;%d%%]"):format(y + 0.25, pct)
 end
 
-local function formspec()
+local scroll_at = {} -- per player: where the list was scrolled to
+
+local function formspec(name)
 	local rows = {}
-	local y = 1.2
-	rows[#rows + 1] = "label[0.4,0.6;" .. F("Engine (applies live)") .. "]"
-	rows[#rows + 1] = ("checkbox[5.2,0.45;afx_enable;%s;%s]"):format(F("Environmental audio on"),
+	local y = 1.8
+	rows[#rows + 1] = ("checkbox[0.4,0.45;afx_enable;%s;%s]"):format(F("Environmental audio on"),
 		tostring(core.settings:get_bool("afx_enable") ~= false))
-	rows[#rows + 1] = ("checkbox[8.9,0.45;afx_hrtf;%s;%s]"):format(F("Headphones (3D)"),
+	rows[#rows + 1] = ("checkbox[6.6,0.45;afx_hrtf;%s;%s]"):format(F("Headphones (3D)"),
 		tostring(core.settings:get_bool("afx_hrtf") == true))
+	rows[#rows + 1] = "label[0.4,1.3;" .. F("Engine (applies live)") .. "]"
 	for _, e in ipairs(ENGINE) do
 		rows[#rows + 1] = slider(y, "e_" .. e[1], e[2], get(e[1], e[4]), e[3])
 		y = y + 0.6
@@ -51,7 +54,7 @@ local function formspec()
 	rows[#rows + 1] = ("label[0.4,%f;%s]"):format(y, F("Layers (this mod)"))
 	y = y + 0.5
 	for _, l in ipairs(A.LAYERS) do
-		rows[#rows + 1] = slider(y, "v_" .. l[1], l[2], A.volume(l[1]), 2)
+		rows[#rows + 1] = slider(y, "v_" .. l[1], l[2], A.volume(l[1]), 2, l[3])
 		y = y + 0.6
 	end
 	y = y + 0.2
@@ -61,11 +64,15 @@ local function formspec()
 	rows[#rows + 1] = ("checkbox[6.6,%f;afx_ambience_treasure;%s;%s]"):format(y,
 		F("Treasure shimmer"), tostring(core.settings:get_bool("afx_ambience_treasure") == true))
 	y = y + 0.8
-	local h = y + 0.9
-	return ("formspec_version[6]size[12,%f]"):format(h) ..
-		"scroll_container[0,0;12," .. h .. ";none;vertical;0.1]" .. table.concat(rows) ..
+	-- a window that fits small screens; the list scrolls inside it
+	local view = 10.5
+	local extra = math.max(0, y - view)
+	return "formspec_version[6]size[12.6," .. (view + 1.1) .. "]" ..
+		("scrollbaroptions[min=0;max=%d;smallstep=10;largestep=50]"):format(math.ceil(extra * 10)) ..
+		("scrollbar[12,0.1;0.45,%f;vertical;afx_scroll;%d]"):format(view, scroll_at[name] or 0) ..
+		"scroll_container[0,0;11.9," .. view .. ";afx_scroll;vertical;0.1]" .. table.concat(rows) ..
 		"scroll_container_end[]" ..
-		("button_exit[4.5,%f;3,0.7;close;%s]"):format(h - 0.85, F("Done"))
+		("button_exit[4.8,%f;3,0.7;close;%s]"):format(view + 0.25, F("Done"))
 end
 
 core.register_chatcommand("afx", {
@@ -73,7 +80,7 @@ core.register_chatcommand("afx", {
 	-- it writes the server's settings: singleplayer, or the server's admin
 	privs = core.is_singleplayer() and {} or {server = true},
 	func = function(name)
-		core.show_formspec(name, "afx_ambience:mixer", formspec())
+		core.show_formspec(name, "afx_ambience:mixer", formspec(name))
 		return true
 	end,
 })
@@ -81,21 +88,37 @@ core.register_chatcommand("afx", {
 core.register_on_player_receive_fields(function(player, formname, fields)
 	if formname ~= "afx_ambience:mixer" then return end
 	if not core.is_singleplayer() and not core.check_player_privs(player, "server") then return end
+	local name = player:get_player_name()
+	local changed = false
 	for k, v in pairs(fields) do
 		local ev = core.explode_scrollbar_event(v)
-		if ev.type == "CHG" or ev.type == "VAL" then
+		if k == "afx_scroll" then
+			if ev.type == "CHG" or ev.type == "VAL" then scroll_at[name] = ev.value end
+		elseif ev.type == "CHG" or ev.type == "VAL" then
 			if k:sub(1, 2) == "e_" then
-				core.settings:set(k:sub(3), string.format("%.2f", ev.value / 100))
+				local key, val = k:sub(3), string.format("%.2f", ev.value / 100)
+				if core.settings:get(key) ~= val then
+					core.settings:set(key, val)
+					changed = true
+				end
 			elseif k:sub(1, 2) == "v_" then
-				A.set_volume(k:sub(3), ev.value / 100)
+				if math.abs(A.volume(k:sub(3)) - ev.value / 100) > 0.001 then
+					A.set_volume(k:sub(3), ev.value / 100)
+					changed = true
+				end
 			end
 		end
 	end
 	for _, key in ipairs({"afx_enable", "afx_hrtf", "afx_ambience_follower", "afx_ambience_treasure"}) do
-		if fields[key] then core.settings:set_bool(key, fields[key] == "true") end
+		if fields[key] then core.settings:set_bool(key, fields[key] == "true") changed = true end
 	end
 	if fields.quit or fields.close then
 		core.settings:write()
+		return
+	end
+	-- redraw, so the numbers next to the sliders follow them
+	if changed then
+		core.show_formspec(name, "afx_ambience:mixer", formspec(name))
 	end
 end)
 

@@ -766,6 +766,18 @@ TIMELINE.accents = {
 	{fn = function() afx_ambience.wind_override = nil end, wait = 1},
 }
 
+BUILD.mixer = function(b)
+	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+end
+TIMELINE.mixer = {
+	{fn = function() core.registered_chatcommands.afx.func(player_name, "") end, wait = 5, log = "mixer open"},
+	{fn = function()
+		for _, cb in ipairs(core.registered_on_player_receive_fields) do
+			cb(P(), "afx_ambience:mixer", {e_afx_reverb = "CHG:170", v_birds = "VAL:100"})
+		end
+	end, wait = 5, log = "reverb dragged to 170%"},
+}
+
 TIMELINE.bridge = {
 	{walk = v(-8, 0, 0), speed = 2, steps = "default_hard_footstep", log = "on rock"},
 	{walk = v(6, 0, 0), speed = 2, steps = "default_wood_footstep", log = "on the bridge"},
@@ -836,7 +848,7 @@ TIMELINE.cinema = {
 }
 
 local START = {
-	cinema = v(0, 0, 0), voices = v(-24, 0, -20), knock = v(-4, 0, -1), music = v(-14, 0, -2), walls = v(-26, 0, -14), accents = v(0, 0, -10),
+	cinema = v(0, 0, 0), voices = v(-24, 0, -20), knock = v(-4, 0, -1), music = v(-14, 0, -2), walls = v(-26, 0, -14), accents = v(0, 0, -10), mixer = v(0, 0, 0),
 	details = v(-24, 0, 0),
 	corner = v(-16, 0, 0), nextdoor = v(0, 0, -4), bridge = v(-16, 0, 0), draft = v(0, 0, 0),
 	steps = v(0, 0, 0),
