@@ -26,6 +26,10 @@ else
 	cp -r "$ROOT/util/afx/testworld" "$WORK/world"
 fi
 cp -r "$ROOT/util/afx/mods/afx_ambience" "$WORK/world/worldmods/"
+# AFX_DAMAGE=1: damage on (breath runs out under water)
+if [ "${AFX_DAMAGE:-0}" = 1 ]; then
+	sed -i 's/^enable_damage = .*/enable_damage = true/' "$WORK/world/world.mt"
+fi
 # AFX_NO_TAKES=1: without the extra footstep/dig takes (for A/B)
 if [ "${AFX_NO_TAKES:-0}" = 1 ]; then
 	find "$WORK/world/worldmods/afx_ambience/sounds" -regex '.*\(footstep\|dig\|dug\|place\).*\.[789]\.ogg' -delete

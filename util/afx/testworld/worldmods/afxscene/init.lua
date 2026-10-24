@@ -66,6 +66,14 @@ core.register_node("afxscene:spawner", {description = "Spawner", drawtype = "gla
 core.register_node("afxscene:mossy_cobble", {description = "Mossy cobble",
 	tiles = {"[fill:16x16:#506850"}, groups = {cracky = 2, stone = 1}})
 
+core.register_node("afxscene:tallgrass", {description = "Tall grass", drawtype = "plantlike",
+	tiles = {"[fill:16x16:#4a8a30"}, paramtype = "light", sunlight_propagates = true,
+	walkable = false, buildable_to = true, groups = {grass = 1, flora = 1, snappy = 3}})
+core.register_node("afxscene:bell", {description = "Bell", tiles = {"[fill:16x16:#d0a020"},
+	groups = {cracky = 2}})
+core.register_craftitem("afxscene:pocket_clock", {description = "Clock",
+	inventory_image = "[fill:16x16:#d0c060"})
+
 --[[ Building ]]
 
 local MIN, MAX = v(-48, -40, -48), v(64, 96, 48)
@@ -278,6 +286,25 @@ function BUILD.draft(b)
 	b.fill(v(-4, 0, -4), v(4, 4, 4), "afxscene:planks")
 	b.fill(v(-3, 0, -3), v(3, 3, 3), "air")
 	b.fill(v(4, 2, 0), v(4, 2, 0), "air")          -- a one-block gap in the east wall
+end
+
+function BUILD.details(b)
+	b.fill(v(MIN.x, -40, MIN.z), v(MAX.x, -2, MAX.z), "basenodes:stone")
+	b.fill(v(MIN.x, -1, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	-- a meadow of tall grass (two high) to wade through
+	b.fill(v(-20, 0, -4), v(-8, 1, 4), "afxscene:tallgrass")
+	-- a porch: posts and a roof, a wind chime hanging under its edge
+	b.fill(v(0, 0, 8), v(0, 3, 8), "afxscene:trunk")
+	b.fill(v(4, 0, 8), v(4, 3, 8), "afxscene:trunk")
+	b.fill(v(-1, 4, 5), v(5, 4, 9), "afxscene:planks")
+	b.fill(v(2, 3, 9), v(2, 3, 9), "afx_ambience:wind_chime")
+	-- a bell tower in the distance
+	b.fill(v(30, 0, 30), v(32, 8, 32), "basenodes:cobble")
+	b.fill(v(31, 9, 31), v(31, 9, 31), "afxscene:bell")
+	-- a deep pool to fall into, a lake over a cave
+	b.fill(v(-30, -12, 20), v(-20, -1, 30), "basenodes:water_source")
+	b.fill(v(10, -14, -30), v(30, -2, -10), "basenodes:water_source")   -- lake
+	b.fill(v(10, -30, -30), v(30, -20, -10), "air")                    -- cave under it
 end
 
 function BUILD.cliff(b)
@@ -564,7 +591,39 @@ TIMELINE.draft = {
 		log = "gap boarded up"},
 }
 
+local function fall_from(pos)
+	local pl = P()
+	pl:set_pos(pos)
+	pl:set_physics_override({gravity = 1, speed = 0, jump = 0})
+end
+
+TIMELINE.details = {
+	{walk = v(-6, 0, 0), speed = 3, steps = "default_grass_footstep", log = "through tall grass"},
+	{walk = v(2, 0, 6), speed = 2.5, steps = "default_grass_footstep", log = "to the porch"},
+	{fn = function() afx_ambience.gust_now(1.6) end, wait = 12, log = "wind chime in a gust"},
+	{fn = function() core.set_timeofday(0.245) end, wait = 12, log = "dawn: the bell"},
+	{fn = function() core.set_timeofday(0.5); afx_ambience.set_rain(0.7);
+		bed("afx_out_rain", 0.6) end, wait = 10, log = "rain"},
+	{fn = function() afx_ambience.set_rain(0) end, wait = 1, log = "rain stops"},
+	{walk = v(-8, 0, 14), speed = 3, steps = "default_grass_footstep", log = "wet steps"},
+	{fn = function() fall_from(v(-25, 60, 25)) end, wait = 5, log = "falling"},
+	{fn = function()
+		-- devtest doesn't drown you; let the breath run out by hand
+		for i = 0, 9 do
+			core.after(i * 1.2, function() local pl = P(); if pl then pl:set_breath(10 - i) end end)
+		end
+	end, wait = 14, log = "under water"},
+	{fn = function()
+		local pl = P()
+		pl:set_physics_override({gravity = 0, speed = 0, jump = 0})
+		pl:set_pos(v(20, -30, -20))
+		pl:get_inventory():set_stack("main", 1, "afxscene:pocket_clock")
+		afx_ambience.lib.player_state(player_name).next_settle = 0
+	end, wait = 14, log = "the cave under the lake, a clock in hand"},
+}
+
 local START = {
+	details = v(-24, 0, 0),
 	corner = v(-16, 0, 0), nextdoor = v(0, 0, -4), bridge = v(-16, 0, 0), draft = v(0, 0, 0),
 	steps = v(0, 0, 0),
 	storm = v(-14, 0, -2), shore = v(0, 0, -6), home = v(-2, 0, 2), mineshaft = v(-20, -20, 0),

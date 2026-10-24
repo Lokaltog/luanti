@@ -271,6 +271,22 @@ def main(assets, out):
     emitter("afx_draft", f"{md}/nature/howling-wind.mp3", 30, start=15, db=-26,
             highpass=650, lowpass=1700)
 
+    # ---- Round 6: body and world details ----
+    # Rushing air in your ears (falling, minecarts, flying): dry, in-head
+    bed("afx_dry_rush", f"{md}/nature/wind.mp3", 20, start=30, db=-22, highpass=250)
+    # Breath escaping under water
+    for i, st in enumerate([0.6, 2.0, 4.7]):
+        segment(f"afx_bubbles.{i + 1}", f"{md}/things/bubbles.mp3", st, 1.3, -24)
+    # Deep rock settling: a thunder roll slowed and darkened into a groan
+    for i, st in enumerate([21.4, 42.6]):
+        segment(f"afx_rock_groan.{i + 1}", th, st, 10, -22, attack=1.0, lowpass=220,
+                rate_scale=0.55)
+    # A singing-bowl strike, for wind chimes (pitched to a pentatonic scale)
+    segment("afx_bowl", f"{md}/things/singing-bowl.mp3", 0.05, 7, -22)
+    # Held items: a pocket clock, a seashell held to the ear
+    emitter("afx_dry_tick", f"{md}/things/clock.mp3", 10.01, start=1, db=-36, xfade=0.03)
+    bed("afx_dry_seashell", f"{md}/nature/waves.mp3", 30, start=5, db=-30, lowpass=900)
+
     print(f"wrote {len(made)} sounds to {out}")
     for m in made:
         print("  " + m)

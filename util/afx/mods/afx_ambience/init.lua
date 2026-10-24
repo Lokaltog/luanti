@@ -533,22 +533,47 @@ local function maybe_drip(pname, st, ppos, now)
 	-- Only where daylight never reaches (a cave, not a cellar with a door)
 	local day_light = core.get_node_light(ear, 0.5)
 	if not day_light or day_light > 3 then return end
-	-- A ceiling: solid stone with air under it, within a few nodes up
-	local ceil = core.find_nodes_in_area(vector.offset(ear, -8, 2, -8),
-			vector.offset(ear, 8, 16, 8), {"group:stone", "group:pickaxey", "group:cracky"})
-	local under = {}
-	for _ = 1, 24 do
-		if #ceil == 0 then break end
-		local p = pick(ceil)
-		local below = core.get_node_or_nil(vector.offset(p, 0, -1, 0))
-		local def = core.registered_nodes[core.get_node(p).name]
-		if below and below.name == "air" and def and (def.light_source or 0) == 0 then
-			under[#under + 1] = vector.offset(p, 0, -0.6, 0)
-			break
+	-- Water seeps through the rock where there's water above it: drips fall
+	-- from the ceiling right under a lake, a river, an aquifer. A dry cave
+	-- only drips now and then.
+	local waters = core.find_nodes_in_area(vector.offset(ear, -10, 2, -10),
+			vector.offset(ear, 10, 20, 10), {"group:water"})
+	local spots = {}
+	for i = 1, math.min(#waters, 40) do
+		local w = pick(waters)
+		-- straight down from the water to the first air: that's the ceiling
+		for dy = 1, 6 do
+			local p = vector.offset(w, 0, -dy, 0)
+			local n = core.get_node_or_nil(p)
+			if not n then break end
+			if n.name == "air" then
+				if dy > 1 then spots[#spots + 1] = vector.offset(p, 0, 0.4, 0) end
+				break
+			end
+		end
+		if #spots >= 4 then break end
+	end
+	local spot
+	if #spots > 0 then
+		spot = pick(spots)
+		st.next_drip = now + rand(0.8, 3.5) -- seeping: drips more often
+	else
+		if rng:next(1, 100) > 20 then return end
+		local ceil = core.find_nodes_in_area(vector.offset(ear, -8, 2, -8),
+				vector.offset(ear, 8, 16, 8), {"group:stone", "group:pickaxey", "group:cracky"})
+		for _ = 1, 24 do
+			if #ceil == 0 then break end
+			local p = pick(ceil)
+			local below = core.get_node_or_nil(vector.offset(p, 0, -1, 0))
+			local def = core.registered_nodes[core.get_node(p).name]
+			if below and below.name == "air" and def and (def.light_source or 0) == 0 then
+				spot = vector.offset(p, 0, -0.6, 0)
+				break
+			end
 		end
 	end
-	if #under == 0 then return end
-	core.sound_play("afx_drip", {pos = under[1], to_player = pname,
+	if not spot then return end
+	core.sound_play("afx_drip", {pos = spot, to_player = pname,
 		gain = rand(0.2, 0.6), pitch = rand(0.85, 1.15), max_hear_distance = 24}, true)
 end
 
@@ -576,7 +601,7 @@ local function dimension(pos)
 end
 
 local modpath = core.get_modpath(core.get_current_modname())
-for _, f in ipairs({"weather.lua", "water.lua", "life.lua", "places.lua"}) do
+for _, f in ipairs({"weather.lua", "water.lua", "life.lua", "places.lua", "body.lua"}) do
 	dofile(modpath .. "/" .. f)
 end
 

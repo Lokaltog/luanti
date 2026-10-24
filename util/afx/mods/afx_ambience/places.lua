@@ -133,3 +133,166 @@ A.register_layer(function(ctx, wanted)
 	structures(ctx, wanted)
 	other_worlds(ctx, wanted)
 end)
+
+--[[ Village bells at dawn and noon ]]
+
+local BELLS = {}
+local BELL_SOUND
+core.register_on_mods_loaded(function()
+	for name in pairs(core.registered_nodes) do
+		if name:match(":bell$") or name:match(":bell_") then BELLS[#BELLS + 1] = name end
+	end
+	BELL_SOUND = core.get_modpath("mcl_bells") and "mcl_bells_bell_stroke" or nil
+end)
+
+local function ring(pos, pname, strokes)
+	for i = 0, strokes - 1 do
+		core.after(i * 2.4, function()
+			if BELL_SOUND then
+				core.sound_play(BELL_SOUND, {pos = pos, to_player = pname, gain = 0.9,
+					max_hear_distance = 120}, true)
+			else
+				core.sound_play("afx_bowl", {pos = pos, to_player = pname, gain = 0.8,
+					pitch = 0.5, max_hear_distance = 120}, true)
+			end
+		end)
+	end
+end
+
+A.register_layer(function(ctx, wanted)
+	if #BELLS == 0 or ctx.dimension ~= "overworld" then return end
+	local st = ctx.st
+	local slot = (ctx.tod > 0.245 and ctx.tod < 0.27) and "dawn" or
+		(ctx.tod > 0.495 and ctx.tod < 0.52) and "noon" or nil
+	if not slot then return end
+	local key = slot .. (core.get_day_count and core.get_day_count() or 0)
+	if st.bell_rung == key then return end
+	local bell = core.find_nodes_in_area(vector.offset(ctx.ppos, -64, -16, -64),
+		vector.offset(ctx.ppos, 64, 24, 64), BELLS)[1]
+	if not bell then return end
+	st.bell_rung = key
+	ring(bell, ctx.pname, slot == "dawn" and 3 or 6)
+end)
+
+--[[ Deep rock settling: a groan through the stone, gravel trickling ]]
+
+local GRAVEL
+core.register_on_mods_loaded(function()
+	for _, g in ipairs({"default_gravel_footstep", "default_gravel_dug", "default_gravel_dig"}) do
+		GRAVEL = GRAVEL or g -- the game's own gravel sound group
+	end
+end)
+
+A.register_layer(function(ctx, wanted)
+	if not ctx.underground or ctx.ppos.y > -20 or ctx.dimension ~= "overworld" then return end
+	local st, now = ctx.st, ctx.now
+	if not st.next_settle then st.next_settle = now + L.rand(30, 90) end
+	if now < st.next_settle then return end
+	st.next_settle = now + L.rand(45, 150)
+	local a = L.rand(0, 2 * math.pi)
+	local far = vector.offset(ctx.ppos, math.cos(a) * L.rand(16, 26), L.rand(-6, 10),
+		math.sin(a) * L.rand(16, 26))
+	if math.random() < 0.6 then
+		core.sound_play("afx_rock_groan", {pos = far, to_player = ctx.pname,
+			gain = L.rand(0.5, 0.9), pitch = L.rand(0.8, 1.05), max_hear_distance = 60}, true)
+	else
+		-- a small rockfall somewhere in the dark
+		for i = 0, math.random(4, 8) do
+			core.after(i * L.rand(0.08, 0.2), function()
+				core.sound_play(GRAVEL, {pos = vector.offset(far, 0, -i * 0.3, 0),
+					to_player = ctx.pname, gain = L.rand(0.3, 0.7) * (1 - i / 10),
+					pitch = L.rand(0.7, 1.0), max_hear_distance = 40}, true)
+			end)
+		end
+	end
+end)
+
+--[[ Wind chimes and lanterns answering the gusts ]]
+
+-- Pentatonic: whatever the wind plays, it's in tune
+local SCALE = {1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2, 9 / 4}
+
+core.register_node("afx_ambience:wind_chime", {
+	description = "Wind Chime",
+	drawtype = "plantlike",
+	tiles = {"afx_ambience_wind_chime.png"},
+	inventory_image = "afx_ambience_wind_chime.png",
+	wield_image = "afx_ambience_wind_chime.png",
+	paramtype = "light",
+	sunlight_propagates = true,
+	walkable = false,
+	selection_box = {type = "fixed", fixed = {-0.3, -0.3, -0.3, 0.3, 0.5, 0.3}},
+	groups = {oddly_breakable_by_hand = 3, handy = 1, dig_immediate = 3, attached_node = 4,
+		deco_block = 1},
+	_mcl_hardness = 0.3,
+	on_punch = function(pos, node, puncher)
+		-- a tap rings it
+		for i = 0, 2 do
+			core.after(i * 0.18, function()
+				core.sound_play("afx_bowl", {pos = pos, gain = 0.35,
+					pitch = 2 * SCALE[math.random(#SCALE)], max_hear_distance = 24}, true)
+			end)
+		end
+	end,
+})
+
+core.register_on_mods_loaded(function()
+	local nugget = core.registered_items["mcl_core:iron_nugget"] and "mcl_core:iron_nugget" or
+		core.registered_items["default:steel_ingot"] and "default:steel_ingot"
+	local string = core.registered_items["mcl_mobitems:string"] and "mcl_mobitems:string" or
+		core.registered_items["farming:string"] and "farming:string"
+	local stick = core.registered_items["mcl_core:stick"] and "mcl_core:stick" or
+		core.registered_items["default:stick"] and "default:stick"
+	if nugget and string and stick then
+		core.register_craft({output = "afx_ambience:wind_chime", recipe = {
+			{"", stick, ""}, {string, string, string}, {nugget, nugget, nugget}}})
+	end
+end)
+
+local LANTERNS = {}
+core.register_on_mods_loaded(function()
+	for name in pairs(core.registered_nodes) do
+		if name:find("lantern") and (name:find("ceiling") or name:find("hanging")) then
+			LANTERNS[#LANTERNS + 1] = name
+		end
+	end
+end)
+
+local function exposed(p)
+	for _, d in ipairs({{x = 1, y = 0, z = 0}, {x = -1, y = 0, z = 0}, {x = 0, y = 0, z = 1},
+			{x = 0, y = 0, z = -1}, {x = 0, y = -1, z = 0}}) do
+		local q = vector.add(p, d)
+		local n = core.get_node_or_nil(q)
+		if n and n.name == "air" and L.sky_open(q) then return true end
+	end
+	return false
+end
+
+A.register_layer(function(ctx, wanted)
+	if ctx.dimension ~= "overworld" then return end
+	local wind = ctx.wind or 0.8
+	local lo, hi = vector.offset(ctx.ppos, -16, -6, -16), vector.offset(ctx.ppos, 16, 10, 16)
+	-- chimes: the stronger the wind, the more notes, a little louder
+	for _, p in ipairs(core.find_nodes_in_area(lo, hi, {"afx_ambience:wind_chime"})) do
+		if exposed(p) then
+			-- a breeze stirs it now and then; a gust sets it ringing
+			local notes = math.floor(math.max(0, (wind - 0.9) * 5) + math.random() * 0.55)
+			for _ = 1, notes do
+				core.after(L.rand(0, 1), function()
+					core.sound_play("afx_bowl", {pos = p, to_player = ctx.pname,
+						gain = L.rand(0.08, 0.15) * math.min(1.6, wind),
+						pitch = 2 * SCALE[math.random(#SCALE)], max_hear_distance = 28}, true)
+				end)
+			end
+		end
+	end
+	-- hanging lanterns creak on their chains in a gust
+	if #LANTERNS > 0 and wind > 1.05 then
+		for _, p in ipairs(core.find_nodes_in_area(lo, hi, LANTERNS)) do
+			if exposed(p) and math.random() < (wind - 1) * 0.6 then
+				core.sound_play("afx_creak", {pos = p, to_player = ctx.pname,
+					gain = L.rand(0.08, 0.16), pitch = L.rand(1.6, 2.0), max_hear_distance = 16}, true)
+			end
+		end
+	end
+end)

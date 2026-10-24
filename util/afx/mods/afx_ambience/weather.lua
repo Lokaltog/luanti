@@ -241,3 +241,9 @@ A.register_layer(function(ctx, wanted)
 			fade = 0.4, range = 14, pitch = g.narrow and 1.3 or 1.0}
 	end
 end)
+
+-- How wet the ground is: 1 while it rains, drying over two minutes after
+function A.wetness(now)
+	if rain.on then return math.min(1, (now - rain.since) / 20) end
+	return math.max(0, 1 - (now - rain.stopped) / 120)
+end

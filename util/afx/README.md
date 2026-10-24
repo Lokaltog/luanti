@@ -117,6 +117,23 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
 - Probe cost is now 2–7 ms per probe on the sound thread, at 2.5 Hz.
 - Scenarios `corner`, `nextdoor`, `bridge` and `draft`.
 
+## Round 6: body and world details (afx_ambience)
+
+- **Body** (`body.lua`, 5 Hz). Speed is measured from the actual change in position, so it also works in minecarts, boats, falls and when moved by teleport.
+  - Rushing air in your ears above running speed, rising in level and pitch.
+  - Bubbles each time your breath drops under water.
+  - A rustle per stride through tall plants, louder when they reach your chest.
+  - A squelch under each step on wet ground outdoors for two minutes after rain.
+  - A held clock ticks, and a held shell plays the sea.
+- **World** (`places.lua`):
+  - Village bells (`*:bell` nodes, using the game's bell sound) ring 3 times at dawn and 6 at noon.
+  - Drips fall where water sits above the rock, more often under lakes. A dry cave only drips rarely.
+  - Below y=-20, rock groans now and then, or gravel trickles somewhere far off, heard through the stone.
+  - **Wind chime** node (craftable: stick, 3 string, 3 iron nuggets; `afx_ambience:wind_chime`). It rings pentatonic notes from a real singing-bowl strike when the wind gusts, and when punched.
+  - Hanging lanterns creak in gusts.
+- Not done, because there are no usable recordings in the archives reachable here: rooster crows, the gasp on surfacing, cold breath.
+- Scenario `details` (use `AFX_DAMAGE=1` for breath).
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.
