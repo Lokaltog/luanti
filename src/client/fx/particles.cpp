@@ -215,6 +215,11 @@ void ParticleSystem::buildTables(Client *client)
 		if (f.light_source >= 8 && !liquid && !fire) fl |= F_LIGHT;
 		if (solid || liquid) fl |= F_RAINBLOCK;
 		m_info[c].flags = fl;
+		m_info[c].flame = f.light_source > 0 && !liquid && !fire &&
+				(nameHas(f.name, "torch") || nameHas(f.name, "candle") ||
+				nameHas(f.name, "campfire") || nameHas(f.name, "brazier"));
+		if (m_info[c].flame)
+			m_info[c].flags |= F_LIGHT;
 
 		// leaf tiles: one array layer per distinct tile (up to 32)
 		if (leaves && !f.tiledef[0].name.empty()) {
@@ -269,7 +274,7 @@ void ParticleSystem::rebuildWorld(Client *client)
 	m_column_top.assign((size_t)SX * SZ, -1);
 	m_column_flags.assign((size_t)SX * SZ, 0);
 	Emitters e;
-	u32 seen[6] = {};
+	u32 seen[7] = {};
 	constexpr size_t CAP = 2048;
 
 	auto flags = [&] (s16 x, s16 y, s16 z) -> u8 {
@@ -313,8 +318,12 @@ void ParticleSystem::rebuildWorld(Client *client)
 				}
 				if ((fl & F_FLORA) && open && !(above & BLOCK))
 					offer(e.flora, seen[4], p, CAP, m_rng);
-				if (fl & F_LIGHT)
+				if (fl & F_LIGHT) {
 					offer(e.lights, seen[5], p, CAP, m_rng);
+					const u16 cid = snap[((size_t)z * SY + y) * SX + x];
+					if (cid < m_info.size() && m_info[cid].flame)
+						offer(e.flames, seen[6], p, CAP, m_rng);
+				}
 			}
 			above = fl;
 		}

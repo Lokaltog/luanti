@@ -73,11 +73,14 @@ vec3 fxApplyVolumetrics(vec3 color, vec2 uv)
 		const float H = 12.0 * FX_BS;                         // scale height
 		float base = fxHeightFogBase * FX_BS - fxCameraOffsetY; // scene space
 		float y0 = E.y - base, y1 = P.y - base;
-		// optical depth: exact for the exponential part above base, the
-		// part below base counts at full density
+		// optical depth along the ray: density exp(-y/H) above base, full
+		// density below it (a shaft or a cave under the fog line stays
+		// foggy at every view angle)
 		float dy = y1 - y0;
-		float a0 = exp(-max(y0, 0.0) / H), a1 = exp(-max(y1, 0.0) / H);
-		float od = abs(dy) > 1e-3 ? abs((a0 - a1) * H / dy) : a0;
+		float lo = min(y0, y1), hi = max(y0, y1);
+		float integral = max(min(hi, 0.0) - lo, 0.0)
+			+ H * (exp(-max(lo, 0.0) / H) - exp(-max(hi, 0.0) / H));
+		float od = abs(dy) > 1e-3 * FX_BS ? integral / abs(dy) : exp(-max(y0, 0.0) / H);
 		od *= len * fxHeightFog * 0.0004;
 		float T = exp(-od);
 		float day = clamp(fxSunStrength * 1.2, 0.08, 1.0);
@@ -235,7 +238,7 @@ vec2 fxHeatHazeUV(vec2 uv, vec2 texel)
 	vec3 b = texture2D(bloom, uv - vec2(0.0, 0.035)).rgb
 		+ texture2D(bloom, uv - vec2(0.0, 0.08)).rgb * 0.6;
 	// warm sources only: lava and fire are red-heavy, the sun and white lamps are not
-	float warm = clamp((b.r - b.b) / max(b.r, 1e-3) * 1.5, 0.0, 1.0);
+	float warm = clamp((b.r - max(b.g * 0.85, b.b)) / max(b.r, 1e-3) * 2.0, 0.0, 1.0);
 	float mask = smoothstep(0.15, 0.9, fxLuma(b)) * warm;
 	if (mask <= 0.001)
 		return uv;
@@ -278,12 +281,13 @@ vec2 fxPortalUV(vec2 uv)
 	return c + 0.5;
 }
 
-// View depth (0..1 of the far plane) at uv; 1 for the sky. Planar depth:
-// one division, no matrix.
+// Distance from the eye (0..1 of the far plane) at uv; 1 for the sky.
+// Radial, not planar: planar depth shrinks towards the screen edges, so
+// anything keyed on it would fade as the view turns away.
 float fxViewDist01(vec2 uv)
 {
 	float d = texture2D(fxDepth, uv).r;
-	return d >= 0.99999 ? 1.0 : fxLinearDepth(d) / fxNearFar.y;
+	return d >= 0.99999 ? 1.0 : min(length(fxScenePos(uv, d) - fxEyePos) / fxNearFar.y, 0.99999);
 }
 
 // Distant things soften into the fog. A gather blur whose radius grows with

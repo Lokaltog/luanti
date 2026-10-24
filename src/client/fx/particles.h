@@ -140,6 +140,7 @@ private:
 	struct ContentInfo {
 		u8 flags = 0;
 		s8 leaf_layer = -1;
+		bool flame = false; // an open flame light (torch, candle, campfire): sparks
 	};
 	std::vector<ContentInfo> m_info;
 	bool m_tables_built = false;
@@ -154,7 +155,7 @@ private:
 	std::vector<u8> m_column_flags; // flags of that top voxel
 
 	struct Emitters {
-		std::vector<v3s16> lava, fire, leaves, canopy_leaves, flora, lights;
+		std::vector<v3s16> lava, fire, leaves, canopy_leaves, flora, lights, flames;
 	} m_emit;
 	float m_acc[16] = {};     // fractional spawn accumulators
 

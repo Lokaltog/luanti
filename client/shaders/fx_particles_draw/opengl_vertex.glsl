@@ -200,7 +200,9 @@ void main(void)
 		soft = 0.2;
 	}
 	vColor = vec4(col, alpha * fade);
-	vInfo = vec4(kind, layer, occl, soft);
+	// leaves: the seed rides in the layer's fraction (the fragment shader
+	// picks a patch of the tile with it)
+	vInfo = vec4(kind, leaf ? layer + seed * 0.9 : layer, occl, soft);
 	if (!leaf)
 		vTint = vec3(1.0);
 }

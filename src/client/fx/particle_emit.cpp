@@ -40,7 +40,7 @@ const NetherAir NETHER_AIR[] = {
 };
 
 enum Acc { A_LAVA, A_FIRE, A_LEAF, A_RAIN, A_SNOW, A_DRIP, A_LIGHTDUST, A_DAYDUST,
-	A_ASH, A_FIREFLY, A_BURST };
+	A_ASH, A_FIREFLY, A_BURST, A_FLAME, A_FLAME_POP };
 
 } // namespace
 
@@ -140,6 +140,36 @@ void ParticleSystem::emit(Client *client, Camera *camera, float dtime)
 		}
 	}
 
+	// open flames (torches, candles, campfires): a spark now and then, rising
+	// in the flame's heat, falling and bouncing once it cools; sometimes a
+	// little pop of several
+	if (sparks > 0.f && !m_emit.flames.empty()) {
+		auto flame_spark = [&] (const v3f &at, float speed) {
+			Spawn s;
+			s.kind = ParticleKind::Spark;
+			s.pos = at;
+			const float a = rnd(0.f, 6.2832f), h = rnd(0.05f, 0.5f) * speed;
+			s.vel = v3f(std::cos(a) * h, rnd(0.6f, 1.6f) * speed, std::sin(a) * h);
+			s.life = rnd(1.0f, 2.2f); // long enough to cool, fall and bounce
+			s.size = rnd(0.02f, 0.035f);
+			s.glow = rnd(0.6f, 1.0f);
+			push(s);
+		};
+		const int n = count(A_FLAME, m_emit.flames.size() * 0.7f * sparks);
+		for (int i = 0; i < n; i++) {
+			const v3s16 c = pick(m_emit.flames);
+			flame_spark(v3f(c.X + rnd(-0.06f, 0.06f), c.Y + rnd(0.05f, 0.2f), c.Z + rnd(-0.06f, 0.06f)), 1.f);
+		}
+		const int pops = count(A_FLAME_POP, m_emit.flames.size() * 0.04f * sparks);
+		for (int b = 0; b < pops; b++) {
+			const v3s16 c = pick(m_emit.flames);
+			const v3f at(c.X + rnd(-0.05f, 0.05f), c.Y + 0.15f, c.Z + rnd(-0.05f, 0.05f));
+			const int k = 3 + (int)(rnd() * 5);
+			for (int i = 0; i < k; i++)
+				flame_spark(at, 1.8f);
+		}
+	}
+
 	/*
 		2. Leaves: from leaf blocks with air below; more in gusty weather
 	*/
@@ -160,7 +190,7 @@ void ParticleSystem::emit(Client *client, Camera *camera, float dtime)
 			s.vel = v3f(rnd(-0.2f, 0.2f) + wind_x * 0.3f, rnd(-0.4f, -0.1f), rnd(-0.2f, 0.2f) + wind_z * 0.3f);
 			s.life = rnd(28.f, 40.f);
 			s.param = rnd(-1.f, 1.f); // spin
-			s.size = rnd(0.16f, 0.26f);
+			s.size = rnd(0.05f, 0.08f); // one leaf, not a block face
 			s.layer = m_info[id].leaf_layer;
 			s.tint = f.visuals ? f.visuals->getColor(f, node.param2) : video::SColor(0xffffffff);
 			push(s);
@@ -300,7 +330,7 @@ void ParticleSystem::emit(Client *client, Camera *camera, float dtime)
 				s.life = rnd(5.f, 9.f);
 				s.size = rnd(0.035f, 0.05f);
 				s.tint = video::SColor(255, 200, 255, 112);
-				s.glow = 1.f;
+				s.glow = rnd(0.15f, 0.3f);
 				push(s);
 			}
 		}
