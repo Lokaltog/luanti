@@ -130,7 +130,7 @@ only light sources; surface keys only when surfaces are on).
 | File | R | G | B | A |
 |---|---|---|---|---|
 | `<stem>_n.png` | normal X, 0 = left … 255 = right | normal Y, **DirectX**: 0 = up … 255 = down (texture space, v down) | AO (255 = none); Z is reconstructed | height, linear: 255 = surface, 0 = 25% depth |
-| `<stem>_s.png` | perceptual smoothness | F0: 0–229 = linear F0 ×255; 230–254 = predefined metals; 255 = metal with albedo as F0 | porosity / SSS (unused) | emission 0–254 (0–100%); **255 = none** |
+| `<stem>_s.png` | perceptual smoothness | F0: 0–229 = linear F0 ×255; 230–254 = predefined metals; 255 = metal with albedo as F0 | 0–64 porosity, 65–255 subsurface (see below) | emission 0–254 (0–100%); **255 = none** |
 
 - Looked up for the base atom (the first atom at the start of the tile string)
   and resized to the base size. Missing maps get neutral fills.
@@ -147,6 +147,12 @@ only light sources; surface keys only when surfaces are on).
   that ships `_e.png` should leave `_s` alpha at 255.
 - Parallax occlusion mapping with layer interpolation, on `_n` alpha, depth
   set by `fx_parallax_depth`.
+- `_s` blue, porosity (0–64): in rain, porous texels soak up water (darken,
+  stay matte, dry slowly); dense ones carry a glossy water film that dries
+  first. Metals don't darken. Puddles fill the `_n` height map's dips first
+  (joints, cracks), and settling snow does too.
+- `_s` blue, subsurface (65–255): sunlight shines through the texel when it
+  is seen against the sun (`fx_translucency`); counts as half-porous in rain.
 
 ## Open items (accepted)
 
