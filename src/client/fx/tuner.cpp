@@ -11,6 +11,7 @@
 #include "settings.h"
 #include "util/string.h"
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 
 namespace fx
@@ -34,6 +35,9 @@ static std::vector<const ParamInfo *> toggles()
 	return out;
 }
 
+// scroll positions of the two lists, kept across rebuilds of the form
+static int s_scroll_sliders = 0, s_scroll_checks = 0;
+
 static int sliderPos(const ParamInfo &p, float v)
 {
 	return core::round32(std::clamp((v - p.min) / (p.max - p.min), 0.f, 1.f) * 1000.f);
@@ -49,8 +53,11 @@ std::string tunerFormspec(const std::string &status)
 	const float row = 0.72f;
 	const int check_cols = 4, check_rows = (int)(checks.size() + check_cols - 1) / check_cols;
 	const float check_row = 0.5f;
-	const float y_checks = 2.0f + per_col * row + 0.5f;
-	const float h = y_checks + 0.4f + check_rows * check_row + 1.3f;
+	// both lists scroll: the form stays the same size however many there are
+	const float slider_view = 8.6f, check_view = 2.6f;
+	const float slider_h = per_col * row + 0.2f, check_h = check_rows * check_row + 0.2f;
+	const float y_checks = 1.7f + slider_view + 0.35f;
+	const float h = y_checks + 0.45f + check_view + 1.3f;
 
 	std::ostringstream os;
 	os << std::fixed;
@@ -75,11 +82,16 @@ std::string tunerFormspec(const std::string &status)
 	os << "dropdown[1.6,0.85;4,0.6;fx_mood_select;" << list << ";" << index << ";false]"
 		<< "label[6,1.15;" << note << "]";
 
+	const int slider_max = std::max(0, (int)std::ceil((slider_h - slider_view) * 10.f));
+	os << "scrollbaroptions[min=0;max=" << slider_max << ";smallstep=5;largestep=40;arrows=hide]"
+		<< "scrollbar[16.45,1.7;0.3," << slider_view << ";vertical;fx_scroll_sliders;"
+		<< std::min(s_scroll_sliders, slider_max) << "]"
+		<< "scroll_container[0,1.7;16.4," << slider_view << ";fx_scroll_sliders;vertical;0.1]";
 	os << "scrollbaroptions[min=0;max=1000;smallstep=10;largestep=100;arrows=hide]";
 	for (size_t i = 0; i < params.size(); i++) {
 		const ParamInfo &p = *params[i];
 		const int col = (int)i / per_col, r = (int)i % per_col;
-		const float x = 0.4f + col * 8.3f, y = 1.9f + r * row;
+		const float x = 0.4f + col * 8.3f, y = 0.2f + r * row;
 		const float v = g_settings->getFloat(p.setting);
 		// no value in the label: the form is not rebuilt while dragging (that
 		// would drop the drag), so a number here would go stale
@@ -87,11 +99,23 @@ std::string tunerFormspec(const std::string &status)
 			<< "scrollbar[" << (x + 4.1f) << "," << y << ";3.8,0.45;horizontal;"
 			<< p.setting << ";" << sliderPos(p, v) << "]";
 	}
-	os << "label[0.4," << (y_checks) << ";" << strgettext("Effects (off removes the shader work; * on rejoin):") << "]";
+	os << "scroll_container_end[]";
+	{
+		// escaped: a ';' in the text would end the element early
+		std::string head = strgettext("Effects (off removes the shader work, * applies on rejoin):");
+		str_formspec_escape(head);
+		os << "label[0.4," << (y_checks) << ";" << head << "]";
+	}
+	const int check_max = std::max(0, (int)std::ceil((check_h - check_view) * 10.f));
+	os << "scrollbaroptions[min=0;max=" << check_max << ";smallstep=5;largestep=20;arrows=hide]"
+		<< "scrollbar[16.45," << (y_checks + 0.3f) << ";0.3," << check_view << ";vertical;fx_scroll_checks;"
+		<< std::min(s_scroll_checks, check_max) << "]"
+		<< "scroll_container[0," << (y_checks + 0.3f) << ";16.4," << check_view
+		<< ";fx_scroll_checks;vertical;0.1]";
 	for (size_t i = 0; i < checks.size(); i++) {
 		const ParamInfo &p = *checks[i];
 		const int col = (int)i % check_cols, r = (int)i / check_cols;
-		const float x = 0.4f + col * 4.15f, y = y_checks + 0.5f + r * check_row;
+		const float x = 0.4f + col * 4.15f, y = 0.25f + r * check_row;
 		std::string label = p.label;
 		if (p.apply == Apply::RESTART)
 			label += " *";
@@ -99,6 +123,7 @@ std::string tunerFormspec(const std::string &status)
 		os << "checkbox[" << x << "," << y << ";" << p.setting << ";" << label << ";"
 			<< (g_settings->getBool(p.setting) ? "true" : "false") << "]";
 	}
+	os << "scroll_container_end[]";
 	const float yb = h - 0.95f;
 	std::string esc_status = status;
 	str_formspec_escape(esc_status);
@@ -113,6 +138,13 @@ std::string tunerFormspec(const std::string &status)
 bool tunerFields(const std::unordered_map<std::string, std::string> &fields, std::string &status)
 {
 	bool refresh = false;
+	// remember where the lists were scrolled to
+	for (auto [name, pos] : {std::make_pair("fx_scroll_sliders", &s_scroll_sliders),
+			std::make_pair("fx_scroll_checks", &s_scroll_checks)}) {
+		auto it = fields.find(name);
+		if (it != fields.end() && it->second.size() > 4)
+			*pos = mystoi(it->second.substr(4));
+	}
 	// A mood switch first, applied now, so the rebuilt form shows its values
 	// and no slider below writes the previous mood's value back.
 	if (auto it = fields.find("fx_mood_select"); it != fields.end() &&

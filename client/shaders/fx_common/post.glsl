@@ -119,7 +119,11 @@ vec3 fxApplyGI(vec3 color, vec2 uv)
 		+ texture2D(fxGiTex, uv + px * vec2(-0.4, 1.2)).rgb) * 0.25;
 	// what the surface reflects: its own colour, normalised (an albedo proxy)
 	vec3 albedo = color / (max(max(color.r, color.g), color.b) + 0.08);
-	return color + albedo * gi * fxGi * 0.15;
+	// what the neighbours send beyond what this surface already gets: a
+	// dark ceiling over lava turns orange, a floor between two equally lit
+	// walls doesn't wash out
+	vec3 extra = max(gi - color * 0.3, vec3(0.0));
+	return color + albedo * extra * fxGi * 0.9;
 }
 #endif
 
@@ -301,18 +305,20 @@ vec3 fxApplyFogBlur(vec3 col, vec2 uv)
 	float dist = fxViewDist01(uv);
 	if (dist >= 1.0)
 		return col; // the sky (and stars, nebula, aurora) stays sharp
-	float f = smoothstep(0.2, 0.9, dist);
-	float radius = f * fxFogBlur * 0.0035; // of the screen height
+	// from ~16 nodes out, full by 60% of the view range (or 64 nodes)
+	float dn = dist * fxNearFar.y / FX_BS;
+	float f = smoothstep(16.0, max(64.0, 0.6 * fxNearFar.y / FX_BS), dn);
+	float radius = f * fxFogBlur * 0.006; // of the screen height
 	if (radius < 0.0004)
 		return col;
 	vec2 px = vec2(radius * fxDepthAspect(), radius);
 	vec3 acc = col;
 	float wsum = 1.0;
-	for (int i = 0; i < 8; i++) {
-		float t = (float(i) + 0.5) / 8.0;
+	for (int i = 0; i < 12; i++) {
+		float t = (float(i) + 0.5) / 12.0;
 		float ang = float(i) * 2.39996; // golden angle
 		vec2 o = vec2(cos(ang), sin(ang)) * sqrt(t) * px;
-		float w = smoothstep(dist * 0.7, dist * 0.9, fxViewDist01(uv + o));
+		float w = smoothstep(dist * 0.6, dist * 0.85, fxViewDist01(uv + o));
 		acc += texture2D(rendered, uv + o).rgb * w;
 		wsum += w;
 	}

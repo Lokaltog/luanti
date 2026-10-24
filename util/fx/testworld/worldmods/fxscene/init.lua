@@ -200,7 +200,45 @@ core.register_on_joinplayer(function(player)
 			end
 		end
 		local view = core.settings:get("fxscene_view")
-		if view == "hand" then
+		if view == "lake" then
+			-- a lake east of the room: open water, a sloping sand beach, an
+			-- island, a small pond on the shore (waves by size, shore foam)
+			local water, sand, dirt = {}, {}, {}
+			for x = 13, 23 do
+				for z = -40, 40 do
+					sand[#sand + 1] = {x = x, y = -1, z = z}
+				end
+			end
+			for x = 24, 100 do
+				for z = -40, 40 do
+					-- beach: the bed rises towards x = 24 and around the island
+					local d_island = math.sqrt((x - 70) ^ 2 + (z - 6) ^ 2)
+					local bed = math.min(-7, -1 - math.floor((x - 24) / 2))
+					if x - 24 < 12 then bed = -1 - math.floor((x - 24) / 2) end
+					if d_island < 6 then bed = math.max(bed, 1 - math.floor(d_island / 2)) end
+					for y = -8, 1 do
+						local p = {x = x, y = y, z = z}
+						if y <= bed then
+							(y > bed - 2 and sand or dirt)[#(y > bed - 2 and sand or dirt) + 1] = p
+						elseif y <= -1 then
+							water[#water + 1] = p
+						end
+					end
+				end
+			end
+			-- the pond: 3x4, on the beach
+			for x = 25, 27 do
+				for z = 20, 23 do
+					water[#water + 1] = {x = x, y = -1, z = z}
+				end
+			end
+			core.bulk_set_node(dirt, {name = "basenodes:dirt"})
+			core.bulk_set_node(sand, {name = "basenodes:sand"})
+			core.bulk_set_node(water, {name = "basenodes:water_source"})
+			player:set_pos({x = 22, y = 2, z = 4})
+			player:set_look_horizontal(-math.pi / 2)
+			player:set_look_vertical(0.32)
+		elseif view == "hand" then
 			-- the wielded item against a wall 1.5 nodes away (R3: no AO halo)
 			player:hud_set_flags({wielditem = true})
 			player:get_inventory():set_stack("main", 1,

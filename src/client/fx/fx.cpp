@@ -4,6 +4,7 @@
 #include "gpu_timing.h"
 #include "renderer.h"
 #include "particles.h"
+#include "water.h"
 #include "fx_test.h"
 
 #include "client/camera.h"
@@ -86,6 +87,8 @@ Renderer::Renderer(video::IVideoDriver *drv, IWritableShaderSource *src) :
 	driver->setUniformBlockBinding("FxLights", UBO_LIGHTS);
 	if (caps.light_volume)
 		volume = std::make_unique<LightVolume>(driver);
+	if (caps.light_volume && caps.surfaces)
+		water_field = std::make_unique<WaterField>(driver);
 	uploadParams();
 	uploadFrame();
 	if (g_settings->getBool("fx_open_tuner_on_start"))
@@ -96,6 +99,7 @@ Renderer::~Renderer()
 {
 	g_settings->deregisterAllChangedCallbacks(this);
 	particles.reset();
+	water_field.reset();
 	volume.reset();
 	if (copy.rt)
 		driver->removeRenderTarget(copy.rt);
@@ -494,6 +498,8 @@ void updateFrame(Client *client, Camera *camera, Sky *sky, float dtime)
 	r->updateCamera(client, camera, sky, dtime);
 	if (r->volume)
 		r->volume->update(client, floatToInt(camera->getPosition(), BS), dtime);
+	if (r->water_field && r->volume)
+		r->water_field->update(client, *r->volume, dtime);
 	r->updateLights(client, camera);
 	r->uploadParams();
 	r->uploadFrame();

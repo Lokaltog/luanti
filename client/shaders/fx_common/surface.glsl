@@ -8,6 +8,7 @@
 // fogged afterwards (no double fog).
 #include "fx_common/uniforms.glsl"
 #include "fx_common/color.glsl"
+#include "fx_common/water.glsl"
 #ifdef FX_SURFACE_ACTIVE
 #define fxSceneColor texture4
 #define fxSceneDepth texture5
@@ -41,12 +42,7 @@ vec3 fxPatternNormal(vec3 n, vec3 wp)
 	vec2 q = p.xz * 1.7;
 	vec2 g = vec2(cos(q.x * 2.1 + t * 1.3) + cos((q.x + q.y) * 3.3 - t * 1.7) * 0.5,
 	              cos(q.y * 2.3 - t * 1.1) + cos((q.x - q.y) * 2.9 + t * 1.9) * 0.5) * 0.06;
-#ifdef FX_ON_USE_FOAM
-	vec2 wd = vec2(cos(fxWindAngle), sin(fxWindAngle));
-	vec2 wp2 = p.xz;
-	float ph1 = dot(wp2, wd) * 0.9 - t * 1.6, ph2 = dot(wp2, vec2(-wd.y, wd.x) * 0.6 + wd * 0.8) * 1.4 - t * 2.1;
-	g += (wd * cos(ph1) * 0.6 + vec2(-wd.y, wd.x) * cos(ph2) * 0.3) * 0.08 * fxWaterChop;
-#endif
+	// (top faces: replaced by the layered waves in fxSurface)
 	return t1 * g.x + t2 * g.y;
 #elif FX_PATTERN == 1
 	// fluted: vertical ridges, 6 per node
@@ -196,6 +192,20 @@ vec3 fxSurface(vec3 lit, vec4 base, out vec3 transmitted)
 	if (from_below)
 		N = -N;
 	vec3 dn = fxPatternNormal(N, worldPosition);
+#ifdef FX_WATER_ACTIVE
+	// the top of a body of water: layered waves sized to it (water.glsl)
+	FxWaterInfo wi;
+	float wave_h = 0.0, wave_amp = 0.0;
+	bool top = abs(N.y) > 0.5;
+	vec2 wabs = (worldPosition.xz + cameraOffset.xz) / FX_BS;
+	if (top) {
+		wi = fxWaterAt(worldPosition / FX_BS);
+		float footprint = length(fwidth(wabs));
+		vec3 hw = fxWaterWaves(wabs, wi, footprint, wave_amp);
+		wave_h = hw.x;
+		dn = vec3(-hw.y, 0.0, -hw.z) * (from_below ? -1.0 : 1.0);
+	}
+#endif
 #if FX_SURFACE == 1
 	dn += fxBevelNormal(N, worldPosition + cameraOffset);
 #endif
@@ -257,12 +267,18 @@ vec3 fxSurface(vec3 lit, vec4 base, out vec3 transmitted)
 	// foam: along shores and around anything standing in the water, and
 	// on crests when the water is rough
 	if (fxFoam > 0.0 && !from_below) {
-		vec3 wp = (worldPosition + cameraOffset) / FX_BS;
-		float n = fxFbm3(vec3(wp.xz * 2.2, fxTime * 0.35));
-		float shore = 1.0 - smoothstep(0.0, 0.45 * FX_BS * (0.6 + n), below);
-		float crest = smoothstep(0.9, 1.4, fxWaterChop) * smoothstep(0.62, 0.8, n);
-		float foam = clamp((shore * smoothstep(0.35, 0.6, n + shore * 0.3) + crest) * fxFoam, 0.0, 1.0);
-		vec3 light = vec3(max(fxLuma(lit) * 1.6, 0.02));
+		// around anything standing in the water: from the scene depth
+		float contact = 1.0 - smoothstep(0.0, 0.3 * FX_BS, below);
+		float foam;
+		if (top) {
+			foam = fxWaterFoam(wabs, wi, wave_h, wave_amp, contact * 0.8);
+		} else {
+			float n = fxFbm2(wabs * 2.2 + fxTime * 0.3);
+			foam = clamp(contact * smoothstep(0.35, 0.6, n + contact * 0.3) * fxFoam, 0.0, 1.0);
+		}
+		// foam is white: lit like any surface here (the vertex light),
+		// not like the dark water texture
+		vec3 light = max(fxToLinear(varColor.rgb) * 0.85, vec3(0.01));
 		own = mix(own, light, foam * 0.85);
 		transmitted *= 1.0 - foam * 0.85;
 	}

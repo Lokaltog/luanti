@@ -48,6 +48,7 @@ const vec3 artificialLight = vec3(1.04, 1.04, 1.04);
 
 #include "fx_common/color.glsl"
 #include "fx_common/light.glsl"
+#include "fx_common/water.glsl"
 
 #ifdef ENABLE_DYNAMIC_SHADOWS
 
@@ -215,7 +216,16 @@ void main(void)
 #endif
 
 	vec4 pos = inVertexPosition;
-#if MATERIAL_WAVING_LIQUID && ENABLE_WAVING_WATER
+#if MATERIAL_WAVING_LIQUID && ENABLE_WAVING_WATER && defined(FX_WATER_ACTIVE)
+	// fx: the swells of the layered water (water.glsl), sized to the body
+	// of water and flat at its edge, so the mesh meets the shore
+	{
+		FxWaterInfo wi = fxWaterAt(wpos.xyz / FX_BS);
+		float amp;
+		vec3 sw = fxSwells((wpos.xz + cameraOffset.xz) / FX_BS, wi, amp);
+		pos.y += (sw.x - amp) * FX_BS;
+	}
+#elif MATERIAL_WAVING_LIQUID && ENABLE_WAVING_WATER
 	// Generate waves with Perlin-type noise.
 	// The constants are calibrated such that they roughly
 	// correspond to the old sine waves.

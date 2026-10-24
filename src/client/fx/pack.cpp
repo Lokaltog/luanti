@@ -498,6 +498,14 @@ LightStyle resolveLightStyle(ITextureSource *tsrc, const ContentFeatures &f,
 	}
 	if (avg.getRed() + avg.getGreen() + avg.getBlue() > 0)
 		st.color = normalizeChroma(avg);
+	// open flames (torches, candles, fire): the bright pixels of a flame
+	// texture average to a near-white yellow, but flame light reads warm.
+	// Pull the derived hue towards ~2000 K (a pack entry still wins).
+	if (st.flicker >= 1.f) {
+		const video::SColor c = st.color;
+		st.color = normalizeChroma(video::SColor(255, c.getRed(),
+				c.getGreen() * 165 / 255, c.getBlue() * 80 / 255));
+	}
 	return st;
 }
 

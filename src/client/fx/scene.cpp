@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include "renderer.h"
+#include "water.h"
 
 #include "client/camera.h"
 #include "client/client.h"
@@ -151,6 +152,16 @@ void Renderer::uploadFrame()
 	b.offset_delta[2] = cam.offset_delta[2];
 	b.offset_delta[3] = cam.proj_scale;
 	b.water[0] = cam.water_level;
+	// the water field's texel (0, 0), in nodes relative to the camera offset
+	if (water_field && water_field->valid()) {
+		const v3s16 o = water_field->origin();
+		b.water[1] = (float)(o.X - cam.offset.X);
+		b.water[2] = (float)(o.Z - cam.offset.Z);
+		b.water[3] = (float)(o.Y - cam.offset.Y);
+	} else {
+		b.water[1] = b.water[2] = 0.f;
+		b.water[3] = 1e9f; // no field: the shaders take open water
+	}
 	b.events[0] = events.flash;
 	b.events[1] = events.damage;
 	b.events[2] = events.low_health;
@@ -314,9 +325,22 @@ void noteSurfaceShader(video::E_MATERIAL_TYPE type)
 void bindSceneCopy(video::SMaterial &material)
 {
 	Renderer *r = renderer();
-	if (!r || !r->copy.valid)
+	if (!r)
 		return;
-	if (r->surface_materials.count((int)material.MaterialType)) {
+	const bool surface = r->surface_materials.count((int)material.MaterialType) > 0;
+	if (surface) {
+		// surfaces have no material maps: layer 7 carries the water field
+		// (bound even without a scene copy: the vertex shader reads it)
+		auto &w = material.TextureLayers[TEXTURE_LAYER_MATERIAL];
+		r->saved_layer7 = w.Texture;
+		w.Texture = r->water_field ? r->water_field->texture() : nullptr;
+		w.TextureWrapU = w.TextureWrapV = video::ETC_CLAMP_TO_EDGE;
+		w.MinFilter = video::ETMINF_LINEAR_MIPMAP_NEAREST;
+		w.MagFilter = video::ETMAGF_LINEAR;
+	}
+	if (!r->copy.valid)
+		return;
+	if (surface) {
 		// The surface writes alpha 1 (it composites what is behind from the
 		// copy), so the alpha blend reduces to "replace". Writing depth ends
 		// sorting artefacts between panes and water, and AO sees the surface
@@ -339,6 +363,11 @@ void unbindSceneCopy(video::SMaterial &material)
 {
 	material.TextureLayers[TEXTURE_LAYER_SCENE_COLOR].Texture = nullptr;
 	material.TextureLayers[TEXTURE_LAYER_SCENE_DEPTH].Texture = nullptr;
+	Renderer *r = renderer();
+	if (r && r->surface_materials.count((int)material.MaterialType)) {
+		material.TextureLayers[TEXTURE_LAYER_MATERIAL].Texture = r->saved_layer7;
+		r->saved_layer7 = nullptr;
+	}
 }
 
 void bindLightVolume(video::SMaterial &material)

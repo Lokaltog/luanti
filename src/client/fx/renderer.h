@@ -24,7 +24,7 @@
 
 namespace video { class IRenderTarget; }
 
-namespace fx { class ParticleSystem; }
+namespace fx { class ParticleSystem; class WaterField; }
 
 namespace fx
 {
@@ -193,6 +193,8 @@ public:
 	video::ITexture *neutral_material = nullptr;
 	std::unordered_set<int> surface_materials; // material types of fx surface shaders
 	std::unique_ptr<ParticleSystem> particles; // GPU particles (caps.gpu_particles)
+	std::unique_ptr<WaterField> water_field;   // shores and openness for the water (surfaces + volume)
+	video::ITexture *saved_layer7 = nullptr;   // bindSceneCopy swaps the water field in
 
 	// shader hot reload
 	float reload_timer = 0.f;
