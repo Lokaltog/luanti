@@ -1,0 +1,4 @@
+mg_name = singlenode
+seed = 1
+mcl_singlenode_mapgen = false
+[end_of_params]

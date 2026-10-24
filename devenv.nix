@@ -71,9 +71,13 @@ in
                           FX_TEXTURE_PACK=/path/to/pack fx-run   uses a texture pack.
       fx-play <world>     fx-run straight into a world from ~/.minetest/worlds
       fx-upstream [args]  same as fx-run but with fx_enable = false, for A/B
-      fx-smoke            headless smoke test (Xvfb + llvmpipe): every config
-                          and debug view must render without shader or GL errors
-      fx-shots [dir]      A/B screenshots of the test scene on your GPU
+      fx-test [args]      test harness, headless (Xvfb + llvmpipe): every case must
+                          render without errors, pass its probes and match its
+                          llvmpipe golden. Report: shots/test/report.html.
+                          --only 'regex', --update-goldens, list
+      fx-test-gpu [args]  the same on your display and GPU (4090 goldens)
+      fx-unit             C++ unit tests (TestFx)
+      fx-mcl <path>       link a Mineclonia checkout as games/mineclonia (mcl_* cases)
       fx-renderdoc        run under RenderDoc for a frame capture
       fx-jsl-test         run the jsl2mcl fx step tests (needs JSL2MCL_DIR)
       fx-install-mods     symlink util/fx/mods/* (fx_ambience particles) into
@@ -88,7 +92,7 @@ in
         -DRUN_IN_PLACE=TRUE \
         -DUSE_SDL3=ON \
         -DBUILD_SERVER=FALSE \
-        -DBUILD_UNITTESTS=FALSE \
+        -DBUILD_UNITTESTS=TRUE \
         -DENABLE_GETTEXT=FALSE \
         -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -133,7 +137,7 @@ in
       exec bin/luanti --config "$conf" "$@"
     '';
 
-    fx-smoke.exec = ''
+    fx-test.exec = ''
       set -e
       cd "$DEVENV_ROOT"
       fx-build
@@ -141,22 +145,27 @@ in
       LD_LIBRARY_PATH="${pkgs.mesa}/lib:${pkgs.libGL}/lib" \
         LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri" \
         __GLX_VENDOR_LIBRARY_NAME=mesa \
-        util/fx/smoketest.sh
+        python3 util/fx/test/run.py "$@"
     '';
 
-    fx-shots.exec = ''
+    fx-test-gpu.exec = ''
       set -e
       cd "$DEVENV_ROOT"
       fx-build
-      out=''${1:-shots/$(git rev-parse --short HEAD)}
-      mkdir -p "$out"
-      for t in 0.0 0.45; do
-        util/fx/abshot.sh "$out/upstream-$t.png" fx_enable=false fxscene_time=$t
-        util/fx/abshot.sh "$out/fx-$t.png" fxscene_time=$t
-        magick "$out/upstream-$t.png" "$out/fx-$t.png" +append "$out/ab-$t.png"
-      done
-      util/fx/abshot.sh "$out/fx-underwater.png" fxscene_time=0.45 fxscene_view=underwater
-      echo "wrote $out"
+      python3 util/fx/test/run.py --gpu "$@"
+    '';
+
+    fx-unit.exec = ''
+      set -e
+      cd "$DEVENV_ROOT"
+      fx-build
+      bin/luanti --run-unittests --test-module TestFx
+    '';
+
+    fx-mcl.exec = ''
+      [ -n "''${1:-}" ] || { echo "usage: fx-mcl <path to a Mineclonia checkout>"; exit 1; }
+      ln -sfn "$(realpath "$1")" "$DEVENV_ROOT/games/mineclonia"
+      echo "games/mineclonia -> $(realpath "$1")"
     '';
 
     fx-renderdoc.exec = ''
@@ -180,8 +189,9 @@ in
     '';
   };
 
-  # `devenv test`: build + headless smoke test
+  # `devenv test`: unit tests + the headless harness
   enterTest = ''
-    fx-smoke
+    fx-unit
+    fx-test
   '';
 }
