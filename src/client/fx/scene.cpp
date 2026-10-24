@@ -50,6 +50,7 @@ void Renderer::updateCamera(Client *client, Camera *camera, Sky *sky, float dtim
 	cam.sun_dir[2] = sun.Z;
 	// 0 below the horizon, 1 well above it; moonlight counts as weak
 	cam.sun_strength = std::clamp(sun.Y * 3.f, 0.f, 1.f) * (day ? 1.f : 0.25f);
+	cam.is_day = day;
 	if (sky) {
 		const video::SColor fc = sky->getFogColor();
 		cam.fog_color[0] = fc.getRed() / 255.f;
@@ -166,6 +167,12 @@ void Renderer::uploadFrame()
 	b.fog[1] = cam.fog_color[1];
 	b.fog[2] = cam.fog_color[2];
 	b.fog[3] = cam.offset.Y * BS;
+	for (int i = 0; i < 4; i++)
+		b.water_style[i] = events.water[i];
+	b.sky[0] = events.cold;
+	b.sky[1] = events.droplets;
+	b.sky[2] = events.overworld;
+	b.sky[3] = cam.is_day ? 1.f : 0.f;
 	driver->setUniformBufferData(UBO_FRAME, &b, sizeof(b));
 }
 

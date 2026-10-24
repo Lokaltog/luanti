@@ -925,6 +925,24 @@ fx_height_fog_base (Height fog base) float 4.0 -64.0 256.0
 #    Screen-space bounce light: lit surfaces tint what faces them.
 fx_gi (Bounce light) float 0.6 0.0 3.0
 
+#    Foam at shores and around things in the water, and wave crests in rough
+#    water (biome and weather set the waves).
+fx_foam (Water foam) float 1.0 0.0 2.0
+
+#    Physically based sky colour (Rayleigh and Mie scattering) blended over
+#    the game's sky in the Overworld by day; clouds stay the game's.
+fx_sky_pbr (Sky scattering) float 0.8 0.0 1.0
+
+#    Aurora on clear nights in cold biomes (needs fx_hints).
+fx_aurora (Aurora) float 1.0 0.0 2.0
+
+#    Water running down the lens after you surface.
+fx_droplets_fx (Lens droplets) float 1.0 0.0 2.0
+
+#    Sunlight shining through leaves and plants (and through translucent
+#    texels marked in _s maps).
+fx_translucency (Translucency) float 1.0 0.0 2.0
+
 #    Linear luminance above which pixels bloom.
 fx_bloom_threshold (Bloom threshold) float 1.0 0.0 8.0
 
@@ -1083,6 +1101,21 @@ fx_use_snow (Snow cover) bool true
 
 #    Foliage sways in a wind that grows with the weather. Off compiles the effect out of the shaders.
 fx_use_wind (Wind) bool true
+
+#    Foam and biome waves on water. Off compiles the effect out of the shaders.
+fx_use_foam (Water foam & waves) bool true
+
+#    Physically based sky colour. Off compiles the effect out of the shaders.
+fx_use_pbr_sky (Sky scattering) bool true
+
+#    Aurora on cold nights. Off compiles the effect out of the shaders.
+fx_use_aurora (Aurora) bool true
+
+#    Water on the lens after surfacing. Off compiles the effect out of the shaders.
+fx_use_droplets (Lens droplets) bool true
+
+#    Sunlight through leaves and plants. Off compiles the effect out of the shaders.
+fx_use_translucency (Translucency) bool true
 
 #    Volumetric light and height fog pass. Off removes the pass. Changing it
 #    applies when you next join a world.

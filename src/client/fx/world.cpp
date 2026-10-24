@@ -112,6 +112,33 @@ void Renderer::updateWorld(Client *client, float dtime)
 	}
 	approach(events.heat, heat, 1.0f, 2.5f);
 
+	// Biome moods for water and sky (Mineclonia biome names; anything else
+	// gets the temperate default)
+	auto has = [&] (std::initializer_list<const char *> words) {
+		for (const char *w : words)
+			if (hints.biome.find(w) != std::string::npos)
+				return true;
+		return false;
+	};
+	const bool cold = has({"Ice", "Frozen", "Snow", "Cold", "Taiga", "Grove", "Peaks", "Slopes"});
+	const bool warm = has({"Desert", "Jungle", "Savanna", "Mesa", "Badlands", "Warm", "Lukewarm", "Beach", "Bamboo"});
+	const bool swamp = has({"Swamp", "Mangrove"});
+	float tint[3] = {0.10f, 0.45f, 0.55f}, chop = 0.5f; // temperate: blue-green
+	if (warm) { tint[0] = 0.12f; tint[1] = 0.75f; tint[2] = 0.70f; chop = 0.35f; } // turquoise
+	if (cold) { tint[0] = 0.04f; tint[1] = 0.18f; tint[2] = 0.40f; chop = 0.8f; }  // dark, choppy
+	if (swamp) { tint[0] = 0.22f; tint[1] = 0.26f; tint[2] = 0.10f; chop = 0.2f; } // murky
+	chop += events.storm * 0.8f + (wet ? 0.2f : 0.f);
+	for (int i = 0; i < 3; i++)
+		approach(events.water[i], tint[i], 3.f, 3.f);
+	approach(events.water[3], chop, 3.f, 3.f);
+	approach(events.cold, cold ? 1.f : 0.f, 4.f, 4.f);
+	approach(events.overworld, hints.dim == "overworld" || !hints.present ? 1.f : 0.f, 1.f, 1.f);
+	// surfacing: water runs down the lens for a few seconds
+	if (events.was_underwater && cam.underwater < 0.5f)
+		events.droplets = 1.f;
+	events.was_underwater = cam.underwater > 0.5f;
+	events.droplets = std::max(0.f, events.droplets - dtime / 3.f);
+
 	// 2. lightning: each new strike flashes twice, quickly
 	if (hints.present && events.last_flash >= 0 && hints.flash > events.last_flash)
 		events.flash_age = 0.f;

@@ -28,6 +28,21 @@ vec2 fxRipples(vec2 p)
 	return acc * 0.35;
 }
 
+// Wave 4: sunlight shining through thin things (leaves, plants; and texels
+// an _s map marks as subsurface: porosity/SSS channel 65..255). Seen
+// against the sun, they glow in their own colour.
+vec3 fxTranslucent(vec3 lin, vec3 albedo, float sss)
+{
+	if (fxTranslucency <= 0.0 || sss <= 0.0 || fxIsDay < 0.5)
+		return lin;
+	vec3 eye = cameraPosition - cameraOffset;
+	vec3 V = fxSafeNormalize(worldPosition - eye); // eye -> surface
+	float t = max(dot(V, fxSunDir), 0.0);
+	t = t * t * t * t;
+	float sky = smoothstep(0.2, 0.7, fxSkyExp);
+	return lin + albedo * fxToLinear(dayLight) * t * sss * sky * fxSunStrength * fxTranslucency * 1.5;
+}
+
 vec3 fxWeatherSurface(vec3 lin, vec3 albedo, vec3 N)
 {
 	float sky = smoothstep(0.35, 0.75, fxSkyExp);

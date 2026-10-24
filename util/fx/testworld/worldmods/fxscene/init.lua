@@ -128,8 +128,10 @@ core.register_on_joinplayer(function(player)
 		core.set_node({x = 0, y = -5, z = 6}, {name = "basenodes:cobble"})
 		core.set_node({x = 2, y = -5, z = 7}, {name = "basenodes:cobble"})
 		core.set_node({x = 2, y = -4, z = 7}, {name = "basenodes:cobble"})
-		-- open the ceiling above the pool so daylight reaches the water
-		if (tonumber(core.settings:get("fxscene_time") or "") or 0) > 0.2 then
+		-- open the ceiling above the pool so daylight reaches the water (and
+		-- for the sky view, at any time)
+		if (tonumber(core.settings:get("fxscene_time") or "") or 0) > 0.2
+				or core.settings:get("fxscene_view") == "sky" then
 			for x = -12, 12 do
 				for z = -2, 18 do
 					core.remove_node({x = x, y = 8, z = z})
@@ -197,6 +199,11 @@ core.register_on_joinplayer(function(player)
 			player:set_pos({x = 0.5, y = -5.4, z = 4.0})
 			player:set_look_horizontal(0)
 			player:set_look_vertical(-0.9)
+		elseif view == "sky" then
+			-- looking up at the open sky (aurora, End sky, scattering)
+			player:set_pos({x = 0, y = 0, z = 4})
+			player:set_look_horizontal(0)
+			player:set_look_vertical(-1.45)
 		elseif view == "materials" then
 			player:set_pos({x = 0, y = 0.6, z = -2.2})
 			player:set_look_horizontal(0)

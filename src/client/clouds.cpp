@@ -5,6 +5,7 @@
 #include "client/renderingengine.h"
 #include "client/shader.h"
 #include "clouds.h"
+#include "fx/fx.h"
 #include "constants.h"
 #include "util/numeric.h"
 #include "irrlicht_changes/printing.h"
@@ -400,6 +401,9 @@ void Clouds::render()
 	m_material.ColorParam = m_color.toSColor();
 
 	driver->setTransform(video::ETS_WORLD, AbsoluteTransformation);
+	// fx: clouds write depth, so the sky effects (scattering, aurora) and
+	// the fog passes see them as things in the sky, not as sky
+	m_material.ZWriteEnable = fx::caps().enabled ? video::EZW_ON : video::EZW_AUTO;
 	driver->setMaterial(m_material);
 
 	const float cloud_full_radius = cloud_size * m_cloud_radius_i;

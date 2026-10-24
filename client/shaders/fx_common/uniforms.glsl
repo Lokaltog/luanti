@@ -64,6 +64,26 @@
 #undef fxSnow
 #define fxSnow 0.0
 #endif
+#ifndef FX_ON_USE_FOAM
+#undef fxFoam
+#define fxFoam 0.0
+#endif
+#ifndef FX_ON_USE_PBR_SKY
+#undef fxSkyPbr
+#define fxSkyPbr 0.0
+#endif
+#ifndef FX_ON_USE_AURORA
+#undef fxAurora
+#define fxAurora 0.0
+#endif
+#ifndef FX_ON_USE_DROPLETS
+#undef fxDropletsFx
+#define fxDropletsFx 0.0
+#endif
+#ifndef FX_ON_USE_TRANSLUCENCY
+#undef fxTranslucency
+#define fxTranslucency 0.0
+#endif
 #ifndef FX_ON_USE_DAMAGE_FX
 #undef fxDamageFx
 #define fxDamageFx 0.0
@@ -84,6 +104,8 @@ layout(std140) uniform FxFrame {
 	vec4 fxWorld;
 	vec4 fxWeather;
 	vec4 fxFog;
+	vec4 fxWaterStyle;
+	vec4 fxSkyInfo;
 };
 #define fxEyePos fxEyeTime.xyz          // camera in scene space
 #define fxTime fxEyeTime.w              // seconds, wraps hourly
@@ -114,6 +136,12 @@ layout(std140) uniform FxFrame {
 #define fxWindAngle fxWeather.w             // radians
 #define fxFogColor fxFog.rgb                // the engine's fog colour, display-encoded
 #define fxCameraOffsetY fxFog.w             // scene space -> world: + this on y
+#define fxWaterTint fxWaterStyle.rgb        // water scatter colour by biome, linear
+#define fxWaterChop fxWaterStyle.w          // wave height: calm 0.2 .. storm 1.6
+#define fxCold fxSkyInfo.x                  // cold biome, 0..1 (aurora)
+#define fxDroplets fxSkyInfo.y              // water on the lens after surfacing, 1 -> 0
+#define fxOverworld fxSkyInfo.z             // 1 in the Overworld (sky effects)
+#define fxIsDay fxSkyInfo.w                 // 1: fxSunDir is the sun, 0: the moon
 
 layout(std140) uniform FxLights {
 	vec4 fxLightPosRadius[FX_LIGHT_MAX];  // xyz scene space, w radius

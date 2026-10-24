@@ -106,6 +106,8 @@ void main(void)
 	vec2 uv = varTexCoord.st;
 #if defined(FX_ENABLE) && defined(FX_HDR_COMPOSITE)
 	uv = fxPortalUV(uv);
+	float fxDropMask;
+	uv = fxDropletUV(uv, fxDropMask);
 #endif
 #if defined(FX_ENABLE) && defined(FX_HDR_COMPOSITE) && defined(ENABLE_BLOOM)
 	uv = fxHeatHazeUV(uv, texelSize0);
@@ -164,6 +166,8 @@ void main(void)
 	color.rgb *= exposure;
 #endif
 	color.rgb += fxEndSkyColor(uv);
+	color.rgb = fxApplySky(color.rgb, uv);
+	color.rgb *= 1.0 - fxDropMask * 0.15; // the drops darken their rim a little
 	color.rgb = fxApplyFlash(color.rgb);
 	vec3 fxTrans = vec3(1.0);
 #ifdef FX_SURFACES

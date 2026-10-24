@@ -66,8 +66,10 @@ struct FrameBlock {
 	float world[4];             // nether, end, wet (rain/storm), storm
 	float weather[4];           // snow cover, raining now, wind strength, wind angle
 	float fog[4];               // fog colour (display-encoded), camera offset y (scene units)
+	float water_style[4];       // water scatter tint (linear rgb), choppiness
+	float sky[4];               // cold (aurora), camera droplets, overworld, -
 };
-static_assert(sizeof(FrameBlock) == 3 * 64 + 11 * 16, "FxFrame std140 layout");
+static_assert(sizeof(FrameBlock) == 3 * 64 + 13 * 16, "FxFrame std140 layout");
 
 /// std140 mirror of FxLights.
 struct LightsBlock {
@@ -102,6 +104,7 @@ struct CameraState {
 	float water_level = 0.f;   // scene space y of the water surface above the camera
 	float time = 0.f;
 	float fog_color[3] = {0.7f, 0.8f, 1.f};
+	bool is_day = true; // fxSunDir is the sun (not the moon)
 	float proj_scale = 1.f;
 };
 
@@ -167,6 +170,9 @@ public:
 		float nether = 0.f, end = 0.f, wet = 0.f, storm = 0.f;
 		float heat = 0.f; // Nether, near lava
 		float snow_cover = 0.f, raining = 0.f, wind = 0.5f, wind_angle = 0.7f;
+		float water[4] = {0.10f, 0.45f, 0.55f, 0.5f}; // tint, choppiness (smoothed)
+		float cold = 0.f, droplets = 0.f, overworld = 1.f;
+		bool was_underwater = false;
 		int last_flash = -1;
 		s32 last_hp = -1;
 		float flash_age = 10.f;

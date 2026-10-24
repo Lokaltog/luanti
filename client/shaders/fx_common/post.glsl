@@ -242,6 +242,8 @@ vec2 fxHeatHazeUV(vec2 uv, vec2 texel)
 
 // Swirl while standing in a portal: the view twists around the centre and
 // breathes, more the longer you stand in it.
+vec2 fxDropletUV(vec2 uv, out float mask);
+
 vec2 fxPortalUV(vec2 uv)
 {
 	float p = fxPortal * fxPortalWarp;
@@ -273,6 +275,8 @@ vec3 fxApplyFogBlur(vec3 col, vec2 uv)
 	if (fxFogBlur <= 0.0)
 		return col;
 	float dist = fxViewDist01(uv);
+	if (dist >= 1.0)
+		return col; // the sky (and stars, nebula, aurora) stays sharp
 	float f = smoothstep(0.2, 0.9, dist);
 	float radius = f * fxFogBlur * 0.0035; // of the screen height
 	if (radius < 0.0004)
@@ -306,6 +310,79 @@ vec3 fxEndSkyColor(vec2 uv)
 	float h = fxHash13(cell);
 	float star = step(0.9965, h) * (0.5 + 0.5 * sin(fxTime * (1.0 + h * 3.0) + h * 40.0));
 	return (nebula + vec3(0.9, 0.85, 1.0) * star * 1.5) * k;
+}
+
+// Wave 4 sky: physically based colour (single-scatter Rayleigh + Mie,
+// analytic air mass) blended over the game's sky by day in the Overworld,
+// and an aurora on cold nights. Sky pixels only (clouds write depth).
+vec3 fxAtmosphere(vec3 dir, vec3 sun)
+{
+	const vec3 BR = vec3(0.045, 0.105, 0.25);  // Rayleigh, relative per channel
+	const float BM = 0.021;                     // Mie
+	float m = 1.0 / (max(dir.y, 0.0) + 0.1);    // view air mass
+	float ms = 1.0 / (max(sun.y, 0.0) + 0.1);   // sun air mass
+	float mu = dot(dir, sun);
+	vec3 Ts = exp(-(BR + BM) * ms * 1.2);       // sunlight reaching the air: reddens low
+	float pr = 0.75 * (1.0 + mu * mu);
+	const float g = 0.76;
+	float pm = (1.0 - g * g) / pow(max(1.0 + g * g - 2.0 * g * mu, 1e-4), 1.5) * 0.08;
+	vec3 ray = (1.0 - exp(-BR * m * 1.2)) * pr;
+	vec3 mie = vec3(1.0 - exp(-BM * m * 1.2)) * pm;
+	return (ray + mie) * Ts * 4.0 * smoothstep(-0.08, 0.05, sun.y);
+}
+
+vec3 fxAuroraColor(vec3 dir)
+{
+	if (dir.y <= 0.02)
+		return vec3(0.0);
+	// curtains: project onto a sky plane, wavy bands drifting slowly
+	vec2 q = dir.xz / (dir.y + 0.15) * 1.4;
+	float t = fxTime * 0.03;
+	float band = 0.0;
+	for (int i = 0; i < 3; i++) {
+		float fi = float(i);
+		float w = q.x * (0.6 + fi * 0.25) + fxFbm3(vec3(q * 0.5, t + fi)) * 2.5 + t * 2.0 + fi * 1.7;
+		band += exp(-pow(sin(w) * 2.2, 2.0)) * (0.6 - fi * 0.15);
+	}
+	float rays = 0.6 + 0.4 * fxNoise3(vec3(q.x * 9.0, q.y * 0.6, t * 3.0));
+	float fade = smoothstep(0.02, 0.25, dir.y) * (1.0 - 0.6 * smoothstep(0.6, 1.0, dir.y));
+	vec3 col = mix(vec3(0.15, 1.0, 0.45), vec3(0.6, 0.25, 1.0), 0.6 * smoothstep(0.3, 0.95, dir.y));
+	return col * band * rays * fade * 0.35;
+}
+
+vec3 fxApplySky(vec3 color, vec2 uv)
+{
+	if (fxOverworld < 0.01 || texture2D(fxDepth, uv).r < 0.99999)
+		return color;
+	vec3 dir = fxSafeNormalize(fxScenePos(uv, 1.0) - fxEyePos);
+	float k = fxSkyPbr * fxOverworld * fxIsDay * (1.0 - fxStorm * 0.7) * (1.0 - fxWet * 0.5);
+	if (k > 0.001)
+		color = mix(color, fxAtmosphere(dir, fxSunDir), k);
+	float night = (1.0 - fxIsDay) + fxIsDay * (1.0 - smoothstep(-0.05, 0.1, fxSunDir.y));
+	float a = fxAurora * fxCold * fxOverworld * clamp(night, 0.0, 1.0) * (1.0 - fxWet);
+	if (a > 0.001)
+		color += fxAuroraColor(dir) * a;
+	return color;
+}
+
+// Water running down the lens after surfacing: drops at fixed spots, each
+// sliding down and fading; refracts the image a little where they are.
+vec2 fxDropletUV(vec2 uv, out float mask)
+{
+	mask = 0.0;
+	float k = fxDroplets * fxDropletsFx;
+	if (k <= 0.001)
+		return uv;
+	vec2 p = uv * vec2(1.0 / fxDepthAspect(), 1.0) * 9.0;
+	vec2 cell = floor(p);
+	float h = fxHash13(vec3(cell, 1.0));
+	vec2 c = vec2(fxHash13(vec3(cell, 2.0)), fxHash13(vec3(cell, 3.0))) * 0.7 + 0.15;
+	c.y -= (1.0 - fxDroplets) * (0.4 + h * 0.6); // slides down as it dries
+	vec2 d = fract(p) - c;
+	float r = 0.12 + h * 0.12;
+	float drop = smoothstep(r, r * 0.6, length(d * vec2(1.0, 0.8))) * step(0.45, h);
+	mask = drop * k;
+	return uv - d / 9.0 * 0.6 * mask;
 }
 
 // Smudges that light up where bright light (the bloom buffer, gathered

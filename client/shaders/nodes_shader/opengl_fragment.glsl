@@ -642,6 +642,18 @@ void main(void)
 	lin = fxShadeMaterial(lin, base, uv);
 #endif
 #ifdef FX_WEATHER_ACTIVE
+	{
+		float sss = 0.0;
+#if MATERIAL_TYPE == TILE_MATERIAL_WAVING_LEAVES || MATERIAL_TYPE == TILE_MATERIAL_WAVING_PLANTS
+		sss = 0.8; // leaves and plants are thin
+#endif
+#ifdef FX_MAT_ACTIVE
+		float por = fxMatS(uv).b * 255.0;
+		if (por >= 65.0)
+			sss = max(sss, (por - 65.0) / 190.0);
+#endif
+		lin = fxTranslucent(lin, fxToLinear(base.rgb), sss);
+	}
 	lin = fxWeatherSurface(lin, fxToLinear(base.rgb), fxSafeNormalize(vNormal));
 #endif
 	// emissive: an HDR multiplier, values above 1 bloom

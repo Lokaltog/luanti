@@ -35,11 +35,18 @@ vec3 fxPatternNormal(vec3 n, vec3 wp)
 	vec3 t2 = cross(n, t1);
 	vec3 p = wp / FX_BS;
 #if FX_SURFACE == 2
-	// water: two octaves of moving ripples
+	// water: two octaves of moving ripples, plus longer swells that run with
+	// the wind, as high as the biome and weather make them (fxWaterChop)
 	float t = fxTime;
 	vec2 q = p.xz * 1.7;
 	vec2 g = vec2(cos(q.x * 2.1 + t * 1.3) + cos((q.x + q.y) * 3.3 - t * 1.7) * 0.5,
 	              cos(q.y * 2.3 - t * 1.1) + cos((q.x - q.y) * 2.9 + t * 1.9) * 0.5) * 0.06;
+#ifdef FX_ON_USE_FOAM
+	vec2 wd = vec2(cos(fxWindAngle), sin(fxWindAngle));
+	vec2 wp2 = p.xz;
+	float ph1 = dot(wp2, wd) * 0.9 - t * 1.6, ph2 = dot(wp2, vec2(-wd.y, wd.x) * 0.6 + wd * 0.8) * 1.4 - t * 2.1;
+	g += (wd * cos(ph1) * 0.6 + vec2(-wd.y, wd.x) * cos(ph2) * 0.3) * 0.08 * fxWaterChop;
+#endif
 	return t1 * g.x + t2 * g.y;
 #elif FX_PATTERN == 1
 	// fluted: vertical ridges, 6 per node
@@ -224,16 +231,32 @@ vec3 fxSurface(vec3 lit, vec4 base, out vec3 transmitted)
 	float below = max(fxLinearDepth(texture2D(fxSceneDepth, ruv).r) - fxLinearDepth(gl_FragCoord.z), 0.0);
 	if (from_below)
 		below = 0.0; // looking up from inside: the post pass handles absorption
-	vec3 trans = exp(-below / FX_BS * fxWaterAbsorption * vec3(1.6, 0.6, 0.35));
+	// absorption: the biome's scatter colour is what survives longest
+	vec3 absorb = mix(vec3(1.6, 0.6, 0.35), (1.0 - fxWaterTint) * 1.8 + 0.08, 0.7);
+	vec3 trans = exp(-below / FX_BS * fxWaterAbsorption * absorb);
 	vec3 floor_pos = worldPosition + V * below;
 	float caustic = fxCaustic(fxSunUV(floor_pos), fxTime * 0.8, 8.0) * fxCaustics * fxSunStrength
 		* daylight * (1.0 - exp(-below / FX_BS * 1.5)); // none right at the shoreline
 	behind *= 1.0 + caustic * 2.0;
 	float F = fresnel * fxReflection * (from_below ? 0.3 : 1.0);
-	// the lit water texture is the scattered "body" colour
-	vec3 body = lit * 0.9;
+	// the lit water texture is the scattered "body" colour, pulled towards
+	// the biome's water (turquoise, deep blue, murky)
+	vec3 body = mix(lit * 0.9, fxWaterTint * fxLuma(lit) * 2.6, 0.55);
 	transmitted = behind * trans * (1.0 - F);
-	return body * (1.0 - trans) * (1.0 - F) + refl * F;
+	vec3 own = body * (1.0 - trans) * (1.0 - F) + refl * F;
+	// foam: along shores and around anything standing in the water, and
+	// on crests when the water is rough
+	if (fxFoam > 0.0 && !from_below) {
+		vec3 wp = (worldPosition + cameraOffset) / FX_BS;
+		float n = fxFbm3(vec3(wp.xz * 2.2, fxTime * 0.35));
+		float shore = 1.0 - smoothstep(0.0, 0.45 * FX_BS * (0.6 + n), below);
+		float crest = smoothstep(0.9, 1.4, fxWaterChop) * smoothstep(0.62, 0.8, n);
+		float foam = clamp((shore * smoothstep(0.35, 0.6, n + shore * 0.3) + crest) * fxFoam, 0.0, 1.0);
+		vec3 light = vec3(max(fxLuma(lit) * 1.6, 0.02));
+		own = mix(own, light, foam * 0.85);
+		transmitted *= 1.0 - foam * 0.85;
+	}
+	return own;
 #else
 	// Glass: stained glass tints by its texture colour where it is
 	// translucent; opaque texels (frames, leading) keep the lit texture.
