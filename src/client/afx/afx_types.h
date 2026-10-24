@@ -162,6 +162,7 @@ struct Params {
 	float rain_front = 1.f;      // 0..1 how much of the storm has reached you
 	v3f rain_front_dir;          // node space, horizontal unit: where it is (coming / going)
 	bool debug = false;          // afx_debug
+	bool debug_view = false;     // afx_debug_view: the tuning view (rays, sources, their mix)
 	// Bus routing by sound name, comma-separated globs (see afx_mix.h)
 	std::string dry_sounds =     // afx_dry_sounds
 		"*music*,*_ui_*,*gui*,*btn*,*button*,*click*,*inventory*,*award*,*achievement*";
@@ -247,6 +248,19 @@ struct Acoustics {
 
 /// The sound thread's smoothed state, reported back for the debug HUD and for
 /// other client systems (the fx renderer can key exposure and fog on it).
+/// One playing sound as the tuning view shows it
+struct DebugSource {
+	std::string name;
+	u8 bus = 0;          // afx::Bus
+	bool positional = false;
+	v3f pos;             // node space
+	v3f heard_from;      // where it's heard from (around a corner: the opening)
+	float gain = 0.f;    // its own level
+	float occlusion = 0.f, path = 0.f, wall = 0.f;
+	float direct = 1.f, direct_hf = 1.f, muffle = 0.f, reverb = 0.f, echo = 0.f,
+			remote = 0.f, neighbor = 0.f, hollow = 0.f;
+};
+
 struct Report {
 	bool valid = false;
 	Acoustics now;    // smoothed values currently applied
@@ -255,7 +269,22 @@ struct Report {
 	u32 occluded = 0; // positional sources with occlusion > 0.1
 	u32 routed = 0;   // ...of which heard around a corner
 	bool efx = false; // EFX available and in use
+	// with afx_debug_view
+	std::vector<DebugSource> debug_sources;
+	int recorded = -1;          // index into RECORDED_SPACES
+	float recorded_share = 0.f;
+	float remote_level = 0.f, remote_decay = 0.f;
+	v3f remote_dir;
 };
+
+/// The probe's rays, for the tuning view: where each one ends and on what.
+struct DebugRay {
+	v3f end;
+	Material mat = Material::Air;
+	bool hit = false;
+	bool sky = false;
+};
+std::vector<DebugRay> probeRays(const VoxelSnapshot &snap, v3f ear, int rays);
 
 /// Analyse the snapshot from `ear` (node space, float). Pure function.
 Acoustics analyze(const VoxelSnapshot &snap, v3f ear, const Params &params);

@@ -46,7 +46,7 @@ static const char *const SETTING_NAMES[] = {
 	"afx_outdoor_muffle", "afx_smoothing", "afx_debug",
 	"afx_dry_sounds", "afx_outdoor_sounds", "afx_indoor_sounds", "afx_doppler", "afx_mood",
 	"afx_variation", "afx_score", "afx_score_replaces_music", "afx_roomtone",
-	"afx_source_space", "afx_hrtf", "afx_convolution",
+	"afx_source_space", "afx_hrtf", "afx_convolution", "afx_debug_view",
 };
 
 static void readParams()
@@ -73,6 +73,7 @@ static void readParams()
 	p.source_space = rangelim(s->getFloat("afx_source_space"), 0.f, 2.f);
 	p.hrtf = s->getBool("afx_hrtf");
 	p.convolution = rangelim(s->getFloat("afx_convolution"), 0.f, 1.f);
+	p.debug_view = s->getBool("afx_debug_view");
 	p.dry_sounds = s->get("afx_dry_sounds");
 	p.outdoor_sounds = s->get("afx_outdoor_sounds");
 	p.indoor_sounds = s->get("afx_indoor_sounds");
@@ -384,6 +385,16 @@ std::shared_ptr<VoxelSnapshot> buildSnapshot(Client *client, v3s16 center, s16 r
 */
 
 static float s_timer = 0.f;
+// the latest snapshot, for the tuning view's rays
+static std::shared_ptr<const VoxelSnapshot> s_debug_snap;
+static v3f s_debug_ear;
+
+std::shared_ptr<const VoxelSnapshot> debugSnapshot(v3f *ear)
+{
+	if (ear)
+		*ear = s_debug_ear;
+	return s_debug_snap;
+}
 static float s_build_ms = 0.f;
 static bool s_was_enabled = true;
 
@@ -814,6 +825,8 @@ void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 	std::shared_ptr<VoxelSnapshot> snap_w = buildSnapshot(client, center, p.probe_radius);
 	snap_w->heights = updateHeights(client, center);
 	std::shared_ptr<const VoxelSnapshot> snap = std::move(snap_w);
+	s_debug_snap = snap;
+	s_debug_ear = ear;
 	s_build_ms = std::chrono::duration<float, std::milli>(
 			std::chrono::steady_clock::now() - t0).count();
 	Params q = p;

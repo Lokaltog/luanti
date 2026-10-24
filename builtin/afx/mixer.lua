@@ -46,6 +46,8 @@ local function formspec(name)
 		tostring(core.settings:get_bool("afx_enable") ~= false))
 	rows[#rows + 1] = ("checkbox[6.6,0.45;afx_hrtf;%s;%s]"):format(F("Headphones (3D)"),
 		tostring(core.settings:get_bool("afx_hrtf") == true))
+	rows[#rows + 1] = ("checkbox[9.4,0.45;afx_debug_view;%s;%s]"):format(F("Tuning view"),
+		tostring(core.settings:get_bool("afx_debug_view") == true))
 	rows[#rows + 1] = "label[0.4,1.3;" .. F("Engine (applies live)") .. "]"
 	for _, e in ipairs(ENGINE) do
 		rows[#rows + 1] = slider(y, "e_" .. e[1], e[2], get(e[1], e[4]), e[3])
@@ -107,7 +109,8 @@ core.register_on_player_receive_fields(function(player, formname, fields)
 			end
 		end
 	end
-	for _, key in ipairs({"afx_enable", "afx_hrtf", "afx_ambience_follower", "afx_ambience_treasure"}) do
+	for _, key in ipairs({"afx_enable", "afx_hrtf", "afx_debug_view", "afx_ambience_follower",
+			"afx_ambience_treasure"}) do
 		if fields[key] then core.settings:set_bool(key, fields[key] == "true") changed = true end
 	end
 	if fields.quit or fields.close then
@@ -119,6 +122,17 @@ core.register_on_player_receive_fields(function(player, formname, fields)
 		core.show_formspec(name, "afx:mixer", formspec(name))
 	end
 end)
+
+--[[ /afx_view: the tuning view (rays, every sound with its mix) ]]
+
+core.register_chatcommand("afx_view", {
+	description = "Show what the environmental audio hears: probe rays, sounds and their mix",
+	func = function()
+		local on = not core.settings:get_bool("afx_debug_view")
+		core.settings:set_bool("afx_debug_view", on)
+		return true, "afx tuning view " .. (on and "on" or "off")
+	end,
+})
 
 --[[ /afx_report ]]
 

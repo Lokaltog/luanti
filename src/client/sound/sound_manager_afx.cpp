@@ -341,6 +341,7 @@ void OpenALSoundManager::applyMix(PlayingSound &snd)
 			env.outdoor_focus = std::max(env.outdoor_focus, 0.85f * w);
 		}
 	}
+	snd.last_mix = mix;
 	if (snd.getBus() == afx::Bus::Dry)
 		m_efx->clearSource(snd.getSourceId());
 	else
@@ -680,6 +681,42 @@ void OpenALSoundManager::stepAcoustics(f32 dtime)
 		r.occluded = occluded;
 		r.routed = routed;
 		r.efx = true;
+		if (m_afx_params.debug_view) {
+			r.recorded = m_efx->recordedSpace();
+			r.recorded_share = m_efx->recordedShare();
+			r.remote_level = m_remote.level;
+			r.remote_decay = m_remote.decay;
+			r.remote_dir = m_remote.dir;
+			for (auto &[id, snd] : m_sounds_playing) {
+				afx::DebugSource d;
+				std::string n = snd->getLoggingName();
+				const size_t slash = n.find_last_of("/\\");
+				if (slash != std::string::npos)
+					n = n.substr(slash + 1);
+				if (n.size() > 4 && n.compare(n.size() - 4, 4, ".ogg") == 0)
+					n.resize(n.size() - 4);
+				d.name = n;
+				d.bus = (u8)snd->getBus();
+				d.positional = snd->isPositional();
+				d.pos = snd->getPosNode();
+				const afx::Occlusion &o = snd->getOcclusion();
+				d.heard_from = o.path > 0.5f ? o.virt_pos : d.pos;
+				d.gain = snd->getGainCached();
+				d.occlusion = o.amount;
+				d.path = o.path;
+				d.wall = o.wall;
+				const afx::Mix &m = snd->last_mix;
+				d.direct = m.direct_gain;
+				d.direct_hf = m.direct_hf;
+				d.muffle = m.muffle_send;
+				d.reverb = m.reverb_send;
+				d.echo = m.echo_send;
+				d.remote = m.remote_send;
+				d.neighbor = m.neighbor_send;
+				d.hollow = m.hollow_send;
+				r.debug_sources.push_back(std::move(d));
+			}
+		}
 		send(sound_manager_messages_to_proxy::ReportAcoustics{r});
 	}
 }

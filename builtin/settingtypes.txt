@@ -1024,6 +1024,11 @@ afx_hrtf (Headphone 3D sound) bool false
 #    afx_ambience mod.
 afx_convolution (Recorded spaces) float 0.6 0.0 1.0
 
+#    The tuning view: draws what the environmental audio hears over the
+#    world (the probe's rays, every playing sound with its occlusion and
+#    mix, the walls, the way out) with a summary of the room. Also /afx_view.
+afx_debug_view (Tuning view) bool false
+
 #    Pitch shift of moving sound sources (minecarts, mobs). 0 = off.
 afx_doppler (Doppler) float 0.5 0.0 2.0
 

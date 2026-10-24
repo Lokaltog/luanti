@@ -14,6 +14,7 @@
 #include <string>
 
 class Client;
+namespace video { class IVideoDriver; }
 class ISoundManager;
 class NodeDefManager;
 struct ContentFeatures;
@@ -50,6 +51,14 @@ void setWorldState(const std::string &state);
 /// side of `normal` (pointing out of the struck face). Empty spec when the
 /// wall is solid or afx is off. Cached per node and face.
 SoundSpec knockSound(Client *client, v3s16 node, v3s16 normal);
+
+/// The tuning view (afx_debug_view): the probe's rays, every playing sound
+/// with its occlusion and mix, the walls and the way out. 3D lines go in
+/// the scene pass, labels in the HUD pass.
+void drawDebugView3D(Client *client, video::IVideoDriver *driver);
+void drawDebugView2D(Client *client, video::IVideoDriver *driver);
+/// The latest snapshot and where it was taken from
+std::shared_ptr<const VoxelSnapshot> debugSnapshot(v3f *ear);
 
 /// Build a snapshot (exposed for tools/tests that have a Client).
 std::shared_ptr<VoxelSnapshot> buildSnapshot(Client *client, v3s16 center, s16 radius);

@@ -350,6 +350,21 @@ The ambience (what plays and where) moved from the server mod into the client. I
 - **Settings:** the ambience's settings are the engine's now (Environmental Audio → Ambience). `afx_debug_eval` runs a line of Lua in the ambience after `afx_debug_eval_at` seconds and logs the result, for headless tests.
 - **Without the bridge** (another server), the ambience still runs on the map. It has no weather, the biome comes from the nodes around, creatures go by name, and it's always the overworld.
 
+## Round 15: the tuning view
+
+`/afx_view` (or "Tuning view" in `/afx`, setting `afx_debug_view`) draws what the acoustics see over the world, through walls:
+
+- **The probe's rays**, recast from the latest snapshot, as a fan from your chest (lines from the eye itself would be seen end-on). Each is coloured by what it hit: grey stone, brown wood, green leaves, blue water, cyan glass, tan earth, white snow. Escaped rays are short and faint, yellow where they passed through open sky.
+- **The way out:** a cyan arrow toward where the outdoors comes in, as long as how much of it does. A yellow line points to the space next door, and magenta lines to the wall beside you and the one across.
+- **Every playing sound:**
+  - a cross where it is, and a line from you: green clear, orange muffled, red cut off;
+  - a dashed line to the opening when it's heard around a corner;
+  - a label with its bus, level, direct gain and high-frequency loss, muffle and reverb sends, the far space, occlusion.
+  - Non-positional sounds and far ones are listed under the panel.
+- **A panel** with the room: enclosure, mean free path, materials, the reverb, the recorded space and its share, the outdoor paths, walls, the space next door, the far space, and the source counts.
+
+The sound thread adds each source's applied mix to its report while the view is on; the rays are cast again on the main thread from the snapshot it built.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

@@ -415,6 +415,17 @@ SourceSpace analyzeSpace(const VoxelSnapshot &snap, v3f pos, const Params &param
 	return out;
 }
 
+std::vector<DebugRay> probeRays(const VoxelSnapshot &snap, v3f ear, int rays)
+{
+	const float max_t = std::max(4.f, snap.size * 0.5f - 1.f);
+	std::vector<DebugRay> out;
+	for (const v3f &d : sphereDirections(std::max(8, rays))) {
+		const RayHit r = castRay(snap, ear, d, max_t);
+		out.push_back({ear + d * r.dist, r.mat, r.hit, r.sky});
+	}
+	return out;
+}
+
 Acoustics analyze(const VoxelSnapshot &snap, v3f ear, const Params &params)
 {
 	return analyzeCore(snap, ear, params, true);

@@ -383,6 +383,7 @@ void set_default_settings()
 	settings->setDefault("afx_source_space", "1.0");
 	settings->setDefault("afx_hrtf", "false");
 	settings->setDefault("afx_convolution", "0.6");
+	settings->setDefault("afx_debug_view", "false");
 	settings->setDefault("afx_score", "0.8");
 	settings->setDefault("afx_score_replaces_music", "true");
 	settings->setDefault("afx_dry_sounds",

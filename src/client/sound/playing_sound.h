@@ -157,6 +157,8 @@ public:
 	}
 	/// Glide the occlusion toward its target (called every sound-thread step).
 	void stepOcclusion(f32 dtime, f32 tau);
+	/// The mix last applied (for the tuning view)
+	afx::Mix last_mix;
 };
 
 } // namespace sound

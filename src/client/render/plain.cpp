@@ -11,6 +11,7 @@
 #include "client/clientmap.h"
 #include "client/hud.h"
 #include "client/minimap.h"
+#include "client/afx/afx.h"
 #include "client/shadows/dynamicshadowsrender.h"
 #include <IGUIEnvironment.h>
 
@@ -26,6 +27,7 @@ void Draw3D::run(PipelineContext &context)
 		return;
 	context.hud->drawBlockBounds();
 	context.hud->drawSelectionMesh();
+	afx::drawDebugView3D(context.client, context.device->getVideoDriver());
 }
 
 void DrawWield::run(PipelineContext &context)
@@ -53,6 +55,7 @@ void DrawHUD::run(PipelineContext &context)
 
 	if (context.show_hud) {
 		context.client->getCamera()->drawNametags();
+		afx::drawDebugView2D(context.client, context.device->getVideoDriver());
 	}
 
 	context.device->getGUIEnvironment()->drawAll();
