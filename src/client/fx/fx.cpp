@@ -23,6 +23,9 @@
 #include "util/string.h"
 #include "constants.h"
 #include <IImage.h>
+#include <IRenderTarget.h>
+#include <IVideoDriver.h>
+#include <ICameraSceneNode.h>
 #include <IMaterialRendererServices.h>
 #include <algorithm>
 #include <cmath>
@@ -48,6 +51,8 @@ static const char *const SETTING_NAMES[] = {
 	"fx_emissive_strength", "fx_auto_emissive_threshold",
 	"fx_colored_light", "fx_light_saturation", "fx_light_gather_radius",
 	"fx_flicker", "fx_held_light", "fx_debug_view", "fx_shader_hot_reload",
+	"fx_surfaces", "fx_refraction", "fx_ssr", "fx_reflection",
+	"fx_water_absorption", "fx_caustics", "fx_underwater_shafts",
 };
 
 static void readParams()
@@ -72,6 +77,13 @@ static void readParams()
 	p.held_light = s->getBool("fx_held_light");
 	p.debug_view = s->getS32("fx_debug_view");
 	p.hot_reload = s->getBool("fx_shader_hot_reload");
+	p.surfaces = s->getBool("fx_surfaces");
+	p.refraction = s->getFloat("fx_refraction");
+	p.ssr = s->getBool("fx_ssr");
+	p.reflection = s->getFloat("fx_reflection");
+	p.water_absorption = s->getFloat("fx_water_absorption");
+	p.caustics = s->getFloat("fx_caustics");
+	p.underwater_shafts = s->getFloat("fx_underwater_shafts");
 	s_params = p;
 }
 
@@ -308,6 +320,196 @@ LightStyle resolveLightStyle(ITextureSource *tsrc, const ContentFeatures &f)
 }
 
 /*
+	Glass and water surfaces
+*/
+
+static std::mutex s_surface_mutex;
+static bool s_surface_table_loaded = false;
+static std::unordered_map<std::string, Surface> s_surface_table;
+
+static void loadSurfaceTable()
+{
+	s_surface_table.clear();
+	for (const auto &dir : getTextureDirs()) {
+		const std::string path = dir + DIR_DELIM + "fx_materials.txt";
+		if (!fs::PathExists(path))
+			continue;
+		std::ifstream is(path);
+		std::string line;
+		size_t n = 0;
+		while (std::getline(is, line)) {
+			line = trim(line);
+			if (line.empty() || line[0] == '#')
+				continue;
+			auto parts = str_split(line, ' ');
+			parts.erase(std::remove_if(parts.begin(), parts.end(),
+					[] (const std::string &p) { return trim(p).empty(); }), parts.end());
+			if (parts.size() < 2)
+				continue;
+			Surface s;
+			if (parts[1] == "glass")
+				s.kind = SurfaceKind::Glass;
+			else if (parts[1] == "water")
+				s.kind = SurfaceKind::Water;
+			else if (parts[1] != "none") {
+				warningstream << "fx: unknown surface \"" << parts[1] << "\" in " << path << std::endl;
+				continue;
+			}
+			for (size_t i = 2; i < parts.size(); i++) {
+				if (parts[i] == "pattern=fluted")
+					s.pattern = SurfacePattern::Fluted;
+				else if (parts[i] == "pattern=frosted")
+					s.pattern = SurfacePattern::Frosted;
+				else if (parts[i] == "pattern=rippled")
+					s.pattern = SurfacePattern::Rippled;
+			}
+			if (s_surface_table.emplace(parts[0], s).second)
+				n++;
+		}
+		infostream << "fx: loaded " << n << " surfaces from " << path << std::endl;
+	}
+}
+
+Surface resolveSurface(const ContentFeatures &f)
+{
+	if (!s_params.enabled || !s_params.surfaces)
+		return {};
+	{
+		std::lock_guard lock(s_surface_mutex);
+		if (!s_surface_table_loaded) {
+			loadSurfaceTable();
+			s_surface_table_loaded = true;
+		}
+		auto it = s_surface_table.find(f.name);
+		if (it != s_surface_table.end())
+			return it->second;
+	}
+	Surface s;
+	const bool liquid = f.drawtype == NDT_LIQUID || f.drawtype == NDT_FLOWINGLIQUID;
+	if (liquid && f.light_source == 0 && f.alpha != ALPHAMODE_OPAQUE) {
+		s.kind = SurfaceKind::Water;
+	} else if (f.drawtype == NDT_GLASSLIKE || f.drawtype == NDT_GLASSLIKE_FRAMED ||
+			f.drawtype == NDT_GLASSLIKE_FRAMED_OPTIONAL ||
+			(f.name.find("glass") != std::string::npos && f.light_source == 0 &&
+			 f.drawtype != NDT_NORMAL)) {
+		s.kind = SurfaceKind::Glass;
+	}
+	if (s.kind == SurfaceKind::Glass) {
+		if (f.name.find("fluted") != std::string::npos || f.name.find("reeded") != std::string::npos)
+			s.pattern = SurfacePattern::Fluted;
+		else if (f.name.find("frosted") != std::string::npos)
+			s.pattern = SurfacePattern::Frosted;
+		else if (f.name.find("ripple") != std::string::npos)
+			s.pattern = SurfacePattern::Rippled;
+	}
+	return s;
+}
+
+bool handlesUnderwater(const ContentFeatures &f)
+{
+	static const bool post = g_settings->getBool("enable_post_processing");
+	return post && s_params.enabled && s_params.surfaces && s_params.hdr_composite &&
+			resolveSurface(f).kind == SurfaceKind::Water;
+}
+
+/*
+	Scene copy (opaque color + depth, for the transparent pass)
+*/
+
+struct SceneCopy {
+	video::IRenderTarget *rt = nullptr;
+	video::ITexture *color = nullptr;
+	video::ITexture *depth = nullptr;
+	core::dimension2du size;
+	video::ECOLOR_FORMAT color_format = video::ECF_UNKNOWN;
+	video::ECOLOR_FORMAT depth_format = video::ECF_UNKNOWN;
+	bool valid = false;
+};
+static SceneCopy s_copy;
+
+// Camera state captured at the start of the transparent pass, while the
+// driver still holds the 3D transforms. Post passes reuse it.
+struct CameraState {
+	core::matrix4 view_proj;     // scene space (relative to camera offset) -> clip
+	core::matrix4 inv_view_proj;
+	float near_far[2] = {1.f, 1000.f};
+	float sun_dir[3] = {0.f, 1.f, 0.f}; // towards the sun, world space
+	float sun_strength = 1.f;
+	float underwater = 0.f;
+	float time = 0.f;            // seconds, wraps every hour
+};
+static CameraState s_cam;
+
+void captureScene(video::IVideoDriver *driver)
+{
+	s_copy.valid = false;
+	if (!s_params.enabled || !s_params.surfaces)
+		return;
+
+	core::matrix4 vp = driver->getTransform(video::ETS_PROJECTION);
+	vp *= driver->getTransform(video::ETS_VIEW);
+	s_cam.view_proj = vp;
+	vp.getInverse(s_cam.inv_view_proj);
+
+	video::IRenderTarget *src = driver->getCurrentRenderTarget();
+	if (!src || src->getTexture().empty() || !src->getDepthStencil())
+		return; // drawing straight to the back buffer: no post-processing
+	video::ITexture *src_color = src->getTexture()[0];
+	video::ITexture *src_depth = src->getDepthStencil();
+	const auto size = src_color->getSize();
+	const auto cf = src_color->getColorFormat();
+	const auto df = src_depth->getColorFormat();
+
+	if (!s_copy.rt || s_copy.size != size || s_copy.color_format != cf ||
+			s_copy.depth_format != df) {
+		if (s_copy.rt)
+			driver->removeRenderTarget(s_copy.rt);
+		if (s_copy.color)
+			driver->removeTexture(s_copy.color);
+		if (s_copy.depth)
+			driver->removeTexture(s_copy.depth);
+		s_copy.color = driver->addRenderTargetTexture(size, "fx_scene_color", cf);
+		s_copy.depth = driver->addRenderTargetTexture(size, "fx_scene_depth", df);
+		s_copy.rt = driver->addRenderTarget();
+		if (!s_copy.color || !s_copy.depth || !s_copy.rt) {
+			warningstream << "fx: could not create the scene copy target" << std::endl;
+			s_copy = SceneCopy();
+			return;
+		}
+		s_copy.rt->setTexture(s_copy.color, s_copy.depth);
+		s_copy.size = size;
+		s_copy.color_format = cf;
+		s_copy.depth_format = df;
+		infostream << "fx: scene copy " << size.Width << "x" << size.Height << std::endl;
+	}
+	// glBlitFramebuffer: resolves MSAA too, and restores the previous FBO
+	driver->blitRenderTarget(src, s_copy.rt);
+	s_copy.valid = true;
+}
+
+void bindSceneCopy(video::SMaterial &material)
+{
+	if (!s_copy.valid)
+		return;
+	auto &c = material.TextureLayers[TEXTURE_LAYER_SCENE_COLOR];
+	c.Texture = s_copy.color;
+	c.TextureWrapU = c.TextureWrapV = video::ETC_CLAMP_TO_EDGE;
+	c.MinFilter = video::ETMINF_LINEAR_MIPMAP_NEAREST;
+	c.MagFilter = video::ETMAGF_LINEAR;
+	auto &d = material.TextureLayers[TEXTURE_LAYER_SCENE_DEPTH];
+	d.Texture = s_copy.depth;
+	d.TextureWrapU = d.TextureWrapV = video::ETC_CLAMP_TO_EDGE;
+	d.MinFilter = video::ETMINF_NEAREST_MIPMAP_NEAREST;
+	d.MagFilter = video::ETMAGF_NEAREST;
+}
+
+void unbindSceneCopy(video::SMaterial &material)
+{
+	material.TextureLayers[TEXTURE_LAYER_SCENE_COLOR].Texture = nullptr;
+	material.TextureLayers[TEXTURE_LAYER_SCENE_DEPTH].Texture = nullptr;
+}
+
+/*
 	Block light lists
 */
 
@@ -395,11 +597,35 @@ void updateFrame(Client *client, Camera *camera, float dtime)
 {
 	const Params &prm = s_params;
 	s_frame.count = 0;
-	if (!prm.enabled || !prm.colored_light)
+	if (!prm.enabled)
 		return;
 
 	ClientMap &map = client->getEnv().getClientMap();
 	const v3f cam_pos = camera->getPosition();             // BS units, world
+
+	// Camera and sun state for glass, water and post passes
+	{
+		auto *node = camera->getCameraNode();
+		s_cam.near_far[0] = node->getNearValue();
+		s_cam.near_far[1] = node->getFarValue();
+		// Luanti's sun rises in +X at 0.25 and peaks at 0.5
+		const float tod = client->getEnv().getTimeOfDayF();
+		const float a = (tod - 0.25f) * 2.f * core::PI;
+		v3f sun(std::cos(a), std::sin(a), 0.15f);
+		if (sun.Y < 0.f) // moon: opposite side, dimmer
+			sun = -sun;
+		sun.normalize();
+		s_cam.sun_dir[0] = sun.X;
+		s_cam.sun_dir[1] = sun.Y;
+		s_cam.sun_dir[2] = sun.Z;
+		s_cam.sun_strength = std::clamp(std::sin(a) * 3.f, 0.08f, 1.f);
+		const MapNode n = map.getNode(floatToInt(cam_pos, BS));
+		s_cam.underwater = resolveSurface(client->ndef()->get(n)).kind == SurfaceKind::Water ? 1.f : 0.f;
+		s_cam.time = std::fmod(s_cam.time + dtime, 3600.f);
+	}
+
+	if (!prm.colored_light)
+		return;
 	const v3s16 cam_offset = camera->getOffset();          // nodes
 	const v3f offset_bs = intToFloat(cam_offset, BS);
 	const v3s16 cam_node = floatToInt(cam_pos, BS);
@@ -493,11 +719,6 @@ void updateFrame(Client *client, Camera *camera, float dtime)
 	if (log_timer > 5.f) {
 		log_timer = 0.f;
 		verbosestream << "fx: frame lights " << s_frame.count << std::endl;
-		for (int i = 0; i < s_frame.count && i < 24; i++)
-			verbosestream << "  fx light " << i << " pos=" << s_frame.pos_radius[i*4] << ","
-				<< s_frame.pos_radius[i*4+1] << "," << s_frame.pos_radius[i*4+2]
-				<< " r=" << s_frame.pos_radius[i*4+3] << " col=" << s_frame.color_seed[i*4]
-				<< "," << s_frame.color_seed[i*4+1] << "," << s_frame.color_seed[i*4+2] << std::endl;
 	}
 }
 
@@ -521,6 +742,11 @@ public:
 			constants["FX_HDR_COMPOSITE"] = 1;
 		constants["FX_TONEMAPPER"] = p.tonemapper;
 		constants["FX_DEBUG_VIEW"] = p.debug_view;
+		if (p.surfaces) {
+			constants["FX_SURFACES"] = 1;
+			if (p.ssr)
+				constants["FX_SSR"] = 1;
+		}
 	}
 };
 
@@ -537,6 +763,20 @@ class FxUniformSetter : public IShaderUniformSetter
 	CachedPixelShaderSetting<float> m_exposure{"fxExposure"};
 	CachedPixelShaderSetting<float> m_grade_saturation{"fxGradeSaturation"};
 	CachedPixelShaderSetting<float> m_grade_contrast{"fxGradeContrast"};
+	// M3
+	CachedPixelShaderSetting<float, 16> m_view_proj{"fxViewProj"};
+	CachedPixelShaderSetting<float, 16> m_inv_view_proj{"fxInvViewProj"};
+	CachedPixelShaderSetting<float, 2> m_near_far{"fxNearFar"};
+	CachedPixelShaderSetting<float, 3> m_sun_dir{"fxSunDir"};
+	CachedPixelShaderSetting<float> m_sun_strength{"fxSunStrength"};
+	CachedPixelShaderSetting<float> m_time{"fxTime"};
+	CachedPixelShaderSetting<float> m_refraction{"fxRefraction"};
+	CachedPixelShaderSetting<float> m_reflection{"fxReflection"};
+	CachedPixelShaderSetting<float> m_water_absorption{"fxWaterAbsorption"};
+	CachedPixelShaderSetting<float> m_caustics{"fxCaustics"};
+	CachedPixelShaderSetting<float> m_underwater{"fxUnderwater"};
+	CachedPixelShaderSetting<float> m_shafts{"fxUnderwaterShafts"};
+	CachedPixelShaderSetting<float> m_scene_valid{"fxSceneValid"};
 	bool m_is_node;
 
 public:
@@ -553,7 +793,12 @@ public:
 			m_light_color.set(fl.color_seed, services);
 			m_light_saturation.set(&p.light_saturation, services);
 			m_emissive_strength.set(&p.emissive_strength, services);
+			float valid = s_copy.valid ? 1.f : 0.f;
+			m_scene_valid.set(&valid, services);
 		} else {
+			m_inv_view_proj.set(s_cam.inv_view_proj.pointer(), services);
+			m_underwater.set(&s_cam.underwater, services);
+			m_shafts.set(&p.underwater_shafts, services);
 			m_bloom_threshold.set(&p.bloom_threshold, services);
 			m_bloom_knee.set(&p.bloom_knee, services);
 			m_bloom_intensity.set(&p.bloom_intensity, services);
@@ -561,6 +806,16 @@ public:
 			m_grade_saturation.set(&p.grade_saturation, services);
 			m_grade_contrast.set(&p.grade_contrast, services);
 		}
+		// shared by node surfaces and post passes
+		m_view_proj.set(s_cam.view_proj.pointer(), services);
+		m_near_far.set(s_cam.near_far, services);
+		m_sun_dir.set(s_cam.sun_dir, services);
+		m_sun_strength.set(&s_cam.sun_strength, services);
+		m_time.set(&s_cam.time, services);
+		m_refraction.set(&p.refraction, services);
+		m_reflection.set(&p.reflection, services);
+		m_water_absorption.set(&p.water_absorption, services);
+		m_caustics.set(&p.caustics, services);
 	}
 };
 

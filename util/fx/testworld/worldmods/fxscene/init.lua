@@ -12,8 +12,31 @@ simple_lamp("red", "ff3020")
 simple_lamp("blue", "3060ff")
 simple_lamp("green", "30ff60")
 
+-- Glass variants: the fx renderer picks patterns from the names.
+local function glass(name, tex)
+	core.register_node("fxscene:" .. name, {
+		description = name,
+		drawtype = "glasslike",
+		tiles = {tex},
+		use_texture_alpha = "blend",
+		paramtype = "light",
+		sunlight_propagates = true,
+		groups = {dig_immediate = 3},
+	})
+end
+-- thin frame, clear center
+-- [fill blits with alpha, so build the frame from four strips over a clear fill
+local frame = "[fill:16x16:#00000000^[fill:16x1:0,0:#c8d8e0^[fill:16x1:0,15:#c8d8e0" ..
+	"^[fill:1x16:0,0:#c8d8e0^[fill:1x16:15,0:#c8d8e0"
+glass("glass_clear", frame)
+glass("glass_fluted", frame)
+glass("glass_frosted", "[fill:16x16:#e0f0ff30^[fill:16x1:0,0:#c8d8e0")
+glass("glass_red", "[fill:16x16:#ff304070")
+
+-- fxscene_time: time of day 0..1 (default midnight)
+-- fxscene_view: "room" (default) or "underwater"
 core.register_on_joinplayer(function(player)
-	core.set_timeofday(0.0)
+	core.set_timeofday(tonumber(core.settings:get("fxscene_time") or "") or 0.0)
 	core.settings:set("time_speed", "0")
 	player:hud_set_flags({hotbar = false, healthbar = false, crosshair = false,
 		wielditem = false, breathbar = false, minimap = false, basic_debug = false})
@@ -47,8 +70,50 @@ core.register_on_joinplayer(function(player)
 		end
 		-- a white light (devtest light14) front right
 		core.set_node({x = 9, y = 0, z = 6}, {name = "testnodes:light14"})
-		player:set_pos({x = 0, y = 2.5, z = -1})
-		player:set_look_horizontal(0)
-		player:set_look_vertical(0.25)
+		-- glass wall in front of the lamps: clear, fluted, frosted, red
+		local kinds = {"glass_clear", "glass_fluted", "glass_frosted", "glass_red"}
+		for i, kind in ipairs(kinds) do
+			local x0 = -10 + (i - 1) * 5
+			for x = x0, x0 + 3 do
+				for y = 0, 3 do
+					core.set_node({x = x, y = y, z = 13}, {name = "fxscene:" .. kind})
+				end
+			end
+		end
+		-- a water pool in the floor, 5 deep, flush with the floor
+		for x = -3, 4 do
+			for z = 2, 9 do
+				for y = -6, -1 do
+					local edge = x == -3 or x == 4 or z == 2 or z == 9 or y == -6
+					core.set_node({x = x, y = y, z = z},
+						{name = edge and "basenodes:stone" or "basenodes:water_source"})
+				end
+				-- keep the top edge open so the surface is level with the floor
+				if not (x == -3 or x == 4 or z == 2 or z == 9) then
+					core.set_node({x = x, y = -1, z = z}, {name = "basenodes:water_source"})
+				end
+			end
+		end
+		-- a few stones on the pool floor for caustics to land on
+		core.set_node({x = 0, y = -5, z = 6}, {name = "basenodes:cobble"})
+		core.set_node({x = 2, y = -5, z = 7}, {name = "basenodes:cobble"})
+		core.set_node({x = 2, y = -4, z = 7}, {name = "basenodes:cobble"})
+		-- open the ceiling above the pool so daylight reaches the water
+		if (tonumber(core.settings:get("fxscene_time") or "") or 0) > 0.2 then
+			for x = -12, 12 do
+				for z = -2, 18 do
+					core.remove_node({x = x, y = 8, z = z})
+				end
+			end
+		end
+		if core.settings:get("fxscene_view") == "underwater" then
+			player:set_pos({x = 0.5, y = -5.4, z = 3.0})
+			player:set_look_horizontal(0)
+			player:set_look_vertical(0.05)
+		else
+			player:set_pos({x = 0, y = 2.5, z = -1})
+			player:set_look_horizontal(0)
+			player:set_look_vertical(0.25)
+		end
 	end)
 end)

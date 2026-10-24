@@ -357,6 +357,13 @@ void set_default_settings()
 	settings->setDefault("fx_held_light", "true");
 	settings->setDefault("fx_debug_view", "0");
 	settings->setDefault("fx_shader_hot_reload", "false");
+	settings->setDefault("fx_surfaces", "true");
+	settings->setDefault("fx_refraction", "1.0");
+	settings->setDefault("fx_ssr", "true");
+	settings->setDefault("fx_reflection", "1.0");
+	settings->setDefault("fx_water_absorption", "0.18");
+	settings->setDefault("fx_caustics", "0.8");
+	settings->setDefault("fx_underwater_shafts", "0.6");
 	settings->setDefault("enable_bloom_debug", "false");
 	settings->setDefault("enable_volumetric_lighting", "false");
 	settings->setDefault("enable_water_reflections", "false");

@@ -5,6 +5,7 @@
 #include "clientmap.h"
 #include "client.h"
 #include "client/mesh.h"
+#include "client/fx/fx.h"
 #include "mapblock_mesh.h"
 #include <IMaterialRenderer.h>
 #include <ISceneManager.h>
@@ -1139,6 +1140,10 @@ void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 	u32 material_swaps = 0;
 	u32 array_texture_use = 0;
 
+	// fx: snapshot the opaque scene for glass and water to refract/reflect
+	if (is_transparent_pass)
+		fx::captureScene(driver);
+
 	// Render all mesh buffers in order
 	drawcall_count += draw_order.size();
 
@@ -1168,8 +1173,14 @@ void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 				layer.AnisotropicFilter = 0;
 			}
 
+			if (is_transparent_pass)
+				fx::bindSceneCopy(material);
+
 			driver->setMaterial(material);
 			++material_swaps;
+
+			if (is_transparent_pass)
+				fx::unbindSceneCopy(material);
 			if (auto *tex = material.getTexture(0); tex && tex->getType() == video::ETT_2D_ARRAY)
 				++array_texture_use;
 
@@ -1428,6 +1439,9 @@ void ClientMap::renderPostFx(CameraMode cam_mode)
 
 	const ContentFeatures& features = m_nodedef->get(n);
 	video::SColor post_color = features.post_effect_color;
+	// fx: the post pass does physically based absorption under water
+	if (fx::handlesUnderwater(features))
+		post_color.setAlpha(0);
 
 	if (features.post_effect_color_shaded) {
 		auto apply_light = [] (u32 color, u32 light) {

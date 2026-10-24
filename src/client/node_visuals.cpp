@@ -382,9 +382,19 @@ void NodeVisuals::updateTextures(ContentFeatures &f, ITextureSource *tsrc,
 		break;
 	}
 
+	// fx: glass and water get their own shader variant. Alpha-clipped glass
+	// becomes alpha-blended so its clear pixels still produce fragments to
+	// refract through (purely visual, client-side).
+	const fx::Surface fx_surface = fx::resolveSurface(f);
+	if (fx_surface.kind == fx::SurfaceKind::Glass &&
+			drawtype != NDT_LIQUID && drawtype != NDT_FLOWINGLIQUID)
+		material_type = TILE_MATERIAL_ALPHA;
+
 	GetShaderCallback tile_shader = [&] (bool array_texture) {
 		ShaderFeatures features;
 		features.array_texture = array_texture;
+		features.fx_surface = (u8)fx_surface.kind;
+		features.fx_pattern = (u8)fx_surface.pattern;
 		return shdsrc->getShader("nodes_shader", material_type, drawtype, features);
 	};
 
@@ -448,6 +458,8 @@ void NodeVisuals::updateTextures(ContentFeatures &f, ITextureSource *tsrc,
 	GetShaderCallback special_shader = [&] (bool array_texture) {
 		ShaderFeatures features;
 		features.array_texture = array_texture;
+		features.fx_surface = (u8)fx_surface.kind;
+		features.fx_pattern = (u8)fx_surface.pattern;
 		return shdsrc->getShader("nodes_shader", special_material, drawtype, features);
 	};
 

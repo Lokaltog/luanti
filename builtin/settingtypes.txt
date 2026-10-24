@@ -906,6 +906,30 @@ fx_debug_view (Debug view) int 0 0 4
 #    directory change. For shader development.
 fx_shader_hot_reload (Shader hot reload) bool false
 
+#    Glass refracts and reflects, water absorbs, reflects and casts caustics.
+#    Glass is detected by drawtype or name, water by translucent liquids;
+#    fx_materials.txt in a texture pack overrides. Changing it requires a restart.
+fx_surfaces (Glass and water surfaces) bool true
+
+#    Strength of refraction through glass and water.
+fx_refraction (Refraction) float 1.0 0.0 4.0
+
+#    Screen-space reflections on glass and water (falls back to the sky).
+#    Changing it requires a restart.
+fx_ssr (Screen-space reflections) bool true
+
+#    Strength of reflections on glass and water.
+fx_reflection (Reflection) float 1.0 0.0 2.0
+
+#    How quickly water absorbs light with depth, per node.
+fx_water_absorption (Water absorption) float 0.18 0.0 2.0
+
+#    Strength of caustics under water.
+fx_caustics (Caustics) float 0.8 0.0 3.0
+
+#    Strength of light shafts seen from under water.
+fx_underwater_shafts (Underwater light shafts) float 0.6 0.0 3.0
+
 [**Other Effects]
 
 #   Simulate translucency when looking at foliage in the sunlight.

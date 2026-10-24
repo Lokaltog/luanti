@@ -236,6 +236,10 @@ struct ShaderFeatures {
 	/// Joint transforms are expected in the JointMatrices UBO.
 	/// @see irr::video::IVideoDriver::setJointTransforms
 	bool skinning = false;
+	/// fx: 0 = plain, 1 = glass, 2 = water (refraction/reflection surfaces)
+	u8 fx_surface = 0;
+	/// fx: surface pattern, 0 = none, 1 = fluted, 2 = frosted, 3 = rippled
+	u8 fx_pattern = 0;
 
 	void setConstants(ShaderConstants &consts) const;
 };

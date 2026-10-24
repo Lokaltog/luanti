@@ -24,7 +24,7 @@ struct ContentFeatures;
 struct MeshMakeData;
 class IShaderConstantSetter;
 class IShaderUniformSetterFactory;
-namespace video { class IImage; }
+namespace video { class IImage; class IVideoDriver; class ITexture; class SMaterial; }
 
 namespace fx
 {
@@ -36,6 +36,10 @@ constexpr int MAX_LIGHTS = 128;
 /// Texture slot for the per-tile FX material companion (emissive for now).
 /// Slot 1 is the crack texture, slot 3 the shadow map, slot 2 was free.
 constexpr int TEXTURE_LAYER_FX = 2;
+
+/// Opaque scene copy for refraction and reflections (transparent pass only).
+constexpr int TEXTURE_LAYER_SCENE_COLOR = 4;
+constexpr int TEXTURE_LAYER_SCENE_DEPTH = 5;
 
 /// Settings, refreshed from g_settings whenever an fx_* setting changes.
 struct Params {
@@ -57,6 +61,14 @@ struct Params {
 	bool held_light = true;        // fx_held_light
 	int debug_view = 0;            // fx_debug_view, see FX_DEBUG_* in shaders
 	bool hot_reload = false;       // fx_shader_hot_reload
+	// M3: glass and water
+	bool surfaces = true;          // fx_surfaces (needs restart: shader variants)
+	float refraction = 1.0f;       // fx_refraction (strength multiplier)
+	bool ssr = true;               // fx_ssr (needs restart: shader define)
+	float reflection = 1.0f;       // fx_reflection (strength multiplier)
+	float water_absorption = 0.18f;// fx_water_absorption (per node)
+	float caustics = 0.8f;         // fx_caustics
+	float underwater_shafts = 0.6f;// fx_underwater_shafts
 };
 
 const Params &params();
@@ -95,8 +107,38 @@ struct LightStyle {
 /// (`fx_light_colors.txt`) first, then auto-derived from its texture.
 LightStyle resolveLightStyle(ITextureSource *tsrc, const ContentFeatures &f);
 
-/// Forget the loaded table (media reload).
+/// Forget the loaded tables (media reload).
 void resetLightTable();
+
+/*
+	Glass and water surfaces
+*/
+
+enum class SurfaceKind : u8 { None = 0, Glass = 1, Water = 2 };
+enum class SurfacePattern : u8 { None = 0, Fluted = 1, Frosted = 2, Rippled = 3 };
+
+struct Surface {
+	SurfaceKind kind = SurfaceKind::None;
+	SurfacePattern pattern = SurfacePattern::None;
+};
+
+/// Surface type of a node: `fx_materials.txt` in texture dirs first
+/// (`<node> glass|water|none [pattern=fluted|frosted|rippled]`), then a
+/// heuristic (translucent non-glowing liquids are water, glasslike drawtypes
+/// and nodes named *glass* are glass).
+Surface resolveSurface(const ContentFeatures &f);
+
+/// True when the fx post pass renders the camera being inside this node
+/// (water), so the flat upstream post_effect_color overlay should be skipped.
+bool handlesUnderwater(const ContentFeatures &f);
+
+/// Copy the opaque scene (color + depth) from the current render target.
+/// Called by ClientMap at the start of its transparent pass.
+void captureScene(video::IVideoDriver *driver);
+
+/// Bind the scene copy to a transparent material (slots 4 and 5).
+void bindSceneCopy(video::SMaterial &material);
+void unbindSceneCopy(video::SMaterial &material);
 
 /*
 	Per-block light lists, built during meshgen (worker thread, read-only after)

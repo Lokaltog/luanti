@@ -280,6 +280,8 @@ class MainShaderUniformSetter : public IShaderUniformSetter
 	CachedPixelShaderSetting<SamplerLayer_t> m_texture1{"texture1"};
 	CachedPixelShaderSetting<SamplerLayer_t> m_texture2{"texture2"};
 	CachedPixelShaderSetting<SamplerLayer_t> m_texture3{"texture3"};
+	CachedPixelShaderSetting<SamplerLayer_t> m_texture4{"texture4"};
+	CachedPixelShaderSetting<SamplerLayer_t> m_texture5{"texture5"};
 
 	// common material variables passed to shader
 	video::SColor m_material_color;
@@ -327,6 +329,10 @@ public:
 		m_texture2.set(&tex_id, services);
 		tex_id = 3;
 		m_texture3.set(&tex_id, services);
+		tex_id = 4;
+		m_texture4.set(&tex_id, services);
+		tex_id = 5;
+		m_texture5.set(&tex_id, services);
 
 		video::SColorf colorf(m_material_color);
 		m_material_color_setting.set(colorf, services);
@@ -942,6 +948,10 @@ void ShaderFeatures::setConstants(ShaderConstants &consts) const
 {
 	if (array_texture)
 		consts["USE_ARRAY_TEXTURE"] = 1;
+	if (fx_surface) {
+		consts["FX_SURFACE"] = (int)fx_surface;
+		consts["FX_PATTERN"] = (int)fx_pattern;
+	}
 	if (skinning) {
 		const auto max_joints = RenderingEngine::get_video_driver()->getMaxJointTransforms();
 		if (max_joints > 0) {

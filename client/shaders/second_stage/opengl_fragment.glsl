@@ -68,6 +68,90 @@ vec3 fxAces(vec3 x)
 	return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
 }
 
+#ifdef FX_SURFACES
+// Underwater: absorption, caustics on everything below, and light shafts
+// that poke down from the surface. Needs the depth buffer (texture3).
+#define fxDepth texture3
+uniform sampler2D fxDepth;
+uniform mat4 fxInvViewProj;
+uniform vec2 fxNearFar;
+uniform vec3 fxSunDir;
+uniform float fxSunStrength;
+uniform float fxTime;
+uniform float fxUnderwater;
+uniform float fxUnderwaterShafts;
+uniform float fxCaustics;
+uniform float fxWaterAbsorption;
+
+const float FX_BS = 10.0;
+
+float fxCausticPost(vec2 p, float t, float sharpness)
+{
+	vec2 i = p;
+	float c = 1.0;
+	const float inten = 0.005;
+	for (int n = 0; n < 4; n++) {
+		float tt = t * (1.0 - (3.5 / float(n + 1)));
+		i = p + vec2(cos(tt - i.x) + sin(tt + i.y), sin(tt - i.y) + cos(tt + i.x));
+		c += 1.0 / length(vec2(p.x / (sin(i.x + tt) / inten), p.y / (cos(i.y + tt) / inten)));
+	}
+	c /= 4.0;
+	c = 1.17 - pow(c, 1.4);
+	return clamp(pow(abs(c), sharpness), 0.0, 1.0);
+}
+
+vec3 fxScenePos(vec2 uv, float depth)
+{
+	vec4 p = fxInvViewProj * vec4(vec3(uv, depth) * 2.0 - 1.0, 1.0);
+	return p.xyz / p.w;
+}
+
+vec2 fxSunUV(vec3 p)
+{
+	// project along the sun so the pattern falls the way the light does
+	return (p.xz - fxSunDir.xz / max(fxSunDir.y, 0.2) * p.y) / FX_BS * 0.9;
+}
+
+vec3 fxApplyUnderwater(vec3 color, vec2 uv)
+{
+	float d = texture2D(fxDepth, uv).r;
+	bool sky = d >= 0.99999;
+	vec3 cam = fxScenePos(uv, 0.0);  // near plane point, close enough to the eye
+	vec3 dir = normalize(fxScenePos(uv, 0.5) - cam);
+	// sky pixels: treat as far water so they fade into the scatter colour
+	float dist = sky ? 64.0 * FX_BS : length(fxScenePos(uv, d) - cam);
+	vec3 pos = cam + dir * dist;
+	float light = fxSunStrength;
+
+	// caustics on what we look at (not on the sky)
+	if (!sky) {
+		float c = fxCausticPost(fxSunUV(pos), fxTime * 0.8, 8.0);
+		color *= 1.0 + c * fxCaustics * light * 4.0 * exp(-dist / FX_BS * 0.08);
+	}
+
+	// shafts: march the view ray, accumulate light through the caustic pattern
+	float len = min(dist, 24.0 * FX_BS);
+	float shafts = 0.0;
+	const int STEPS = 24;
+	// jitter the start per pixel to trade banding for fine noise
+	float jitter = fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453);
+	for (int i = 0; i < STEPS; i++) {
+		float t = (float(i) + jitter) / float(STEPS) * len;
+		vec3 p = cam + dir * t;
+		// low-frequency, soft pattern: broad beams, not a sharp web
+		shafts += fxCausticPost(fxSunUV(p) * 0.3, fxTime * 0.5, 5.0) * exp(-t / FX_BS * 0.1);
+	}
+	shafts = shafts / float(STEPS) * len / FX_BS * 0.3;
+	vec3 water_light = vec3(0.35, 0.75, 0.9);
+
+	// absorption toward a blue-green scatter colour
+	vec3 trans = exp(-dist / FX_BS * fxWaterAbsorption * vec3(1.6, 0.6, 0.35));
+	color = mix(water_light * 0.07 * light, color, trans);
+	color += water_light * shafts * fxUnderwaterShafts * light;
+	return color;
+}
+#endif
+
 vec3 fxFalseColor(float lum)
 {
 	// log2 luminance stops: blue (-4) .. green (0) .. yellow (+2) .. red (+4)
@@ -176,6 +260,10 @@ void main(void)
 	color.rgb *= exposureParams.compensationFactor * fxExposure;
 #ifdef ENABLE_AUTO_EXPOSURE
 	color.rgb *= exposure;
+#endif
+#ifdef FX_SURFACES
+	if (fxUnderwater > 0.5)
+		color.rgb = fxApplyUnderwater(color.rgb, uv);
 #endif
 #ifdef ENABLE_BLOOM
 	vec3 fxBloom = texture2D(bloom, uv).rgb;
