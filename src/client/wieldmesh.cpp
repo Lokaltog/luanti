@@ -3,6 +3,7 @@
 // Copyright (C) 2010-2014 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "wieldmesh.h"
+#include "fx/fx.h"
 #include "settings.h"
 #include "shader.h"
 #include "inventory.h"
@@ -510,6 +511,15 @@ void WieldMeshSceneNode::setItem(const ItemStack &item, Client *client, bool che
 				wscale.Z *= 0.1f;
 			setExtruded(f.tiledef[0], v.tiles[0].layers[0],
 				f.tiledef_overlay[0], v.tiles[0].layers[1], wscale, tsrc);
+			// fx: a held torch glows like the placed one. Animated tiles
+			// get their companion per frame (AnimationInfo::updateTexture).
+			if (fx::caps().enabled && m_meshnode && m_meshnode->getMaterialCount() > 0 &&
+					!(v.tiles[0].layers[0].material_flags & MATERIAL_FLAG_ANIMATION)) {
+				const std::string &name = f.tiledef[0].name;
+				m_meshnode->getMaterial(0).setTexture(2, tsrc->getTexture(
+						fx::companionName(tsrc, name, f.light_source > 0,
+						tsrc->getTextureDimensions(name))));
+			}
 			break;
 		}
 		case NDT_PLANTLIKE_ROOTED: {
@@ -559,6 +569,9 @@ void WieldMeshSceneNode::setItem(const ItemStack &item, Client *client, bool che
 			setExtruded(tsrc->getTexture("no_texture.png"), nullptr, wield_scale);
 		}
 
+		// fx: craftitems glow with an authored _e map of their image
+		if (m_meshnode && m_meshnode->getMaterialCount() > 0)
+			m_meshnode->getMaterial(0).setTexture(2, fx::entityEmissive(tsrc, def.inventory_image.name));
 		m_buffer_info.emplace_back(0, item_visuals->getInventoryAnimation(item, client));
 		// overlay is white, if present
 		m_buffer_info.emplace_back(1, item_visuals->getInventoryOverlayAnimation(item, client),

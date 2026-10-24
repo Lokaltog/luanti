@@ -128,7 +128,9 @@ with their unlit twins behind, ores, glass, water and lava).
 
 ## Known gaps
 
-- Inventory and wield item meshes have no emissive maps.
+- Held node items drawn as cubes and inventory icons have no emissive maps
+  (held torches and other flat node items glow; craftitems with an authored
+  `_e.png` glow).
 - Material maps need the array-texture path; animated tiles get none.
 - Auto-emissive keeps bright pixels whatever their colour, so bright stone
   parts of a light source's unique tile (the rim of a lit furnace's front)
