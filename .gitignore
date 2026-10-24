@@ -67,7 +67,8 @@ AppDir
 /textures/*
 !/textures/base/
 /screenshots
-/sounds
+/sounds/*
+!/sounds/afx/
 /mods/*
 !/mods/mods_here.txt
 /worlds/*
@@ -142,3 +143,5 @@ lib/irrlichtmt
 
 # Generated mod storage database
 client/mod_storage.sqlite
+# afx fork: the ambience's per-user storage
+client/afx_storage.conf
