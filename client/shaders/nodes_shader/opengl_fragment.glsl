@@ -76,6 +76,9 @@ CENTROID_ VARYING_ mediump vec2 varTexCoord;
 #ifdef USE_ARRAY_TEXTURE
 flat VARYING_ uint varTexLayer;
 #endif
+#ifdef FX_SURFACE_ACTIVE
+flat VARYING_ uint varFxEdges; // glass frame edges: U-, U+, V-, V+
+#endif
 CENTROID_ VARYING_ float nightRatio;
 VARYING_ highp vec3 eyeVec;
 

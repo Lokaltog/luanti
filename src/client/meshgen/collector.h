@@ -50,6 +50,9 @@ struct MeshCollector
 	f32 m_bounding_radius_sq = 0.0f;
 	v3f m_center_pos;
 	v3f offset;
+	// fx: OR'd into every vertex's Aux (glass pane frame-edge mask, bits
+	// 12..15; the texture layer index uses bits 0..11)
+	u16 fx_aux_bits = 0;
 
 	// center_pos: pos to use for bounding-sphere, in BS-space
 	// offset: offset added to vertices

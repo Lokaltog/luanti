@@ -148,10 +148,22 @@ float snoise(vec3 p)
 
 
 
+#if defined(FX_ENABLE) && defined(FX_SURFACES) && defined(FX_SURFACE)
+#define FX_SURFACE_ACTIVE 1 // as in the fragment shader
+flat VARYING_ uint varFxEdges; // glass frame edges: U-, U+, V-, V+
+#endif
+
 void main(void)
 {
 #ifdef USE_ARRAY_TEXTURE
+#ifdef FX_ENABLE
+	varTexLayer = inVertexAux & 0xFFFu; // bits 12..15: glass frame mask
+#else
 	varTexLayer = inVertexAux;
+#endif
+#endif
+#ifdef FX_SURFACE_ACTIVE
+	varFxEdges = inVertexAux >> 12;
 #endif
 	varTexCoord = inTexCoord0.st;
 

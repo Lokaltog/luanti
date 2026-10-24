@@ -10,8 +10,8 @@ can't carry fx data: custom `_fields` never reach the client.
 the format. Producers (jsl2mcl) conform to it and test against it. A change
 lands here first, then in the producer.
 
-**Status.** Format 1 and format 2 items 1–4 are implemented. Items 5–7 are
-accepted but open.
+**Status.** Format 1, format 2 items 1–4 and the renderer side of item 5
+(glass bevel) are implemented. Items 6–7 are open.
 
 ## `fx_pack.txt`
 
@@ -149,9 +149,13 @@ only light sources; surface keys only when surfaces are on).
 
 ## Open items (accepted)
 
-5. **Bevel along the edge of connected glass** (renderer, mesher). The mesher
-   writes a 4-bit frame-edge mask per pane quad in spare bits of
-   `S3DVertex::Aux`; the shader builds a rounded normal where a frame is drawn.
+5. **Bevel along the edge of connected glass** (renderer: done). The mesher
+   puts a 4-bit frame-edge mask per pane quad in bits 12..15 of
+   `S3DVertex::Aux` (the texture layer index keeps bits 0..11, so array
+   textures are capped at 4096 layers with fx on); the glass shader bends its
+   normal into a quarter-round bevel where a frame is drawn
+   (`fx_glass_bevel`, in 1/16 node). Single-texture `glasslike` glass has no
+   frame edges: producers bake its bevel into `_n`.
 6. **Tint-aware emissive** (deferred). Tile and palette colour are baked into
    the vertex colour together with light, so this needs a vertex format change.
    Redstone power is the only known case.

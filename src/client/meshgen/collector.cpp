@@ -36,7 +36,7 @@ void MeshCollector::append(const TileLayer &layer, const video::S3DVertex *verti
 {
 	PreMeshBuffer &p = findBuffer(layer, layernum, numVertices);
 
-	const u16 aux = layer.texture_layer_idx;
+	const u16 aux = layer.texture_layer_idx | fx_aux_bits;
 
 	u32 vertex_count = p.vertices.size();
 	assert(vertex_count + numVertices <= U16_MAX);

@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include "content_mapblock.h"
+#include "fx/fx.h"
 #include "util/basic_macros.h"
 #include "util/numeric.h"
 #include "util/directiontables.h"
@@ -1198,6 +1199,7 @@ void MapblockMeshGenerator::drawGlasslikeFramedNode()
 		{0, 1,  8}, {0, 4, 16}, {3, 4, 17}, {3, 1,  9},
 	};
 
+	bool edge_drawn[FRAMED_EDGE_COUNT] = {};
 	for (int edge = 0; edge < FRAMED_EDGE_COUNT; edge++) {
 		bool edge_invisible;
 		if (nb[nb_triplet[edge][2]])
@@ -1206,6 +1208,7 @@ void MapblockMeshGenerator::drawGlasslikeFramedNode()
 			edge_invisible = nb[nb_triplet[edge][0]] ^ nb[nb_triplet[edge][1]];
 		if (edge_invisible)
 			continue;
+		edge_drawn[edge] = true;
 
 		f32 txc[24];
 		generateCuboidTextureCoords(frame_edges[edge], txc);
@@ -1241,7 +1244,27 @@ void MapblockMeshGenerator::drawGlasslikeFramedNode()
 			}
 		}
 		v3s16 dir = g_6dirs[face];
+		if (fx::caps().surfaces) {
+			// fx: which of the pane's edges have a frame drawn, for the glass
+			// bevel. Bits: U-, U+, V-, V+ with (U, V) = (Y, Z) for X faces,
+			// (X, Z) for Y faces, (X, Y) for Z faces. Edge indices as in
+			// frame_edges: per face {U-, U+, V-, V+}.
+			static const u8 face_edges[6][4] = {
+				{6, 4, 9, 8},   // Z+
+				{1, 0, 11, 8},  // Y+
+				{2, 0, 5, 4},   // X+
+				{7, 5, 10, 11}, // Z-
+				{3, 2, 10, 9},  // Y-
+				{3, 1, 7, 6},   // X-
+			};
+			u16 mask = 0;
+			for (int i = 0; i < 4; i++)
+				if (edge_drawn[face_edges[face][i]])
+					mask |= 1 << i;
+			collector->fx_aux_bits = mask << 12;
+		}
 		drawQuad(glass_tiles[face], vertices, dir);
+		collector->fx_aux_bits = 0;
 	}
 
 	// Optionally render internal liquid level defined by param2

@@ -54,6 +54,32 @@ vec3 fxPatternNormal(vec3 n, vec3 wp)
 #endif
 }
 
+#if FX_SURFACE == 1
+// Rounded bevel along the pane edges that meet a frame (framed glass; the
+// mesher puts the mask in the vertex Aux). The surface curves down towards
+// the frame, so refraction and reflection bend there.
+vec3 fxBevelNormal(vec3 n, vec3 wp)
+{
+	if (fxGlassBevel <= 0.0 || varFxEdges == 0u)
+		return vec3(0.0);
+	vec3 a = abs(n);
+	// (U, V) = (Y, Z) for X faces, (X, Z) for Y faces, (X, Y) for Z faces
+	vec3 U = a.x > 0.5 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+	vec3 V = a.z > 0.5 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+	vec3 local = wp / FX_BS - floor(wp / FX_BS + 0.5); // -0.5 .. 0.5 in the node
+	float u = dot(local, U), v = dot(local, V);
+	float w = fxGlassBevel / 16.0;
+	vec3 d = vec3(0.0);
+	// t: 1 at the frame, 0 where the bevel ends; quarter-round profile
+	float t;
+	if ((varFxEdges & 1u) != 0u) { t = clamp(1.0 - (u + 0.5) / w, 0.0, 1.0); d -= U * t * t; }
+	if ((varFxEdges & 2u) != 0u) { t = clamp(1.0 - (0.5 - u) / w, 0.0, 1.0); d += U * t * t; }
+	if ((varFxEdges & 4u) != 0u) { t = clamp(1.0 - (v + 0.5) / w, 0.0, 1.0); d -= V * t * t; }
+	if ((varFxEdges & 8u) != 0u) { t = clamp(1.0 - (0.5 - v) / w, 0.0, 1.0); d += V * t * t; }
+	return d * 0.8;
+}
+#endif
+
 // Linear colour of the scene copy
 vec3 fxSampleScene(vec2 uv)
 {
@@ -126,6 +152,9 @@ vec3 fxSurface(vec3 lit, vec4 base, out vec3 transmitted)
 	if (from_below)
 		N = -N;
 	vec3 dn = fxPatternNormal(N, worldPosition);
+#if FX_SURFACE == 1
+	dn += fxBevelNormal(N, worldPosition + cameraOffset);
+#endif
 
 	// The texture's own luminance bends light a little, so streaky glass
 	// textures distort without any pattern.

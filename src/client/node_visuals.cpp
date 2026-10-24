@@ -622,6 +622,9 @@ void NodeVisuals::fillNodeVisuals(NodeDefManager *ndef, Client *client, void *pr
 
 	/* texture pre-loading stage */
 	size_t arraymax = getArrayTextureMax(shdsrc);
+	// fx: vertex Aux bits 12..15 carry the glass frame mask
+	if (fx::caps().enabled)
+		arraymax = std::min<size_t>(arraymax, 4096);
 	// fx: the material array holds two layers (_n, _s) per base layer
 	if (fx::caps().materials)
 		arraymax /= 2;
