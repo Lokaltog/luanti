@@ -25,6 +25,7 @@ struct MeshMakeData;
 class IShaderConstantSetter;
 class IShaderUniformSetterFactory;
 namespace video { class IImage; class IVideoDriver; class ITexture; class SMaterial; }
+namespace scene { class ICameraSceneNode; }
 
 namespace fx
 {
@@ -69,6 +70,13 @@ struct Params {
 	float water_absorption = 0.18f;// fx_water_absorption (per node)
 	float caustics = 0.8f;         // fx_caustics
 	float underwater_shafts = 0.6f;// fx_underwater_shafts
+	// M2: foundations
+	bool taa = true;               // fx_taa (needs restart: pipeline)
+	float taa_blend = 0.9f;        // fx_taa_blend (history weight)
+	float sharpen = 0.5f;          // fx_sharpen
+	bool ao = true;                // fx_ao (needs restart: pipeline)
+	float ao_strength = 1.0f;    // fx_ao_strength
+	float ao_radius = 1.5f;      // fx_ao_radius (nodes)
 };
 
 const Params &params();
@@ -131,6 +139,12 @@ Surface resolveSurface(const ContentFeatures &f);
 /// True when the fx post pass renders the camera being inside this node
 /// (water), so the flat upstream post_effect_color overlay should be skipped.
 bool handlesUnderwater(const ContentFeatures &f);
+
+/*
+	TAA: projection jitter around the 3D draw
+*/
+void applyJitter(scene::ICameraSceneNode *camera, core::dimension2du target_size);
+void removeJitter(scene::ICameraSceneNode *camera);
 
 /// Copy the opaque scene (color + depth) from the current render target.
 /// Called by ClientMap at the start of its transparent pass.

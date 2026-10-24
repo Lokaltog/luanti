@@ -21,6 +21,15 @@ uniform ExposureParams exposureParams;
 uniform lowp float bloomIntensity;
 uniform lowp float saturation;
 
+#ifdef FX_ENABLE
+uniform float fxSharpen;
+#if defined(FX_AO) && !defined(FX_TAA)
+// without TAA, AO is applied here (texture4)
+#define fxAoTex texture4
+uniform sampler2D fxAoTex;
+#endif
+#endif
+
 #ifdef FX_HDR_COMPOSITE
 uniform float fxBloomIntensity;
 uniform float fxExposure;
@@ -249,6 +258,28 @@ void main(void)
 	color /= SSAA_SCALE * SSAA_SCALE / 4.;
 #else
 	vec4 color = texture2D(rendered, uv).rgba;
+#endif
+
+#ifdef FX_ENABLE
+	// fx: restore detail TAA softens (cross-shaped unsharp mask)
+	if (fxSharpen > 0.0) {
+		vec3 n = texture2D(rendered, uv + vec2(0.0, texelSize0.y)).rgb
+			+ texture2D(rendered, uv - vec2(0.0, texelSize0.y)).rgb
+			+ texture2D(rendered, uv + vec2(texelSize0.x, 0.0)).rgb
+			+ texture2D(rendered, uv - vec2(texelSize0.x, 0.0)).rgb;
+		color.rgb = max(color.rgb + (color.rgb * 4.0 - n) * fxSharpen * 0.25, vec3(0.0));
+	}
+#if defined(FX_AO) && !defined(FX_TAA)
+	{
+		float ao = texture2D(fxAoTex, uv).r;
+		float lum = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
+		color.rgb *= mix(ao, 1.0, smoothstep(0.9, 3.0, lum));
+#if defined(FX_DEBUG_VIEW) && FX_DEBUG_VIEW == 7
+		gl_FragColor = vec4(vec3(ao), 1.0);
+		return;
+#endif
+	}
+#endif
 #endif
 
 	// translate to linear colorspace (approximate)

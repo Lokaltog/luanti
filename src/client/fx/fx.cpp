@@ -53,6 +53,7 @@ static const char *const SETTING_NAMES[] = {
 	"fx_flicker", "fx_held_light", "fx_debug_view", "fx_shader_hot_reload",
 	"fx_surfaces", "fx_refraction", "fx_ssr", "fx_reflection",
 	"fx_water_absorption", "fx_caustics", "fx_underwater_shafts",
+	"fx_taa", "fx_taa_blend", "fx_sharpen", "fx_ao", "fx_ao_strength", "fx_ao_radius",
 };
 
 static void readParams()
@@ -84,6 +85,12 @@ static void readParams()
 	p.water_absorption = s->getFloat("fx_water_absorption");
 	p.caustics = s->getFloat("fx_caustics");
 	p.underwater_shafts = s->getFloat("fx_underwater_shafts");
+	p.taa = s->getBool("fx_taa");
+	p.taa_blend = s->getFloat("fx_taa_blend");
+	p.sharpen = s->getFloat("fx_sharpen");
+	p.ao = s->getBool("fx_ao");
+	p.ao_strength = s->getFloat("fx_ao_strength");
+	p.ao_radius = s->getFloat("fx_ao_radius");
 	s_params = p;
 }
 
@@ -437,19 +444,86 @@ struct CameraState {
 	float sun_strength = 1.f;
 	float underwater = 0.f;
 	float time = 0.f;            // seconds, wraps every hour
+	// TAA
+	core::matrix4 view_proj_unjittered;
+	core::matrix4 prev_view_proj;  // previous frame, unjittered, its own scene space
+	v3s16 offset;                  // camera offset (nodes) this frame
+	v3s16 prev_offset;
+	float offset_delta[3] = {};    // (offset - prev_offset) * BS, scene units
+	float jitter[2] = {};          // this frame, in NDC
+	u32 frame = 0;
+	u32 frames_since_reset = 0;
+	core::dimension2du target_size;
+	float eye[3] = {};             // camera position in scene space
+	float proj_scale = 1.f;        // pixels per unit at view depth 1 (vertical)
 };
 static CameraState s_cam;
+
+static float halton(u32 i, u32 base)
+{
+	float f = 1.f, r = 0.f;
+	while (i > 0) {
+		f /= base;
+		r += f * (i % base);
+		i /= base;
+	}
+	return r;
+}
+
+static core::matrix4 s_saved_projection;
+static bool s_jitter_applied = false;
+
+void applyJitter(scene::ICameraSceneNode *camera, core::dimension2du target_size)
+{
+	s_cam.jitter[0] = s_cam.jitter[1] = 0.f;
+	if (!s_params.enabled || !s_params.taa || !camera || !target_size.Width)
+		return;
+	if (target_size != s_cam.target_size) {
+		s_cam.target_size = target_size;
+		s_cam.frames_since_reset = 0;
+	}
+	// 8-sample Halton(2,3), centred on the pixel, in NDC units
+	const u32 i = (s_cam.frame % 8) + 1;
+	s_cam.jitter[0] = (halton(i, 2) - 0.5f) * 2.f / target_size.Width;
+	s_cam.jitter[1] = (halton(i, 3) - 0.5f) * 2.f / target_size.Height;
+	s_saved_projection = camera->getProjectionMatrix();
+	core::matrix4 p = s_saved_projection;
+	// Irrlicht is left-handed with clip.w = z_view, so adding to the third
+	// row's x/y shifts NDC by exactly that amount at every depth.
+	p[8] += s_cam.jitter[0];
+	p[9] += s_cam.jitter[1];
+	camera->setProjectionMatrix(p, false);
+	s_jitter_applied = true;
+}
+
+void removeJitter(scene::ICameraSceneNode *camera)
+{
+	if (!s_jitter_applied || !camera)
+		return;
+	camera->setProjectionMatrix(s_saved_projection, false);
+	s_jitter_applied = false;
+}
 
 void captureScene(video::IVideoDriver *driver)
 {
 	s_copy.valid = false;
-	if (!s_params.enabled || !s_params.surfaces)
+	if (!s_params.enabled)
 		return;
 
-	core::matrix4 vp = driver->getTransform(video::ETS_PROJECTION);
-	vp *= driver->getTransform(video::ETS_VIEW);
+	core::matrix4 proj = driver->getTransform(video::ETS_PROJECTION);
+	const core::matrix4 &view = driver->getTransform(video::ETS_VIEW);
+	core::matrix4 vp = proj;
+	vp *= view;
 	s_cam.view_proj = vp;
 	vp.getInverse(s_cam.inv_view_proj);
+	proj[8] -= s_cam.jitter[0];
+	proj[9] -= s_cam.jitter[1];
+	s_cam.proj_scale = proj[5] * 0.5f * driver->getCurrentRenderTargetSize().Height;
+	s_cam.view_proj_unjittered = proj;
+	s_cam.view_proj_unjittered *= view;
+
+	if (!s_params.surfaces)
+		return;
 
 	video::IRenderTarget *src = driver->getCurrentRenderTarget();
 	if (!src || src->getTexture().empty() || !src->getDepthStencil())
@@ -622,6 +696,23 @@ void updateFrame(Client *client, Camera *camera, float dtime)
 		const MapNode n = map.getNode(floatToInt(cam_pos, BS));
 		s_cam.underwater = resolveSurface(client->ndef()->get(n)).kind == SurfaceKind::Water ? 1.f : 0.f;
 		s_cam.time = std::fmod(s_cam.time + dtime, 3600.f);
+
+		// TAA bookkeeping: last frame's unjittered matrix becomes "previous"
+		s_cam.prev_view_proj = s_cam.view_proj_unjittered;
+		s_cam.prev_offset = s_cam.offset;
+		s_cam.offset = camera->getOffset();
+		const v3f eye = cam_pos - intToFloat(s_cam.offset, BS);
+		s_cam.eye[0] = eye.X;
+		s_cam.eye[1] = eye.Y;
+		s_cam.eye[2] = eye.Z;
+		const v3s16 d = s_cam.offset - s_cam.prev_offset;
+		s_cam.offset_delta[0] = d.X * BS;
+		s_cam.offset_delta[1] = d.Y * BS;
+		s_cam.offset_delta[2] = d.Z * BS;
+		if (d != v3s16(0, 0, 0) || s_cam.frame == 0)
+			s_cam.frames_since_reset = 0;
+		s_cam.frame++;
+		s_cam.frames_since_reset++;
 	}
 
 	if (!prm.colored_light)
@@ -742,6 +833,12 @@ public:
 			constants["FX_HDR_COMPOSITE"] = 1;
 		constants["FX_TONEMAPPER"] = p.tonemapper;
 		constants["FX_DEBUG_VIEW"] = p.debug_view;
+		// the pipeline skips TAA with MSAA/SSAA; keep the define in sync
+		const std::string aa = g_settings->get("antialiasing");
+		if (p.taa && aa != "fsaa" && aa != "ssaa")
+			constants["FX_TAA"] = 1;
+		if (p.ao)
+			constants["FX_AO"] = 1;
 		if (p.surfaces) {
 			constants["FX_SURFACES"] = 1;
 			if (p.ssr)
@@ -777,6 +874,17 @@ class FxUniformSetter : public IShaderUniformSetter
 	CachedPixelShaderSetting<float> m_underwater{"fxUnderwater"};
 	CachedPixelShaderSetting<float> m_shafts{"fxUnderwaterShafts"};
 	CachedPixelShaderSetting<float> m_scene_valid{"fxSceneValid"};
+	CachedPixelShaderSetting<float, 16> m_prev_view_proj{"fxPrevViewProj"};
+	CachedPixelShaderSetting<float, 3> m_offset_delta{"fxOffsetDelta"};
+	CachedPixelShaderSetting<float, 2> m_jitter{"fxJitter"};
+	CachedPixelShaderSetting<float> m_taa_blend{"fxTaaBlend"};
+	CachedPixelShaderSetting<float> m_taa_reset{"fxTaaReset"};
+	CachedPixelShaderSetting<float> m_sharpen{"fxSharpen"};
+	CachedPixelShaderSetting<float> m_ao_strength{"fxAoStrength"};
+	CachedPixelShaderSetting<float, 3> m_eye{"fxEyePos"};
+	CachedPixelShaderSetting<float> m_proj_scale{"fxProjScale"};
+	CachedPixelShaderSetting<float> m_frame{"fxFrame"};
+	CachedPixelShaderSetting<float> m_ao_radius{"fxAoRadius"};
 	bool m_is_node;
 
 public:
@@ -799,6 +907,20 @@ public:
 			m_inv_view_proj.set(s_cam.inv_view_proj.pointer(), services);
 			m_underwater.set(&s_cam.underwater, services);
 			m_shafts.set(&p.underwater_shafts, services);
+			m_prev_view_proj.set(s_cam.prev_view_proj.pointer(), services);
+			m_offset_delta.set(s_cam.offset_delta, services);
+			m_jitter.set(s_cam.jitter, services);
+			m_taa_blend.set(&p.taa_blend, services);
+			float reset = s_cam.frames_since_reset < 2 ? 1.f : 0.f;
+			m_taa_reset.set(&reset, services);
+			float sharpen = p.taa ? p.sharpen : 0.f;
+			m_sharpen.set(&sharpen, services);
+			m_ao_strength.set(&p.ao_strength, services);
+			m_eye.set(s_cam.eye, services);
+			m_proj_scale.set(&s_cam.proj_scale, services);
+			float frame = (float)(s_cam.frame % 1024);
+			m_frame.set(&frame, services);
+			m_ao_radius.set(&p.ao_radius, services);
 			m_bloom_threshold.set(&p.bloom_threshold, services);
 			m_bloom_knee.set(&p.bloom_knee, services);
 			m_bloom_intensity.set(&p.bloom_intensity, services);
@@ -826,7 +948,8 @@ public:
 	{
 		if (name == "nodes_shader")
 			return new FxUniformSetter(true);
-		if (name == "extract_bloom" || name == "second_stage")
+		if (name == "extract_bloom" || name == "second_stage" ||
+				name == "fx_taa" || name == "fx_ao")
 			return new FxUniformSetter(false);
 		return nullptr;
 	}

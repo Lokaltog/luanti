@@ -32,14 +32,16 @@ CASES=(
 	"night|"
 	"day|fxscene_time=0.45"
 	"underwater|fxscene_time=0.45 fxscene_view=underwater"
-	"no_taa_gtao|fx_taa=false fx_gtao=false"
+	"no_taa_ao|fx_taa=false fx_ao=false"
 	"debug1_chroma|fx_debug_view=1"
 	"debug2_emissive|fx_debug_view=2"
 	"debug3_luminance|fx_debug_view=3"
 	"debug5_scenecopy|fx_debug_view=5"
 	"debug7_ao|fx_debug_view=7"
 )
-[ -n "${ONLY:-}" ] && CASES=($(printf '%s\n' "${CASES[@]}" | grep -E "^($ONLY)\|"))
+if [ -n "${ONLY:-}" ]; then
+	mapfile -t CASES < <(printf '%s\n' "${CASES[@]}" | grep -E "^($ONLY)\|")
+fi
 
 fail=0
 for case in "${CASES[@]}"; do

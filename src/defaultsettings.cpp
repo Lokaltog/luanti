@@ -357,6 +357,12 @@ void set_default_settings()
 	settings->setDefault("fx_held_light", "true");
 	settings->setDefault("fx_debug_view", "0");
 	settings->setDefault("fx_shader_hot_reload", "false");
+	settings->setDefault("fx_taa", "true");
+	settings->setDefault("fx_taa_blend", "0.9");
+	settings->setDefault("fx_sharpen", "0.5");
+	settings->setDefault("fx_ao", "true");
+	settings->setDefault("fx_ao_strength", "1.0");
+	settings->setDefault("fx_ao_radius", "1.5");
 	settings->setDefault("fx_auto_screenshot", "");
 	settings->setDefault("fx_auto_screenshot_delay", "20");
 	settings->setDefault("fx_surfaces", "true");

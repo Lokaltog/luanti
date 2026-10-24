@@ -3,6 +3,7 @@
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 // Copyright (C) 2017 numzero, Lobachevskiy Vitaliy <numzer0@yandex.ru>
 
+#include "client/fx/fx.h"
 #include "plain.h"
 #include "secondstage.h"
 #include "settings.h"
@@ -20,7 +21,11 @@ void Draw3D::run(PipelineContext &context)
 	if (m_target)
 		m_target->activate(context);
 
+	// fx: sub-pixel projection jitter for TAA, around the scene draw only
+	auto *camera = context.client->getCamera()->getCameraNode();
+	fx::applyJitter(camera, context.device->getVideoDriver()->getCurrentRenderTargetSize());
 	context.device->getSceneManager()->drawAll();
+	fx::removeJitter(camera);
 	context.device->getVideoDriver()->setTransform(video::ETS_WORLD, core::IdentityMatrix);
 	if (!context.show_hud)
 		return;

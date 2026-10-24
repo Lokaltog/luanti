@@ -5,6 +5,7 @@
 // Copyright (C) 2020 appgurueu, Lars Mueller <appgurulars@gmx.de>
 
 #include "secondstage.h"
+#include "client/fx/fx.h"
 #include "client/client.h"
 #include "client/shader.h"
 #include "settings.h"
@@ -191,7 +192,45 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 
 	// post-processing stage
 
-	u8 source = TEXTURE_COLOR;
+	/*
+		fx: ambient occlusion and TAA, before anything reads the scene colour.
+		AO is applied inside the TAA resolve so its noise averages out over
+		frames; without TAA the final pass applies it instead.
+	*/
+	static const u8 TEXTURE_FX_TAA_OUT = 30;
+	static const u8 TEXTURE_FX_TAA_HISTORY = 31;
+	static const u8 TEXTURE_FX_AO = 32;
+	const fx::Params &fxp = fx::params();
+	const bool fx_ao = fxp.enabled && fxp.ao && bloom_available;
+	const bool fx_taa = fxp.enabled && fxp.taa && bloom_available && !enable_msaa && !enable_ssaa;
+	u8 scene_color = TEXTURE_COLOR;
+
+	if (fx_ao) {
+		buffer->setTexture(TEXTURE_FX_AO, scale * 0.5f, "fx_ao", video::ECF_A8R8G8B8);
+		shader_id = client->getShaderSource()->getShaderRaw("fx_ao");
+		auto ao = pipeline->addStep<PostProcessingStep>(shader_id, std::vector<u8> { TEXTURE_DEPTH });
+		ao->setRenderSource(buffer);
+		ao->setRenderTarget(pipeline->createOwned<TextureBufferOutput>(buffer, TEXTURE_FX_AO));
+	}
+	if (fx_taa) {
+		buffer->setTexture(TEXTURE_FX_TAA_OUT, scale, "fx_taa_out", bloom_format);
+		buffer->setTexture(TEXTURE_FX_TAA_HISTORY, scale, "fx_taa_history", bloom_format);
+		std::vector<u8> inputs { TEXTURE_COLOR, TEXTURE_DEPTH, TEXTURE_FX_TAA_HISTORY };
+		if (fx_ao)
+			inputs.push_back(TEXTURE_FX_AO);
+		shader_id = client->getShaderSource()->getShaderRaw("fx_taa");
+		auto taa = pipeline->addStep<PostProcessingStep>(shader_id, inputs);
+		taa->setRenderSource(buffer);
+		taa->setBilinearFilter(2, true); // history is resampled at reprojected positions
+		if (fx_ao)
+			taa->setBilinearFilter(3, true);
+		taa->setRenderTarget(pipeline->createOwned<TextureBufferOutput>(buffer, TEXTURE_FX_TAA_OUT));
+		// ping-pong: this frame's resolve becomes next frame's history
+		pipeline->addStep<SwapTexturesStep>(buffer, TEXTURE_FX_TAA_OUT, TEXTURE_FX_TAA_HISTORY);
+		scene_color = TEXTURE_FX_TAA_HISTORY;
+	}
+
+	u8 source = scene_color;
 
 	// common downsampling step for bloom or autoexposure
 	if (enable_bloom || enable_auto_exposure) {
@@ -277,14 +316,14 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 	}
 
 	// FXAA
-	u8 final_stage_source = TEXTURE_COLOR;
+	u8 final_stage_source = scene_color;
 
 	if (enable_fxaa) {
 		final_stage_source = TEXTURE_FXAA;
 
 		buffer->setTexture(TEXTURE_FXAA, scale, "fxaa", color_format);
 		shader_id = client->getShaderSource()->getShaderRaw("fxaa");
-		PostProcessingStep *effect = pipeline->createOwned<PostProcessingStep>(shader_id, std::vector<u8> { TEXTURE_COLOR });
+		PostProcessingStep *effect = pipeline->createOwned<PostProcessingStep>(shader_id, std::vector<u8> { scene_color });
 		pipeline->addStep(effect);
 		effect->setBilinearFilter(0, true);
 		effect->setRenderSource(buffer);
@@ -293,8 +332,11 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 
 	// final merge
 	shader_id = client->getShaderSource()->getShaderRaw("second_stage");
-	PostProcessingStep *effect = pipeline->createOwned<PostProcessingStep>(shader_id, std::vector<u8> { final_stage_source, TEXTURE_SCALE_UP, TEXTURE_EXPOSURE_2,
-			TEXTURE_DEPTH /* fx: underwater caustics and shafts */ });
+	std::vector<u8> final_inputs { final_stage_source, TEXTURE_SCALE_UP, TEXTURE_EXPOSURE_2,
+			TEXTURE_DEPTH /* fx: underwater caustics and shafts */ };
+	if (fx_ao && !fx_taa)
+		final_inputs.push_back(TEXTURE_FX_AO); // texture4: AO applied in the final pass
+	PostProcessingStep *effect = pipeline->createOwned<PostProcessingStep>(shader_id, final_inputs);
 	pipeline->addStep(effect);
 	if (enable_ssaa)
 		effect->setBilinearFilter(0, true);
