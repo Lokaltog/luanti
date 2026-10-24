@@ -106,6 +106,10 @@ core.register_on_joinplayer(function(player)
 				end
 			end
 		end
+		-- dropped items (entities) in front of the lamps: colored tint + rim light
+		for i, x in ipairs({-6, 0, 6}) do
+			core.add_item({x = x, y = 0.5, z = 11}, "basenodes:cobble")
+		end
 		if core.settings:get("fxscene_view") == "underwater" then
 			player:set_pos({x = 0.5, y = -5.4, z = 3.0})
 			player:set_look_horizontal(0)
