@@ -12,23 +12,22 @@ local L = A.lib
 
 --[[ Gusts you hear coming ]]
 
-core.register_entity("afx_ambience:gust", {
-	initial_properties = {
-		physical = false, collide_with_objects = false, pointable = false,
-		visual = "sprite", textures = {"blank.png"}, is_visible = false,
-		static_save = false,
-	},
-	on_activate = function(self)
-		self.t = 0
-	end,
-	on_step = function(self, dtime)
-		self.t = self.t + dtime
-		if self.t > (self.life or 7) then
-			if self.handle then core.sound_fade(self.handle, 1, 0) end
-			self.object:remove()
+-- A gust is a sound that moves: it starts upwind and sweeps past at the
+-- wind's speed
+local sweeps = {}
+
+core.register_globalstep(function(dtime)
+	for i = #sweeps, 1, -1 do
+		local s = sweeps[i]
+		s.t = s.t + dtime
+		s.pos = vector.add(s.pos, vector.multiply(s.vel, dtime))
+		core.afx_sound_move(s.handle, s.pos, s.vel)
+		if s.t > s.life then
+			core.sound_fade(s.handle, 1, 0)
+			table.remove(sweeps, i)
 		end
-	end,
-})
+	end
+end)
 
 local function sweep(player, dir, peak)
 	local ppos = player:get_pos()
@@ -36,19 +35,18 @@ local function sweep(player, dir, peak)
 	local life = 7
 	-- start upwind so it reaches you about halfway through
 	local start = vector.offset(ppos, -dir.x * speed * life * 0.5, 5, -dir.z * speed * life * 0.5)
-	local obj = core.add_entity(start, "afx_ambience:gust")
-	if not obj then return end
-	obj:set_velocity({x = dir.x * speed, y = 0, z = dir.z * speed})
-	local ent = obj:get_luaentity()
-	ent.life = life
-	ent.handle = A.play("afx_gust", {object = obj, to_player = player:get_player_name(),
-		gain = 0.22 + 0.15 * math.min(1, peak), pitch = L.rand(0.92, 1.08), max_hear_distance = 48})
+	local vel = {x = dir.x * speed, y = 0, z = dir.z * speed}
+	local h = A.play("afx_gust", {pos = start, to_player = player:get_player_name(),
+		gain = 0.22 + 0.15 * math.min(1, peak), pitch = L.rand(0.92, 1.08)})
+	if h then
+		sweeps[#sweeps + 1] = {handle = h, pos = start, vel = vel, t = 0, life = life}
+	end
 end
 
 -- Called by weather.lua when a gust rises
 function A.on_gust(peak)
 	if not L.CFG.beds then return end
-	local d = A.wind_override and A.wind_override.dir or A.wind_dir()
+	local d = A.wind_dir()
 	for _, player in ipairs(core.get_connected_players()) do
 		local st = L.player_state(player:get_player_name())
 		local ctx_ok = st.last_ctx and not st.last_ctx.underground and not st.last_ctx.indoors and

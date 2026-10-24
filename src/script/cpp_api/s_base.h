@@ -155,6 +155,11 @@ protected:
 	void stackDump(std::ostream &o);
 
 	void setGameDef(IGameDef* gamedef) { m_gamedef = gamedef; }
+#if CHECK_CLIENT_BUILD()
+	// afx fork: a client environment with its own files (not the CSM ones)
+	void setModVFS(ModVFS *vfs) { m_mod_vfs_override = vfs; }
+	ModVFS *m_mod_vfs_override = nullptr;
+#endif
 
 	Environment* getEnv() { return m_environment; }
 	void setEnv(Environment* env) { m_environment = env; }

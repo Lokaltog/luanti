@@ -3,6 +3,7 @@
 // Copyright (C) 2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "client.h"
+#include "client/afx/afx_script.h"
 
 #include "chatmessage.h"
 #include "client/clientevent.h"
@@ -1819,6 +1820,9 @@ void Client::typeChatMessage(const std::wstring &message)
 
 	// If message was consumed by script API, don't send it to server
 	if (m_mods_loaded && m_script->on_sending_message(message_utf8))
+		return;
+	// afx: the ambience's own commands (/afx, /afx_report) stay on this client
+	if (afx::scriptChat(message_utf8))
 		return;
 
 	// Send to others

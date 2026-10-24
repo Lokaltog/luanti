@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include <mutex>
+#include <unordered_map>
 
 std::vector<std::string> SoundFallbackPathProvider::
 		getLocalFallbackPathsForSoundname(const std::string &name)
@@ -48,6 +50,33 @@ void SoundFallbackPathProvider::addThePaths(const std::string &name,
 {
 	addAllAlternatives(porting::path_share + DIR_DELIM + "sounds" + DIR_DELIM + name, paths);
 	addAllAlternatives(porting::path_user + DIR_DELIM + "sounds" + DIR_DELIM + name, paths);
+	// afx fork: the engine's own ambience sounds
+	addAllAlternatives(porting::path_share + DIR_DELIM + "sounds" + DIR_DELIM + "afx" +
+			DIR_DELIM + name, paths);
+}
+
+bool soundExistsLocally(const std::string &name)
+{
+	static std::unordered_map<std::string, bool> cache;
+	static std::mutex mutex;
+	std::lock_guard<std::mutex> lock(mutex);
+	auto it = cache.find(name);
+	if (it != cache.end())
+		return it->second;
+	bool found = false;
+	for (const std::string &dir : {porting::path_share + DIR_DELIM + "sounds" + DIR_DELIM + "afx",
+			porting::path_share + DIR_DELIM + "sounds", porting::path_user + DIR_DELIM + "sounds"}) {
+		for (const char *ext : {".ogg", ".0.ogg", ".1.ogg"}) {
+			if (fs::PathExists(dir + DIR_DELIM + name + ext)) {
+				found = true;
+				break;
+			}
+		}
+		if (found)
+			break;
+	}
+	cache[name] = found;
+	return found;
 }
 
 void ISoundManager::reportRemovedSound(sound_handle_t id)

@@ -233,6 +233,8 @@ endif()
 
 
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/builtin" DESTINATION "${SHAREDIR}")
+# afx fork: the engine's own ambience sounds
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/sounds/afx" DESTINATION "${SHAREDIR}/sounds")
 if(RUN_IN_PLACE)
 	install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/mods/mods_here.txt" DESTINATION "${SHAREDIR}/mods")
 	install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/textures/texture_packs_here.txt" DESTINATION "${SHAREDIR}/textures")

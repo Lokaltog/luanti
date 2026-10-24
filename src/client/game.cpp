@@ -9,6 +9,7 @@
 #include "client/gameui.h"
 #include "client/fx/fx.h"
 #include "client/afx/afx.h"
+#include "client/afx/afx_script.h"
 #include "client/inputhandler.h"
 #include "client/texturepaths.h"
 #include "client/keys.h"
@@ -398,6 +399,7 @@ Game::Game() :
 
 Game::~Game()
 {
+	afx::scriptStop(); // its sounds and scripts go before the client
 	delete client;
 	soundmaker.reset();
 	sound_manager.reset();
@@ -3318,6 +3320,7 @@ void Game::handleDigging(const PointedThing &pointed, const v3s16 &nodepos,
 	if (!runData.digging) {
 		infostream << "Started digging" << std::endl;
 		runData.dig_instantly = runData.dig_time_complete == 0;
+		afx::scriptNode("punch", nodepos, nodedef_manager->get(n).name);
 		if (client->modsLoaded() && client->getScript()->on_punchnode(nodepos, n))
 			return;
 
@@ -3387,6 +3390,7 @@ void Game::handleDigging(const PointedThing &pointed, const v3s16 &nodepos,
 		runData.nodig_delay_timer = std::max(runData.nodig_delay_timer,
 				m_repeat_dig_time - runData.dig_time_complete);
 
+		afx::scriptNode("dig", nodepos, nodedef_manager->get(n).name);
 		if (client->modsLoaded() &&
 				client->getScript()->on_dignode(nodepos, n)) {
 			return;

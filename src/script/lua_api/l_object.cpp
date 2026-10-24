@@ -1877,8 +1877,10 @@ int ObjectRef::l_get_acoustics(lua_State *L)
 	return 1;
 }
 
-// set_afx_world(self, table): weather around the player for how sound
-// travels. Only sent to afx clients (ones that report their acoustics).
+// set_afx_world(self, table): what the player's client can't know for
+// itself (the weather, the biome...), for its ambience: numbers, or words
+// (spaces become "_"). Only sent to afx clients (ones that report their
+// acoustics).
 int ObjectRef::l_set_afx_world(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
@@ -1889,12 +1891,52 @@ int ObjectRef::l_set_afx_world(lua_State *L)
 	std::ostringstream os;
 	lua_pushnil(L);
 	while (lua_next(L, 2) != 0) {
-		if (lua_type(L, -2) == LUA_TSTRING && lua_isnumber(L, -1))
-			os << lua_tostring(L, -2) << "=" << lua_tonumber(L, -1) << " ";
+		if (lua_type(L, -2) == LUA_TSTRING) {
+			if (lua_type(L, -1) == LUA_TNUMBER) {
+				os << lua_tostring(L, -2) << "=" << lua_tonumber(L, -1) << " ";
+			} else if (lua_type(L, -1) == LUA_TSTRING) {
+				std::string v = lua_tostring(L, -1);
+				for (char &c : v)
+					if (std::isspace((unsigned char)c) || c == '=')
+						c = '_';
+				if (!v.empty())
+					os << lua_tostring(L, -2) << "=" << v << " ";
+			} else if (lua_type(L, -1) == LUA_TBOOLEAN) {
+				os << lua_tostring(L, -2) << "=" << (lua_toboolean(L, -1) ? 1 : 0) << " ";
+			}
+		}
 		lua_pop(L, 1);
 	}
 	getServer(L)->SendAfxWorld(player->getPeerId(), os.str());
 	return 0;
+}
+
+// send_afx_data(self, channel, data): a data channel for the client's
+// ambience (the game's facts, its creatures, a lightning strike). Only to
+// afx clients. Returns true if sent.
+int ObjectRef::l_send_afx_data(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	RemotePlayer *player = getplayer(ref);
+	std::string channel = luaL_checkstring(L, 2);
+	size_t len = 0;
+	const char *data = luaL_checklstring(L, 3, &len);
+	if (!player || player->afx_state_time == 0 || channel.empty() ||
+			channel.find(' ') != std::string::npos) {
+		lua_pushboolean(L, false);
+		return 1;
+	}
+	std::string msg = "@" + channel + " " + std::string(data, len);
+	if (msg.size() > 65000) {
+		warningstream << "send_afx_data: " << channel << " too large (" << msg.size()
+				<< " bytes)" << std::endl;
+		lua_pushboolean(L, false);
+		return 1;
+	}
+	getServer(L)->SendAfxWorld(player->getPeerId(), msg);
+	lua_pushboolean(L, true);
+	return 1;
 }
 
 int ObjectRef::l_get_player_control_bits(lua_State *L)
@@ -3199,6 +3241,7 @@ luaL_Reg ObjectRef::methods[] = {
 	luamethod(ObjectRef, get_player_control_bits),
 	luamethod(ObjectRef, get_acoustics),
 	luamethod(ObjectRef, set_afx_world),
+	luamethod(ObjectRef, send_afx_data),
 	luamethod(ObjectRef, set_physics_override),
 	luamethod(ObjectRef, get_physics_override),
 	luamethod(ObjectRef, hud_add),

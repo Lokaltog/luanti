@@ -35,6 +35,7 @@ set(client_SRCS
 	${CMAKE_CURRENT_SOURCE_DIR}/afx/afx_probe.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/afx/afx_mix.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/afx/afx.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/afx/afx_script.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/render/anaglyph.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/render/core.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/render/factory.cpp

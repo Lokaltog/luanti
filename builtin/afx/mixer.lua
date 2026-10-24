@@ -1,10 +1,10 @@
 -- /afx: a live mixer for the environmental audio. The engine's afx_* settings
--- (reverb, echo, occlusion, the score...) and this mod's per-layer volumes,
--- as sliders that apply as you drag them and are saved.
+-- (reverb, echo, occlusion, the score...) and the ambience's per-layer
+-- volumes, as sliders that apply as you drag them and are saved. It's the
+-- client's own: it works on any server.
 --
--- /afx_report: what this mod found in the game you're playing, to check
--- that a game's names and groups were picked up (paste it to whoever is
--- tuning it).
+-- /afx_report: what the ambience found in the game you're playing, to
+-- check that a game's names and groups were picked up.
 
 local A = afx_ambience
 local F = core.formspec_escape
@@ -52,7 +52,7 @@ local function formspec(name)
 		y = y + 0.6
 	end
 	y = y + 0.3
-	rows[#rows + 1] = ("label[0.4,%f;%s]"):format(y, F("Layers (this mod)"))
+	rows[#rows + 1] = ("label[0.4,%f;%s]"):format(y, F("Ambience layers"))
 	y = y + 0.5
 	for _, l in ipairs(A.LAYERS) do
 		rows[#rows + 1] = slider(y, "v_" .. l[1], l[2], A.volume(l[1]), 2, l[3])
@@ -78,17 +78,14 @@ end
 
 core.register_chatcommand("afx", {
 	description = "Environmental audio mixer",
-	-- it writes the server's settings: singleplayer, or the server's admin
-	privs = core.is_singleplayer() and {} or {server = true},
 	func = function(name)
-		core.show_formspec(name, "afx_ambience:mixer", formspec(name))
+		core.show_formspec(name, "afx:mixer", formspec(name))
 		return true
 	end,
 })
 
 core.register_on_player_receive_fields(function(player, formname, fields)
-	if formname ~= "afx_ambience:mixer" then return end
-	if not core.is_singleplayer() and not core.check_player_privs(player, "server") then return end
+	if formname ~= "afx:mixer" then return end
 	local name = player:get_player_name()
 	local changed = false
 	for k, v in pairs(fields) do
@@ -119,7 +116,7 @@ core.register_on_player_receive_fields(function(player, formname, fields)
 	end
 	-- redraw, so the numbers next to the sliders follow them
 	if changed then
-		core.show_formspec(name, "afx_ambience:mixer", formspec(name))
+		core.show_formspec(name, "afx:mixer", formspec(name))
 	end
 end)
 
@@ -135,11 +132,19 @@ core.register_chatcommand("afx_report", {
 		local player = core.get_player_by_name(name)
 		local lines = {"afx_report " .. os.date("%Y-%m-%d %H:%M")}
 		local function add(s) lines[#lines + 1] = s end
-		add("game: " .. tostring((core.get_game_info and core.get_game_info().id) or "?"))
+		local game = core.afx.game
+		add("game: " .. tostring(game.id or "? (no afx_ambience bridge on the server)"))
 		for _, m in ipairs({"mcl_weather", "lightning", "mcl_worlds", "mcl_bells", "mcl_fire",
 				"fire", "vl_env_sounds", "env_sounds", "mcl_music", "vl_cavesounds", "mcl_mobs"}) do
 			add(("mod %-14s %s"):format(m, core.get_modpath(m) and "yes" or "-"))
 		end
+		local w = {}
+		for k, v in pairs(core.afx.world) do w[#w + 1] = k .. "=" .. tostring(v) end
+		table.sort(w)
+		add("server says: " .. table.concat(w, " "))
+		local n = 0
+		for _ in pairs(core.registered_entities) do n = n + 1 end
+		add("creatures the server described: " .. n)
 		if player then
 			local h = player.get_acoustics and player:get_acoustics()
 			if h then
@@ -190,12 +195,9 @@ core.register_chatcommand("afx_report", {
 		end
 		local text = table.concat(lines, "\n")
 		core.log("action", "\n" .. text)
-		local path = core.get_worldpath() .. "/afx_report.txt"
-		local f = io.open(path, "w")
-		if f then f:write(text) f:close() end
-		core.show_formspec(name, "afx_ambience:report",
+		core.show_formspec(name, "afx:report",
 			"formspec_version[6]size[14,11]textarea[0.3,0.3;13.4,9.6;report;;" .. F(text) ..
 			"]button_exit[5.5,10.1;3,0.7;ok;OK]")
-		return true, "afx_report written to " .. path
+		return true, "afx_report: also in the client log"
 	end,
 })

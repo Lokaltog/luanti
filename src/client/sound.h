@@ -44,6 +44,10 @@ using sound_handle_t = int;
 
 constexpr sound_handle_t SOUND_HANDLE_T_MAX = std::numeric_limits<sound_handle_t>::max();
 
+/// afx fork: is there a sound file by this name with the client (its own
+/// sounds, a sound pack), whatever the server sent? Cached.
+bool soundExistsLocally(const std::string &name);
+
 class ISoundManager
 {
 private:

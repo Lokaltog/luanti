@@ -1047,6 +1047,51 @@ afx_outdoor_sounds (Outdoor sounds) string *rain*,*wind*,*weather*,*thunder*
 afx_indoor_sounds (Indoor sounds) string
 
 
+
+[***Ambience]
+
+#    The ambience the client plays from the world around you (builtin/afx).
+#    The /afx command opens a live mixer for all of it.
+
+#    Rain drums on the roof above you and patters on nearby windows.
+afx_ambience_rain_surfaces (Rain on roofs and windows) bool true
+
+#    Occasional birdsong from nearby trees.
+afx_ambience_birds (Birds) bool true
+
+#    Mean seconds between bird calls (exponentially distributed).
+afx_ambience_bird_interval (Bird interval) float 25 3 300
+
+#    Drips from cave ceilings when underground.
+afx_ambience_cave (Cave drips) bool true
+
+#    Bubbling and hissing at lava surfaces.
+afx_ambience_lava (Lava) bool true
+
+#    Radius in nodes scanned for windows and lava.
+afx_ambience_radius (Scan radius) int 10 4 24
+
+afx_ambience_debug (Debug log) bool false
+
+#    Biome ambience beds: wind, wind in trees, distant birds, crickets at
+#    night, frogs, jungle, waves. Muffled by the engine indoors.
+afx_ambience_beds (Biome beds) bool true
+
+#    Rivers, waterfalls, insects over flowers, bees, fires and lit furnaces.
+afx_ambience_proximity (Nearby sources) bool true
+
+#    Use the biome map (names like "forest", "desert", "ocean") for the beds.
+#    Off: only the nodes around the player count.
+afx_ambience_use_biomes (Use biome names) bool true
+
+#    Deep in the dark, now and then, footsteps follow a beat behind yours and
+#    stop when you stop. Off by default.
+afx_ambience_follower (Something follows you) bool false
+
+#    Rare ore (diamond, emerald, ancient debris) within a few blocks glints
+#    faintly, heard through the rock. A gameplay hint, so off by default.
+afx_ambience_treasure (Treasure shimmer) bool false
+
 [*User Interfaces]
 
 #    Set the language. By default, the system language is used.

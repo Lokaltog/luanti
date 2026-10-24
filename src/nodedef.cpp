@@ -1177,6 +1177,9 @@ void NodeDefManager::deSerialize(std::istream &is, u16 protocol_version)
 		f->floats = itemgroup_get(f->groups, "float") != 0;
 		m_content_lighting_flag_cache[i] = f->getLightingFlags();
 		addNameIdMapping(i, f->name);
+		// (so "group:..." lookups work on the client too; afx's ambience uses them)
+		for (const auto &group : f->groups)
+			m_group_to_items[group.first].push_back(i);
 		TRACESTREAM(<< "NodeDef: deserialized " << f->name << std::endl);
 
 		getNodeBoxUnion(f->selection_box, *f, &m_selection_box_union);

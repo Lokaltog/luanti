@@ -77,6 +77,9 @@ elseif INIT == "async_game" then
 	dofile(asyncpath .. "game.lua")
 elseif INIT == "client" then
 	dofile(scriptdir .. "client" .. DIR_DELIM .. "init.lua")
+elseif INIT == "afx" then
+	-- afx fork: the client's ambience runtime (src/script/scripting_afx.h)
+	dofile(scriptdir .. "afx" .. DIR_DELIM .. "init.lua")
 elseif INIT == "sscsm" and core.get_current_modname() == "*client_builtin*" then
 	dofile(scriptdir .. "sscsm_client" .. DIR_DELIM .. "init.lua")
 elseif INIT == "sscsm" and core.get_current_modname() == "*server_builtin*" then

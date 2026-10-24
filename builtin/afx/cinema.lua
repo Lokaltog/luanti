@@ -33,7 +33,7 @@ A.register_tick(function(player, dtime)
 	local hp = player:get_hp()
 	local hp_max = (player:get_properties().hp_max or 20)
 	local intensity = 0
-	if core.settings:get_bool("enable_damage") ~= false and hp > 0 then
+	if core.afx.game.damage ~= false and hp > 0 then
 		intensity = math.max(0, (0.35 * hp_max - hp) / (0.35 * hp_max))
 	end
 	local light = core.get_node_light(vector.round(vector.offset(pos, 0, 1, 0))) or 15

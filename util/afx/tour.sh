@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Records a scripted listening scenario in the real client: what the player
 # hears (OpenAL Soft's wave backend, no sound card needed) plus the client's
-# acoustic state, with the afx_ambience content mod running.
+# acoustic state, with the client ambience and the afx_ambience bridge running.
 #
 #   util/afx/tour.sh <outdir> <scenario> [key=value ...]
 #   scenarios: hut_rain tunnel_wind forest cavern cliff descent meadow beach sky_island

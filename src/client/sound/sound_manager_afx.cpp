@@ -75,7 +75,7 @@ void OpenALSoundManager::setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> 
 	if (still && m_afx_smoother.valid() && m_last_target_outdoor < 0.02f && target.outdoor_gain > 0.05f &&
 			target.enclosure > 0.6f && !target.submerged && m_whoomp_cooldown <= 0.0f) {
 		m_whoomp_cooldown = 4.0f;
-		std::string w = getLoadedSoundNameFromGroup("afx_dry_whoomp");
+		std::string w = getOrLoadLoadedSoundNameFromGroup("afx_dry_whoomp");
 		if (!w.empty()) {
 			auto snd = createPlayingSound(w, false, 0.35f * std::min(1.0f, target.outdoor_gain * 4.0f),
 					1.0f, 0.0f, std::nullopt, afx::Bus::Dry);
@@ -245,7 +245,7 @@ void OpenALSoundManager::noteImpact(const std::string &group, f32 gain,
 		// the ringing: one at a time
 		if (d > 0.35f && m_ring_cooldown <= 0.0f) {
 			m_ring_cooldown = 3.0f;
-			std::string ring = getLoadedSoundNameFromGroup("afx_dry_ring");
+			std::string ring = getOrLoadLoadedSoundNameFromGroup("afx_dry_ring");
 			if (!ring.empty()) {
 				auto snd = createPlayingSound(ring, false, 0.6f * d, 1.0f, 0.0f,
 						std::nullopt, afx::Bus::Dry);
@@ -448,7 +448,7 @@ void OpenALSoundManager::stepCaveMoan(f32 dtime)
 		if (m_moan_level < 0.003f || m_moan_retry > 0.0f || m_is_paused)
 			return;
 		m_moan_retry = 10.0f;
-		const std::string name = getLoadedSoundNameFromGroup("afx_cave_moan");
+		const std::string name = getOrLoadLoadedSoundNameFromGroup("afx_cave_moan");
 		if (name.empty())
 			return;
 		m_moan = createPlayingSound(name, true, 0.0f, 1.0f, 0.0f,
@@ -489,7 +489,7 @@ ALuint OpenALSoundManager::recordedSpaceBuffer(int index)
 		if (now < m_ir_retry[index])
 			return 0;
 		m_ir_retry[index] = now + 10.0f;
-		const std::string name = getLoadedSoundNameFromGroup(afx::RECORDED_SPACES[index].sound);
+		const std::string name = getOrLoadLoadedSoundNameFromGroup(afx::RECORDED_SPACES[index].sound);
 		if (name.empty())
 			return 0;
 		data = openSingleSound(name);
@@ -552,7 +552,7 @@ void OpenALSoundManager::stepRoomTone(f32 dtime)
 		if (t.gain < 0.002f || m_roomtone_retry > 0.0f || m_is_paused)
 			return;
 		m_roomtone_retry = 10.0f; // missing sound: don't look every frame
-		const std::string name = getLoadedSoundNameFromGroup("afx_roomtone");
+		const std::string name = getOrLoadLoadedSoundNameFromGroup("afx_roomtone");
 		if (name.empty())
 			return;
 		// Bus::Indoor so the start-up mix is sane; the real mix is set here

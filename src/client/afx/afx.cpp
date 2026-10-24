@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include "afx.h"
+#include "afx_script.h"
 #include "afx_knock.h"
 #include "afx_mood.h"
 #include "afx_score.h"
@@ -728,31 +729,46 @@ static void updateFlyBys(Client *client, ISoundManager *sound, v3f ear, float dt
 	}
 }
 
-/// Tell the server what the player hears, so server mods (afx_ambience)
-/// agree with it: indoors or out, a cave, under water. Twice a second.
+std::vector<std::pair<std::string, float>> hearing(ISoundManager *sound)
+{
+	Report r;
+	if (!sound || !sound->getAcousticReport(r) || !r.valid)
+		return {};
+	const Acoustics &a = r.now;
+	const Mood &m = s_mood.smoother.current();
+	return {
+		{"enclosure", a.enclosure}, {"outdoor", a.outdoor_gain}, {"outdoor_hf", a.outdoor_hf},
+		{"wall", a.outdoor_wall}, {"path", a.outdoor_path},
+		{"sky", (a.outdoor_path < 0.5f && a.outdoor_gain > 0.99f) ? 1.f : 0.f},
+		{"wet", a.wet}, {"decay", a.decay}, {"mfp", a.mean_free_path},
+		{"absorption", a.absorption}, {"hf", a.hf}, {"echo", a.echo},
+		{"coupling", a.coupling}, {"hollow", a.hollow},
+		{"underwater", a.underwater ? 1.f : 0.f}, {"lava", a.in_lava ? 1.f : 0.f},
+		{"submerged", a.submerged}, {"water_depth", a.water_depth}, {"natural", a.natural},
+		{"tension", m.tension}, {"cozy", m.cozy}, {"homey", (float)s_last_homey},
+		{"efx", r.efx ? 1.f : 0.f},
+	};
+}
+
+/// Tell the server what the player hears, so server mods agree with it:
+/// indoors or out, a cave, under water. Twice a second.
 static void sendState(Client *client, ISoundManager *sound, float dtime)
 {
 	static float timer = 0.f;
 	if ((timer -= dtime) > 0.f)
 		return;
 	timer = 0.5f;
-	Report r;
-	if (!sound->getAcousticReport(r) || !r.valid)
+	const auto h = hearing(sound);
+	if (h.empty())
 		return;
-	const Acoustics &a = r.now;
-	const Mood &m = s_mood.smoother.current();
-	char buf[512];
-	snprintf(buf, sizeof(buf),
-			"v=1 enclosure=%.3f outdoor=%.3f outdoor_hf=%.3f wall=%.3f path=%.1f "
-			"sky=%d wet=%.3f decay=%.2f mfp=%.2f absorption=%.3f hf=%.3f echo=%.3f "
-			"coupling=%.3f hollow=%.3f underwater=%d lava=%d submerged=%.2f "
-			"natural=%.2f tension=%.3f cozy=%.3f homey=%d efx=%d",
-			a.enclosure, a.outdoor_gain, a.outdoor_hf, a.outdoor_wall, a.outdoor_path,
-			(a.outdoor_path < 0.5f && a.outdoor_gain > 0.99f) ? 1 : 0,
-			a.wet, a.decay, a.mean_free_path, a.absorption, a.hf, a.echo,
-			a.coupling, a.hollow, a.underwater ? 1 : 0, a.in_lava ? 1 : 0, a.submerged,
-			a.natural, m.tension, m.cozy, (int)s_last_homey, r.efx ? 1 : 0);
-	client->sendAfxState(buf);
+	std::ostringstream os;
+	os << "v=1";
+	char buf[48];
+	for (const auto &[k, v] : h) {
+		snprintf(buf, sizeof(buf), " %s=%.3f", k.c_str(), v);
+		os << buf;
+	}
+	client->sendAfxState(os.str());
 }
 
 void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
@@ -764,6 +780,7 @@ void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 	const Params &p = s_params;
 	if (!p.enabled) {
 		if (s_was_enabled) {
+			scriptStop(); // the ambience goes quiet with it
 			sound->setAcoustics(nullptr, p); // tells the sound thread to detach
 			driveBed(sound, s_mood.dread, 0.f);
 			driveBed(sound, s_mood.cozy, 0.f);
@@ -776,6 +793,7 @@ void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 	updateMood(client, sound, ear, dtime, p);
 	sendState(client, sound, dtime);
 	updateFlyBys(client, sound, ear, dtime);
+	scriptStep(client, sound, dtime);
 
 	// With afx_debug, log the state every 2 s (for headless runs and tuning)
 	static float log_timer = 0.f;

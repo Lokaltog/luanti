@@ -48,7 +48,7 @@ local function underground_rivers(ctx, wanted)
 	for _, p in ipairs(core.find_nodes_in_area(vector.offset(ctx.ppos, -r, -12, -r),
 			vector.offset(ctx.ppos, r, 12, r), A.FLOWING)) do
 		-- the game plays the ones close by (vl_env_sounds, env_sounds)
-		if not L.GAME_HAS_WATER_LAVA or vector.distance(p, ctx.ppos) > 9 then
+		if not L.game_has("water_lava") or vector.distance(p, ctx.ppos) > 9 then
 			flowing[#flowing + 1] = p
 		end
 	end

@@ -690,7 +690,7 @@ local function growl(pos, n)
 end
 
 TIMELINE.voices = {
-	{fn = function() afx_ambience.lib.player_state(player_name).next_timber = 0 end,
+	{fn = function() afx_ambience.poke(player_name, "next_timber", 0) end,
 		wait = 10, log = "a sealed wooden hut, nothing playing"},
 	{fn = function() P():set_pos(v(0, 0, 30)) end, wait = 8, log = "inside the stone cave"},
 	{fn = function() P():set_pos(v(0, 0, 0)) end, wait = 3, log = "outside, open meadow"},
@@ -704,18 +704,11 @@ TIMELINE.voices = {
 	{fn = function() growl(v(13, -3.5, -3), 3) end, wait = 10, log = "the pond, source space off"},
 	{fn = function()
 		core.settings:set("afx_source_space", "1")
-		-- exercise the mixer and the report
-		local ok, msg = core.registered_chatcommands.afx.func(player_name, "")
-		core.log("action", "afxscene: /afx -> " .. tostring(ok))
-		for _, cb in ipairs(core.registered_on_player_receive_fields) do
-			cb(P(), "afx_ambience:mixer", {e_afx_reverb = "CHG:150", v_birds = "CHG:40",
-				afx_ambience_follower = "true"})
-		end
-		core.log("action", "afxscene: mixer -> reverb " .. core.settings:get("afx_reverb") ..
-			" birds " .. afx_ambience.volume("birds") ..
-			" follower " .. tostring(core.settings:get_bool("afx_ambience_follower")))
-		ok, msg = core.registered_chatcommands.afx_report.func(player_name, "")
-		core.log("action", "afxscene: /afx_report -> " .. tostring(msg))
+		-- exercise the client's mixer and report (it logs what happened)
+		afx_ambience.client_chat(player_name, "/afx")
+		afx_ambience.client_fields(player_name, "afx:mixer", {e_afx_reverb = "CHG:150",
+			v_birds = "CHG:40", afx_ambience_follower = "true"})
+		afx_ambience.client_chat(player_name, "/afx_report")
 	end, wait = 1, log = "mixer"},
 }
 
@@ -800,11 +793,10 @@ BUILD.mixer = function(b)
 	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
 end
 TIMELINE.mixer = {
-	{fn = function() core.registered_chatcommands.afx.func(player_name, "") end, wait = 5, log = "mixer open"},
+	-- (the mixer is the client's: it opens there, its fields go there)
+	{fn = function() afx_ambience.client_chat(player_name, "/afx") end, wait = 5, log = "mixer open"},
 	{fn = function()
-		for _, cb in ipairs(core.registered_on_player_receive_fields) do
-			cb(P(), "afx_ambience:mixer", {e_afx_reverb = "CHG:170", v_birds = "VAL:100"})
-		end
+		afx_ambience.client_fields(player_name, "afx:mixer", {e_afx_reverb = "CHG:170", v_birds = "VAL:100"})
 	end, wait = 5, log = "reverb dragged to 170%"},
 }
 
@@ -890,7 +882,7 @@ TIMELINE.details = {
 		pl:set_physics_override({gravity = 0, speed = 0, jump = 0})
 		pl:set_pos(v(20, -30, -20))
 		pl:get_inventory():set_stack("main", 1, "afxscene:pocket_clock")
-		afx_ambience.lib.player_state(player_name).next_settle = 0
+		afx_ambience.poke(player_name, "next_settle", 0)
 	end, wait = 14, log = "the cave under the lake, a clock in hand"},
 }
 
@@ -906,8 +898,7 @@ TIMELINE.cinema = {
 		local pl = P()
 		pl:set_hp(20)
 		pl:set_pos(v(0, -30, 0))
-		local st = afx_ambience.lib.player_state(player_name)
-		st.next_follow = 0
+		afx_ambience.poke(player_name, "next_follow", 0)
 	end, wait = 2, log = "deep in the dark"},
 	{walk = v(9, -30, 0), speed = 2, steps = "default_hard_footstep"},
 	{wait = 2},

@@ -4,6 +4,7 @@
 
 #include "client/client.h"
 #include "client/afx/afx.h"
+#include "client/afx/afx_script.h"
 
 #include "exceptions.h"
 #include "irr_v2d.h"
@@ -1888,7 +1889,10 @@ void Client::handleCommand_AfxWorld(NetworkPacket *pkt)
 {
 	std::string state;
 	*pkt >> state;
-	afx::setWorldState(state);
+	// The server's word on the weather, the biome... ("key=value ..."), and
+	// data channels ("@channel data"): for the ambience scripts, which
+	// tell the engine the weather it bends sounds with (afx_set_world)
+	afx::scriptWorld(state);
 }
 
 void Client::handleCommand_SetLighting(NetworkPacket *pkt)

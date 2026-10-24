@@ -31,6 +31,7 @@ set(common_SCRIPT_LUA_API_SRCS
 	PARENT_SCOPE)
 
 set(client_SCRIPT_LUA_API_SRCS
+	${CMAKE_CURRENT_SOURCE_DIR}/l_afx.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/l_camera.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/l_client.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/l_client_common.cpp

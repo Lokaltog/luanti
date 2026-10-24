@@ -3,6 +3,7 @@
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "game_formspec.h"
+#include "client/afx/afx_script.h"
 
 #include "gettext.h"
 #include "nodemetadata.h"
@@ -75,6 +76,12 @@ struct LocalScriptingFormspecHandler : public TextDest
 	}
 
 	ScriptApiClientCommon *m_script = nullptr;
+};
+
+struct AfxFormspecHandler : public TextDest
+{
+	AfxFormspecHandler(const std::string &formname) { m_formname = formname; }
+	void gotText(const StringMap &fields) { afx::scriptFormspec(m_formname, fields); }
 };
 
 struct HardcodedPauseFormspecHandler : public TextDest
@@ -255,8 +262,11 @@ void GameFormSpec::showCSMFormSpec(const std::string &formspec, const std::strin
 		return;
 
 	FormspecFormSource *fs_src = new FormspecFormSource(formspec);
-	LocalScriptingFormspecHandler *txt_dst =
-		new LocalScriptingFormspecHandler(formname, m_client->getScript());
+	TextDest *txt_dst;
+	if (str_starts_with(formname, "afx:"))
+		txt_dst = new AfxFormspecHandler(formname); // the ambience's own (the /afx mixer)
+	else
+		txt_dst = new LocalScriptingFormspecHandler(formname, m_client->getScript());
 
 	GUIFormSpecMenu::create(m_formspec, m_client, m_rendering_engine->get_gui_env(),
 			fs_src, txt_dst, m_client->getFormspecPrepend(),

@@ -138,19 +138,21 @@ end)
 --[[ Village bells at dawn and noon ]]
 
 local BELLS = {}
-local BELL_SOUND
 core.register_on_mods_loaded(function()
 	for name in pairs(core.registered_nodes) do
 		if name:match(":bell$") or name:match(":bell_") then BELLS[#BELLS + 1] = name end
 	end
-	BELL_SOUND = core.get_modpath("mcl_bells") and "mcl_bells_bell_stroke" or nil
 end)
+-- the game's own bell, when it has one (known once the server said)
+local function bell_sound()
+	return core.get_modpath("mcl_bells") and "mcl_bells_bell_stroke" or nil
+end
 
 local function ring(pos, pname, strokes)
 	for i = 0, strokes - 1 do
 		core.after(i * 2.4, function()
-			if BELL_SOUND then
-				afx_ambience.play(BELL_SOUND, {pos = pos, to_player = pname, gain = 0.9,
+			if bell_sound() then
+				afx_ambience.play(bell_sound(), {pos = pos, to_player = pname, gain = 0.9,
 					max_hear_distance = 120}, true)
 			else
 				afx_ambience.play("afx_bowl", {pos = pos, to_player = pname, gain = 0.8,
@@ -212,43 +214,6 @@ end)
 
 -- Pentatonic: whatever the wind plays, it's in tune
 local SCALE = {1, 9 / 8, 5 / 4, 3 / 2, 5 / 3, 2, 9 / 4}
-
-core.register_node("afx_ambience:wind_chime", {
-	description = "Wind Chime",
-	drawtype = "plantlike",
-	tiles = {"afx_ambience_wind_chime.png"},
-	inventory_image = "afx_ambience_wind_chime.png",
-	wield_image = "afx_ambience_wind_chime.png",
-	paramtype = "light",
-	sunlight_propagates = true,
-	walkable = false,
-	selection_box = {type = "fixed", fixed = {-0.3, -0.3, -0.3, 0.3, 0.5, 0.3}},
-	groups = {oddly_breakable_by_hand = 3, handy = 1, dig_immediate = 3, attached_node = 4,
-		deco_block = 1},
-	_mcl_hardness = 0.3,
-	on_punch = function(pos, node, puncher)
-		-- a tap rings it
-		for i = 0, 2 do
-			core.after(i * 0.18, function()
-				afx_ambience.play("afx_bowl", {pos = pos, gain = 0.35,
-					pitch = 2 * SCALE[math.random(#SCALE)], max_hear_distance = 24}, true)
-			end)
-		end
-	end,
-})
-
-core.register_on_mods_loaded(function()
-	local nugget = core.registered_items["mcl_core:iron_nugget"] and "mcl_core:iron_nugget" or
-		core.registered_items["default:steel_ingot"] and "default:steel_ingot"
-	local string = core.registered_items["mcl_mobitems:string"] and "mcl_mobitems:string" or
-		core.registered_items["farming:string"] and "farming:string"
-	local stick = core.registered_items["mcl_core:stick"] and "mcl_core:stick" or
-		core.registered_items["default:stick"] and "default:stick"
-	if nugget and string and stick then
-		core.register_craft({output = "afx_ambience:wind_chime", recipe = {
-			{"", stick, ""}, {string, string, string}, {nugget, nugget, nugget}}})
-	end
-end)
 
 local LANTERNS = {}
 core.register_on_mods_loaded(function()
@@ -349,7 +314,7 @@ core.register_on_mods_loaded(function()
 		return {
 			"home nodes: " .. list(HOME), "rails: " .. list(RAILS), "timber: " .. list(TIMBER),
 			"spawners: " .. list(SPAWNERS), "mossy: " .. list(MOSSY), "bells: " .. list(BELLS),
-			"bell sound: " .. tostring(BELL_SOUND), "lanterns: " .. list(LANTERNS),
+			"bell sound: " .. tostring(bell_sound()), "lanterns: " .. list(LANTERNS),
 		}
 	end)
 end)

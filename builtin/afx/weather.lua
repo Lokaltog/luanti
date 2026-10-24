@@ -5,47 +5,21 @@
 local A = afx_ambience
 local L = A.lib
 
---[[ Gusts ]]
+--[[ Wind: the server's weather (afx_ambience's bridge) ]]
 
--- Wind strength over minutes: two slow swells plus discrete gusts that
--- rise over a few seconds, hold and die away. Shared by everyone (it's the
--- weather), shaped per player by exposure.
-local gust = {level = 0, phase = "idle", t = 0, next = 20, peak = 1}
-
-local function step_gust(dtime)
-	gust.t = gust.t + dtime
-	if gust.phase == "idle" then
-		gust.next = gust.next - dtime
-		if gust.next <= 0 then
-			gust.phase, gust.t, gust.peak = "rise", 0, L.rand(0.6, 1.4)
-			if A.on_gust then A.on_gust(gust.peak) end
-		end
-	elseif gust.phase == "rise" then
-		gust.level = gust.peak * math.min(1, gust.t / 3)
-		if gust.t >= 3 then gust.phase, gust.t = "hold", 0 end
-	elseif gust.phase == "hold" then
-		if gust.t >= L.rand(2, 6) then gust.phase, gust.t = "fall", 0 end
-	elseif gust.phase == "fall" then
-		gust.level = gust.peak * math.max(0, 1 - gust.t / 7)
-		if gust.t >= 7 then
-			gust.phase, gust.level, gust.next = "idle", 0, L.rand(15, 60)
-		end
-	end
-end
-
+-- Wind strength over minutes (slow swells and gusts), before this spot's
+-- exposure shapes it
 function A.wind_now()
-	local t = core.get_gametime() or 0
-	local swell = 0.75 + 0.15 * math.sin(t * 2 * math.pi / 180) + 0.1 * math.sin(t * 2 * math.pi / 47 + 1)
-	return swell + 0.6 * gust.level
+	return tonumber(core.afx.world.wind_raw) or 0.8
 end
 
--- Where the wind blows: veers slowly over the day, backs a little in a gust.
--- (A unit vector toward where it blows; the engine bends sound with it.)
+-- Where the wind blows (a unit vector toward where it blows)
 function A.wind_dir()
-	local t = core.get_gametime() or 0
-	local a = 0.8 + 0.9 * math.sin(t * 2 * math.pi / 1300) + 0.25 * math.sin(t * 2 * math.pi / 210)
-	a = a + 0.3 * gust.level
-	return {x = math.cos(a), y = 0, z = math.sin(a)}
+	local w = core.afx.world
+	local x, z = tonumber(w.wind_dir_x) or 1, tonumber(w.wind_dir_z) or 0
+	local l = math.sqrt(x * x + z * z)
+	if l < 1e-3 then return {x = 1, y = 0, z = 0} end
+	return {x = x / l, y = 0, z = z / l}
 end
 
 -- How exposed the ear is: height above the ground around (ridges, peaks).
@@ -109,7 +83,7 @@ local function rain_layer(ctx, wanted)
 	-- The front: rain marches in from upwind over ~25 s (the engine fades and
 	-- steers the game's rain bed by it), and after it stops our own tail
 	-- recedes downwind
-	local wd = A.wind_override and A.wind_override.dir or A.wind_dir()
+	local wd = A.wind_dir()
 	if raining then
 		ctx.rain_front = math.min(1, (now - rain.since) / 25)
 		ctx.rain_front_dir = {x = -wd.x, z = -wd.z}
@@ -233,18 +207,15 @@ A.register_layer(function(ctx, wanted)
 	ctx.wind = A.wind_now() * (0.7 + 0.8 * exposure(ctx.ppos))
 	ctx.st.wind = ctx.wind
 	rain_layer(ctx, wanted)
-	-- tell the player's engine, so distant sounds travel with the weather
-	if ctx.player.set_afx_world and ctx.hearing then
-		local d = A.wind_override and A.wind_override.dir or A.wind_dir()
-		local w = A.wind_override and A.wind_override.wind or ctx.wind
-		local fd = ctx.rain_front_dir or {x = 0, z = 0}
-		ctx.player:set_afx_world({wind_x = d.x, wind_z = d.z, wind = w,
-			rain = math.min(1, ctx.rain + 0.5 * ctx.snow),
-			rain_front = ctx.rain_front or 1, front_x = fd.x, front_z = fd.z})
-	end
+	-- tell the engine, so distant sounds travel with the weather (a test
+	-- scenario on the server can fix the wind)
+	local d = A.wind_dir()
+	local w = tonumber(core.afx.world.wind_fixed) or ctx.wind
+	local fd = ctx.rain_front_dir or {x = 0, z = 0}
+	core.afx_set_world({wind_x = d.x, wind_z = d.z, wind = w,
+		rain = math.min(1, ctx.rain + 0.5 * ctx.snow),
+		rain_front = ctx.rain_front or 1, front_x = fd.x, front_z = fd.z})
 end)
-
-core.register_globalstep(step_gust)
 
 --[[ Thunder: a crack up close, a long roll far away ]]
 
@@ -271,14 +242,14 @@ local function on_strike(pos, game_crack)
 	end
 end
 
-core.register_on_mods_loaded(function()
-	local lightning = rawget(_G, "lightning")
-	if lightning and lightning.register_on_strike then
-		lightning.register_on_strike(function(pos, pos2) on_strike(pos2 or pos, true) end)
-	end
-end)
-
 A.thunder_at = on_strike
+
+-- from the server: "x y z crack" (crack 1: the game plays its own at the strike)
+core.afx.register_on_data("strike", function(data)
+	local x, y, z, crack = data:match("^(%S+) (%S+) (%S+) ?(%S*)")
+	if not z then return end
+	on_strike({x = tonumber(x), y = tonumber(y), z = tonumber(z)}, crack == "1")
+end)
 
 --[[ Windows rattle when a big sound arrives: thunder, a blast ]]
 
@@ -313,32 +284,17 @@ local function rattle(pos, loudness)
 end
 A.rattle = rattle
 
-core.register_on_mods_loaded(function()
-	-- explosions, wherever the game sets them off
-	local ex = rawget(_G, "mcl_explosions")
-	if ex and ex.explode then
-		local explode = ex.explode
-		ex.explode = function(pos, strength, ...)
-			rattle(pos, math.min(1.5, (strength or 3) / 3))
-			return explode(pos, strength, ...)
-		end
-	end
-	local tnt = rawget(_G, "tnt")
-	-- (where tnt goes through mcl_explosions, that wrap already hears it)
-	if tnt and tnt.boom and not (ex and ex.explode) then
-		local boom = tnt.boom
-		tnt.boom = function(pos, def, ...)
-			rattle(pos, 1.2)
-			return boom(pos, def, ...)
-		end
-	end
+-- explosions, wherever the game sets them off: "x y z loudness"
+core.afx.register_on_data("blast", function(data)
+	local x, y, z, k = data:match("^(%S+) (%S+) (%S+) (%S+)")
+	if not k then return end
+	rattle({x = tonumber(x), y = tonumber(y), z = tonumber(z)}, tonumber(k) or 1)
 end)
 
--- For tests and scripted moments: start a gust now
-function A.gust_now(peak)
-	gust.phase, gust.t, gust.peak = "rise", 0, peak or 1.2
-	if A.on_gust then A.on_gust(gust.peak) end
-end
+-- a gust rising (the server's weather): "peak"
+core.afx.register_on_data("gust", function(data)
+	if A.on_gust then A.on_gust(tonumber(data) or 1) end
+end)
 
 --[[ Drafts: gaps in walls whistle when the wind is up ]]
 

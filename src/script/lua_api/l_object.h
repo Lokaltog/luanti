@@ -308,6 +308,9 @@ private:
 	// afx fork: set_afx_world(self, {wind_x=, wind_z=, wind=, rain=})
 	static int l_set_afx_world(lua_State *L);
 
+	// send_afx_data(self, channel, data)
+	static int l_send_afx_data(lua_State *L);
+
 	// hud_add(self, id, form)
 	static int l_hud_add(lua_State *L);
 

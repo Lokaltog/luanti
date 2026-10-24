@@ -4,7 +4,9 @@
 -- walk. (Footsteps sized to the body are the engine's: a chicken patters,
 -- a cow plods.)
 --
--- Audio only: the game decides where they actually go.
+-- Audio only: the game decides where they actually go. What kind of animal
+-- and its voice come from the server's entity table (afx_ambience's
+-- bridge sends the game's mob definitions).
 
 local A = afx_ambience
 local L = A.lib
@@ -38,7 +40,7 @@ end
 local last_startle = {} -- by object: seconds
 
 local function startle(obj, ent, k, pname, now, strength)
-	local key = tostring(obj)
+	local key = obj._id or tostring(obj) -- (a fresh wrapper each scan: by id)
 	if now - (last_startle[key] or -100) < 8 then return end
 	last_startle[key] = now
 	local pos = obj:get_pos()

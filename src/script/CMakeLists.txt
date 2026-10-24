@@ -20,6 +20,7 @@ set(common_SCRIPT_SRCS
 set(client_SCRIPT_SRCS
 	${CMAKE_CURRENT_SOURCE_DIR}/scripting_mainmenu.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/scripting_client.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/scripting_afx.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/scripting_pause_menu.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/scripting_sscsm.cpp
 

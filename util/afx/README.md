@@ -321,6 +321,35 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
   - `TestAfxEfx.testRecordedSpace`: through a loopback device, a response plays, and a swap fades over and drops the old one.
 - **hut_rain:** "door open" measured quieter than "door shut" because the storm was still building (rain ramps over 30 s). The scenario now waits for it, and checks that opening the door again isn't quieter.
 
+## Round 14: the client owns the ambience
+
+The ambience (what plays and where) moved from the server mod into the client. It now works on any server, and the server only sends what a client can't know.
+
+- **A Lua runtime of its own on the client** (`src/script/scripting_afx.*`, `src/client/afx/afx_script.*`):
+  - a separate Lua state, always on with afx, not client-side modding: `enable_client_modding` and a server's CSM restrictions don't apply;
+  - it runs only the engine's own scripts, `builtin/afx/` (`INIT = "afx"`);
+  - Lua errors are logged, not fatal; after 20 the scripts stop.
+- **Its API** (`src/script/lua_api/l_afx.*`) follows the server's names where the meaning is the same, so the scripts read like a mod:
+  - the loaded map: `get_node(_or_nil)`, `find_nodes_in_area(_under_air)`, `get_node_light`, `get_natural_light`, `get_timeofday`, node definitions with groups and sounds;
+  - sounds of its own: `sound_play` (pos, object id, loop, start_time, max_hear_distance), `sound_fade`, `sound_stop`, `afx_sound_move` for moving emitters; objects' sounds follow them;
+  - the local player, the objects around (entity name, size, velocity), and what the engine hears (`afx_hearing`, the same keys it reports to the server);
+  - `afx_set_world`: the weather the engine bends distant sounds with, now set by the scripts;
+  - storage (`<user>/client/afx_storage.conf`), local chat commands, formspecs named `afx:*`, chat messages.
+  - `builtin/afx/compat.lua` maps the server API the layers were written against: one connected player, objects with `get_luaentity()` from the server's creature table, callbacks.
+- **The layers** (`builtin/afx/*.lua`): everything the mod did, ported. The mixer (`/afx`) and `/afx_report` are now the client's, so they work on any server. Discoveries are kept per server, world and player. Gusts are moving sounds rather than entities. Items landing and arrows sticking are detected from how objects move.
+- **Sounds:** the ambience's sounds moved to `sounds/afx/` (installed to `share/sounds/afx`). The client finds them there whatever the server sends, so they're no longer media, and the engine's own effects (room tone, recorded spaces, whizz, knock) look there too. The extra takes of the game's footsteps stay in the mod, because they have to merge with the game's own groups.
+- **The mix** moved to `builtin/afx/levels.lua`; `sound_pipeline.py` now works on `sounds/afx`.
+- **The server mod `afx_ambience` is a bridge:**
+  - every second, to each afx client: rain and snow where the player is, the wind (swell and gusts, its direction), the biome with heat and humidity, the dimension, the day;
+  - once: the game (id, mods, sea level, world, damage, whether it plays its own water, lava and fire) and its creatures (type, voice, size);
+  - events: lightning strikes, explosions, a gust rising;
+  - content: the wind chime, note stones and the music box (their sounds are played by the client, with their levels);
+  - test hooks: `set_rain`, `gust_now`, `wind_override`, `thunder_at`, `poke`, `client_chat`, `client_fields`.
+  - Server API: `player:set_afx_world` takes words too, and `player:send_afx_data(channel, data)` carries the data channels.
+- **Engine fix:** client-side node definitions now index their groups, so `group:` lookups work on the client.
+- **Settings:** the ambience's settings are the engine's now (Environmental Audio → Ambience). `afx_debug_eval` runs a line of Lua in the ambience after `afx_debug_eval_at` seconds and logs the result, for headless tests.
+- **Without the bridge** (another server), the ambience still runs on the map. It has no weather, the biome comes from the nodes around, creatures go by name, and it's always the overworld.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

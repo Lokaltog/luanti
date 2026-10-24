@@ -606,6 +606,8 @@ Client *ScriptApiBase::getClient()
 
 ModVFS *ScriptApiBase::getModVFS()
 {
+	if (m_mod_vfs_override)
+		return m_mod_vfs_override;
 	if (m_type == ScriptingType::Client)
 		return getClient()->getModVFS();
 	else if (m_type == ScriptingType::SSCSM)

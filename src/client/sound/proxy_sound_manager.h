@@ -67,7 +67,7 @@ public:
 	bool getAcousticReport(afx::Report &out) const override;
 	bool hasSoundGroup(const std::string &group) const override
 	{
-		return m_known_groups.count(group) != 0;
+		return m_known_groups.count(group) != 0 || soundExistsLocally(group);
 	}
 };
 
