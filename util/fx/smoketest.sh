@@ -38,6 +38,9 @@ CASES=(
 	"debug3_luminance|fx_debug_view=3"
 	"debug5_scenecopy|fx_debug_view=5"
 	"debug7_ao|fx_debug_view=7"
+	"tuner|fx_open_tuner_on_start=true"
+	"mood_vibrant|fx_mood=vibrant fxscene_time=0.45"
+	"mood_dark|fx_mood=dark"
 )
 if [ -n "${ONLY:-}" ]; then
 	mapfile -t CASES < <(printf '%s\n' "${CASES[@]}" | grep -E "^($ONLY)\|")

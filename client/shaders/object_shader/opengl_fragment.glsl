@@ -51,6 +51,15 @@ VARYING_ float nightRatio;
 
 VARYING_ float vIDiff;
 
+#ifdef FX_ENABLE
+// fx: rim light so mobs and players read against dark backgrounds
+uniform vec3 cameraPosition;
+uniform float fxRimLight;
+#ifdef FX_COLORED_LIGHT
+VARYING_ vec3 fxChroma;
+#endif
+#endif
+
 #ifdef ENABLE_DYNAMIC_SHADOWS
 
 // assuming near is always 1.0
@@ -462,6 +471,21 @@ void main(void)
 	// For this to not make the fog color artificially dark we need to normalize using the
 	// fog color's brightest value. We then blend our base color with this to make the fog.
 	col = mix(fogColor * pow(fogColor / fogColorMax, vec4(2.0 * clarity)), col, clarity);
+#ifdef FX_ENABLE
+	if (fxRimLight > 0.0 && length(vNormal) > 0.0) {
+		vec3 V = normalize(cameraPosition - (worldPosition + cameraOffset));
+		float rim = pow(1.0 - clamp(dot(normalize(vNormal), V), 0.0, 1.0), 3.0);
+#ifdef FX_COLORED_LIGHT
+		vec3 rim_col = mix(dayLight, fxChroma * 0.8, nightRatio);
+#else
+		vec3 rim_col = mix(dayLight, vec3(0.8), nightRatio);
+#endif
+		// rim light is light from behind: scale by how lit the entity is
+		float lit = clamp(dot(varColor.rgb, vec3(0.333)) * 2.0, 0.15, 1.0);
+		col.rgb += base.rgb * rim_col * rim * fxRimLight * lit;
+	}
+#endif
+
 	col = vec4(col.rgb, base.a);
 
 	gl_FragColor = col;

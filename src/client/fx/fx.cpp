@@ -28,6 +28,7 @@
 #include <ICameraSceneNode.h>
 #include <IMaterialRendererServices.h>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -42,6 +43,9 @@ namespace fx
 	Params
 */
 
+// s_base: straight from the settings. s_params: effective values, i.e. the
+// base plus the current mood's situational blend (see updateMood()).
+static Params s_base;
 static Params s_params;
 
 static const char *const SETTING_NAMES[] = {
@@ -54,7 +58,44 @@ static const char *const SETTING_NAMES[] = {
 	"fx_surfaces", "fx_refraction", "fx_ssr", "fx_reflection",
 	"fx_water_absorption", "fx_caustics", "fx_underwater_shafts",
 	"fx_taa", "fx_taa_blend", "fx_sharpen", "fx_ao", "fx_ao_strength", "fx_ao_radius",
+	"fx_sky_tint", "fx_ambient_floor", "fx_rim_light",
 };
+
+// Float settings that moods and the tuner may change, with slider ranges.
+struct FloatParam { const char *setting; const char *label; float min, max; float Params::*field; };
+static const FloatParam FLOAT_PARAMS[] = {
+	{"fx_exposure", "Exposure", 0.2f, 4.f, &Params::exposure},
+	{"fx_grade_saturation", "Saturation", 0.f, 2.f, &Params::grade_saturation},
+	{"fx_grade_contrast", "Contrast", 0.6f, 1.8f, &Params::grade_contrast},
+	{"fx_bloom_intensity", "Bloom intensity", 0.f, 2.f, &Params::bloom_intensity},
+	{"fx_bloom_threshold", "Bloom threshold", 0.2f, 4.f, &Params::bloom_threshold},
+	{"fx_bloom_knee", "Bloom knee", 0.f, 1.f, &Params::bloom_knee},
+	{"fx_emissive_strength", "Emissive strength", 0.f, 12.f, &Params::emissive_strength},
+	{"fx_light_saturation", "Light colour", 0.f, 1.5f, &Params::light_saturation},
+	{"fx_flicker", "Flicker", 0.f, 0.4f, &Params::flicker},
+	{"fx_sky_tint", "Sky light tint", 0.f, 1.5f, &Params::sky_tint},
+	{"fx_ambient_floor", "Ambient floor", 0.f, 0.15f, &Params::ambient_floor},
+	{"fx_ao_strength", "Ambient occlusion", 0.f, 2.f, &Params::ao_strength},
+	{"fx_rim_light", "Rim light (mobs)", 0.f, 1.f, &Params::rim_light},
+	{"fx_refraction", "Refraction", 0.f, 3.f, &Params::refraction},
+	{"fx_reflection", "Reflection", 0.f, 2.f, &Params::reflection},
+	{"fx_water_absorption", "Water absorption", 0.f, 1.f, &Params::water_absorption},
+	{"fx_caustics", "Caustics", 0.f, 2.f, &Params::caustics},
+	{"fx_underwater_shafts", "Underwater shafts", 0.f, 2.f, &Params::underwater_shafts},
+	{"fx_sharpen", "Sharpen", 0.f, 1.f, &Params::sharpen},
+	{"fx_taa_blend", "TAA history", 0.5f, 0.97f, &Params::taa_blend},
+};
+
+const std::vector<TunableParam> &tunableParams()
+{
+	static std::vector<TunableParam> v = [] {
+		std::vector<TunableParam> r;
+		for (const auto &f : FLOAT_PARAMS)
+			r.push_back({f.setting, f.label, f.min, f.max});
+		return r;
+	}();
+	return v;
+}
 
 static void readParams()
 {
@@ -91,11 +132,192 @@ static void readParams()
 	p.ao = s->getBool("fx_ao");
 	p.ao_strength = s->getFloat("fx_ao_strength");
 	p.ao_radius = s->getFloat("fx_ao_radius");
-	s_params = p;
+	p.sky_tint = s->getFloat("fx_sky_tint");
+	p.ambient_floor = s->getFloat("fx_ambient_floor");
+	p.rim_light = s->getFloat("fx_rim_light");
+	s_base = p;
+	s_params = p; // situational blend is re-applied next frame
 }
 
-static void onSettingChanged(const std::string &, void *)
+/*
+	Moods
+*/
+
+struct Mood {
+	std::string name;
+	std::vector<std::pair<std::string, float>> base;
+	std::unordered_map<std::string, float> cave, night, underwater;
+};
+static Mood s_mood;
+static float s_w_cave = 0.f, s_w_night = 0.f, s_w_underwater = 0.f;
+
+static std::string moodPath(const std::string &name, bool user)
 {
+	return (user ? porting::path_user : porting::path_share + DIR_DELIM "client") +
+		DIR_DELIM "fx_moods" DIR_DELIM + name + ".conf";
+}
+
+static bool loadMood(const std::string &name, Mood &out)
+{
+	std::string path = moodPath(name, true);
+	if (!fs::PathExists(path))
+		path = moodPath(name, false);
+	std::ifstream is(path);
+	if (!is.good())
+		return false;
+	out = Mood();
+	out.name = name;
+	std::string line;
+	while (std::getline(is, line)) {
+		line = trim(line);
+		if (line.empty() || line[0] == '#')
+			continue;
+		auto eq = line.find('=');
+		if (eq == std::string::npos)
+			continue;
+		std::string key = trim(line.substr(0, eq));
+		float value = mystof(trim(line.substr(eq + 1)));
+		if (str_starts_with(key, "cave."))
+			out.cave[key.substr(5)] = value;
+		else if (str_starts_with(key, "night."))
+			out.night[key.substr(6)] = value;
+		else if (str_starts_with(key, "underwater."))
+			out.underwater[key.substr(11)] = value;
+		else if (str_starts_with(key, "fx_"))
+			out.base.emplace_back(key, value);
+	}
+	infostream << "fx: loaded mood " << name << " from " << path << std::endl;
+	return true;
+}
+
+static void applyMoodSetting()
+{
+	const std::string name = g_settings->get("fx_mood");
+	if (name.empty() || name == s_mood.name)
+		return;
+	Mood m;
+	if (!loadMood(name, m)) {
+		warningstream << "fx: unknown mood \"" << name << "\"" << std::endl;
+		return;
+	}
+	s_mood = m;
+	// Selecting a mood writes its values into the settings, like a graphics
+	// preset; tweaks made afterwards are the user's own.
+	for (const auto &kv : m.base)
+		g_settings->setFloat(kv.first, kv.second);
+}
+
+std::vector<std::string> listMoods()
+{
+	std::vector<std::string> out;
+	for (bool user : {false, true}) {
+		const std::string dir = (user ? porting::path_user : porting::path_share + DIR_DELIM "client")
+			+ DIR_DELIM "fx_moods";
+		for (const auto &e : fs::GetDirListing(dir)) {
+			if (e.dir || !str_ends_with(e.name, ".conf"))
+				continue;
+			std::string n = e.name.substr(0, e.name.size() - 5);
+			if (std::find(out.begin(), out.end(), n) == out.end())
+				out.push_back(n);
+		}
+	}
+	std::sort(out.begin(), out.end());
+	return out;
+}
+
+std::string saveMood(const std::string &raw_name)
+{
+	std::string name;
+	for (char c : raw_name)
+		if (std::isalnum((unsigned char)c) || c == '_' || c == '-')
+			name += c;
+	if (name.empty())
+		return "";
+	const std::string dir = porting::path_user + DIR_DELIM "fx_moods";
+	fs::CreateAllDirs(dir);
+	const std::string path = dir + DIR_DELIM + name + ".conf";
+	std::ostringstream os;
+	os << "# fx mood saved from the in-game tuner\n";
+	for (const auto &f : FLOAT_PARAMS)
+		os << f.setting << " = " << g_settings->getFloat(f.setting) << "\n";
+	auto dump = [&] (const char *prefix, const std::unordered_map<std::string, float> &m) {
+		for (const auto &kv : m)
+			os << prefix << kv.first << " = " << kv.second << "\n";
+	};
+	dump("cave.", s_mood.cave);
+	dump("night.", s_mood.night);
+	dump("underwater.", s_mood.underwater);
+	if (!fs::safeWriteToFile(path, os.str()))
+		return "";
+	s_mood.name = name;
+	g_settings->set("fx_mood", name);
+	return path;
+}
+
+// Blend the situational targets into s_params (floats only).
+static void updateMood(float dtime, float cave_target, float night_target, float underwater_target)
+{
+	// ~1.5 s exponential smoothing, like an eye adapting
+	const float k = 1.f - std::exp(-dtime / 1.5f);
+	s_w_cave += (cave_target - s_w_cave) * k;
+	s_w_night += (night_target - s_w_night) * k;
+	s_w_underwater += (underwater_target - s_w_underwater) * k;
+
+	for (const auto &f : FLOAT_PARAMS) {
+		float v = s_base.*(f.field);
+		auto blend = [&] (const std::unordered_map<std::string, float> &m, float w) {
+			auto it = m.find(f.setting);
+			if (it != m.end())
+				v += (it->second - v) * w;
+		};
+		blend(s_mood.night, s_w_night);
+		blend(s_mood.cave, s_w_cave);
+		blend(s_mood.underwater, s_w_underwater);
+		s_params.*(f.field) = v;
+	}
+}
+
+void gradeSunlight(float rgb[3], float tod)
+{
+	const float amount = s_params.enabled ? s_params.sky_tint : 0.f;
+	if (amount <= 0.f)
+		return;
+	// sun elevation, -1 (midnight) .. 1 (noon)
+	const float e = std::sin((tod - 0.25f) * 2.f * core::PI);
+	// golden hour: warm when the sun is low, strongest just above the horizon
+	const float golden = std::clamp(1.f - std::fabs(e - 0.08f) / 0.25f, 0.f, 1.f);
+	// night: moonlight is blue
+	const float night = std::clamp(-e * 4.f, 0.f, 1.f);
+	const float warm[3] = {1.f, 0.78f, 0.55f};
+	const float moon[3] = {0.65f, 0.8f, 1.15f};
+	for (int i = 0; i < 3; i++) {
+		float tint = 1.f + (warm[i] - 1.f) * golden;
+		tint += (moon[i] - 1.f) * night;
+		rgb[i] *= 1.f + (tint - 1.f) * amount;
+	}
+}
+
+// Settings callbacks run under a non-recursive mutex, so a mood (which sets
+// more settings) is applied from the next frame, not from the callback.
+static std::atomic<bool> s_mood_pending{false};
+static std::atomic<bool> s_tuner_requested{false};
+
+void requestTuner()
+{
+	s_tuner_requested = true;
+}
+
+bool consumeTunerRequest()
+{
+	return s_tuner_requested.exchange(false);
+}
+
+static void onSettingChanged(const std::string &name, void *)
+{
+	if (name == "fx_mood") {
+		s_mood_pending = true;
+		return;
+	}
 	readParams();
 }
 
@@ -109,6 +331,15 @@ void init()
 	readParams();
 	for (auto name : SETTING_NAMES)
 		g_settings->registerChangedCallback(name, &onSettingChanged, &s_params);
+	g_settings->registerChangedCallback("fx_mood", &onSettingChanged, &s_params);
+	// test hook: open the tuner right away (util/fx/smoketest.sh)
+	if (g_settings->getBool("fx_open_tuner_on_start"))
+		requestTuner();
+	// load the selected mood's situational targets without re-applying its
+	// base values (the user may have tuned them since)
+	Mood m;
+	if (loadMood(g_settings->get("fx_mood"), m))
+		s_mood = m;
 }
 
 void deinit()
@@ -669,6 +900,9 @@ static float hashSeed(v3s16 p)
 
 void updateFrame(Client *client, Camera *camera, float dtime)
 {
+	if (s_mood_pending.exchange(false))
+		applyMoodSetting();
+
 	const Params &prm = s_params;
 	s_frame.count = 0;
 	if (!prm.enabled)
@@ -695,6 +929,14 @@ void updateFrame(Client *client, Camera *camera, float dtime)
 		s_cam.sun_strength = std::clamp(std::sin(a) * 3.f, 0.08f, 1.f);
 		const MapNode n = map.getNode(floatToInt(cam_pos, BS));
 		s_cam.underwater = resolveSurface(client->ndef()->get(n)).kind == SurfaceKind::Water ? 1.f : 0.f;
+
+		// mood: cave = little sky light reaching the camera (works day and night,
+		// the day bank holds sky light), night = day/night ratio
+		const float sky = n.getLight(LIGHTBANK_DAY, client->ndef()->getLightingFlags(n));
+		const float cave = std::clamp((11.f - sky) / 8.f, 0.f, 1.f);
+		const float dnr = client->getEnv().getDayNightRatio() / 1000.f;
+		const float night = std::clamp((0.6f - dnr) / 0.4f, 0.f, 1.f);
+		updateMood(dtime, cave, night, s_cam.underwater);
 		s_cam.time = std::fmod(s_cam.time + dtime, 3600.f);
 
 		// TAA bookkeeping: last frame's unjittered matrix becomes "previous"
@@ -853,6 +1095,8 @@ class FxUniformSetter : public IShaderUniformSetter
 	CachedVertexShaderSetting<float, MAX_LIGHTS * 4, false> m_light_pos{"fxLightPosRadius"};
 	CachedVertexShaderSetting<float, MAX_LIGHTS * 4, false> m_light_color{"fxLightColorSeed"};
 	CachedVertexShaderSetting<float> m_light_saturation{"fxLightSaturation"};
+	CachedVertexShaderSetting<float> m_ambient_floor{"fxAmbientFloor"};
+	CachedPixelShaderSetting<float> m_rim_light{"fxRimLight"};
 	CachedPixelShaderSetting<float> m_emissive_strength{"fxEmissiveStrength"};
 	CachedPixelShaderSetting<float> m_bloom_threshold{"fxBloomThreshold"};
 	CachedPixelShaderSetting<float> m_bloom_knee{"fxBloomKnee"};
@@ -900,6 +1144,8 @@ public:
 			m_light_pos.set(fl.pos_radius, services);
 			m_light_color.set(fl.color_seed, services);
 			m_light_saturation.set(&p.light_saturation, services);
+			m_ambient_floor.set(&p.ambient_floor, services);
+			m_rim_light.set(&p.rim_light, services);
 			m_emissive_strength.set(&p.emissive_strength, services);
 			float valid = s_copy.valid ? 1.f : 0.f;
 			m_scene_valid.set(&valid, services);
@@ -946,7 +1192,7 @@ class FxUniformSetterFactory : public IShaderUniformSetterFactory
 public:
 	IShaderUniformSetter *create(const std::string &name) override
 	{
-		if (name == "nodes_shader")
+		if (name == "nodes_shader" || name == "object_shader")
 			return new FxUniformSetter(true);
 		if (name == "extract_bloom" || name == "second_stage" ||
 				name == "fx_taa" || name == "fx_ao")

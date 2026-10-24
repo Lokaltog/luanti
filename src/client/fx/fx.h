@@ -77,7 +77,31 @@ struct Params {
 	bool ao = true;                // fx_ao (needs restart: pipeline)
 	float ao_strength = 1.0f;    // fx_ao_strength
 	float ao_radius = 1.5f;      // fx_ao_radius (nodes)
+	float sky_tint = 0.8f;         // fx_sky_tint (golden hour, blue moonlight)
+	float ambient_floor = 0.03f;   // fx_ambient_floor
+	float rim_light = 0.35f;       // fx_rim_light (entities)
 };
+
+/*
+	Moods: presets of fx_* settings (client/fx_moods/<name>.conf, or the user's
+	<user dir>/fx_moods/<name>.conf). Plain keys are applied to the settings
+	when the mood is selected (fx_mood). cave.* / night.* / underwater.* keys
+	are targets blended in at runtime while in a cave, at night or under water.
+*/
+std::vector<std::string> listMoods();
+/// Save the current fx_* float settings (and the current mood's situational
+/// targets) as <user dir>/fx_moods/<name>.conf. Returns the path or "".
+std::string saveMood(const std::string &name);
+/// Names and current values of the tunable float settings, for the tuner.
+struct TunableParam { const char *setting; const char *label; float min, max; };
+const std::vector<TunableParam> &tunableParams();
+
+/// The pause menu's Mood button asks for the tuner; the game opens it.
+void requestTuner();
+bool consumeTunerRequest();
+
+/// Time-of-day grading of the sun/moon light colour (fx_sky_tint).
+void gradeSunlight(float rgb[3], float time_of_day);
 
 const Params &params();
 /// Register settings callbacks; call once at client start.

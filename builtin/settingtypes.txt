@@ -930,6 +930,39 @@ fx_caustics (Caustics) float 0.8 0.0 3.0
 #    Strength of light shafts seen from under water.
 fx_underwater_shafts (Underwater light shafts) float 0.6 0.0 3.0
 
+#    Temporal anti-aliasing: stable edges and foliage, less shimmer.
+#    Disabled with MSAA or SSAA. Changing it requires a restart.
+fx_taa (Temporal anti-aliasing) bool true
+
+#    How much of the previous frames TAA keeps (higher is smoother, more ghosting).
+fx_taa_blend (TAA history) float 0.9 0.5 0.97
+
+#    Sharpening after TAA.
+fx_sharpen (Sharpen) float 0.5 0.0 1.0
+
+#    Ambient occlusion: contact shadows in corners and under objects.
+#    Changing it requires a restart.
+fx_ao (Ambient occlusion) bool true
+
+#    Strength of ambient occlusion.
+fx_ao_strength (Ambient occlusion strength) float 1.0 0.0 2.0
+
+#    Ambient occlusion radius in nodes.
+fx_ao_radius (Ambient occlusion radius) float 1.5 0.25 4.0
+
+#    Golden hour and blue moonlight: grades the sun and moon light by time of day.
+fx_sky_tint (Sky light tint) float 0.8 0.0 1.5
+
+#    A little light everywhere, so caves are dark but never pure black.
+fx_ambient_floor (Ambient floor) float 0.03 0.0 0.15
+
+#    Rim light on mobs, players and items, so they read against dark backgrounds.
+fx_rim_light (Rim light) float 0.35 0.0 1.0
+
+#    Mood preset: neutral, vibrant, cozy, dark, or one you saved from the
+#    in-game Mood tuner (pause menu). Selecting one sets the fx values above.
+fx_mood (Mood) string neutral
+
 [**Other Effects]
 
 #   Simulate translucency when looking at foliage in the sunlight.

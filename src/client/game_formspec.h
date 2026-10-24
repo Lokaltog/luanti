@@ -39,6 +39,8 @@ struct GameFormSpec
 	void showDeathFormspecLegacy();
 	// Shows the hardcoded "main" pause menu.
 	void showPauseMenu();
+	// fx: live mood tuner (opened from the pause menu)
+	void showFxTuner();
 
 	void update();
 	void disableDebugView();

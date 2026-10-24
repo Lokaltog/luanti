@@ -1,4 +1,4 @@
-# fx fork: mood renderer (M1 Light & glow, M3 Glass & water)
+# fx fork: mood renderer (M1 Light & glow, M2 Foundations, M3 Glass & water)
 
 A patch queue on top of upstream Luanti. Everything is client-only: no map, protocol or server changes. Every effect sits behind an `fx_*` setting (Settings → Mood Renderer).
 
@@ -13,8 +13,21 @@ A patch queue on top of upstream Luanti. Everything is client-only: no map, prot
 | Colored light (T1) | Each mesh records its light sources, clustered per 4³ cell and color. Each frame the nearest 128 go to the vertex shader, which tints the artificial-light term. The engine's scalar light still decides brightness, so color can bleed through walls but light can't. | `fx_colored_light`, `fx_light_saturation`, `fx_light_gather_radius` |
 | Flicker | Per-light phase. Amplitude comes from the light table or a name heuristic (torch/fire 1.0, lava 0.35). | `fx_flicker` |
 | Held light | A light-emitting item in hand adds a light at the camera | `fx_held_light` |
-| Debug views | 1 light chroma, 2 emissive, 3 HDR luminance (false color, blue −4 EV, green 0, red +4 EV), 4 bloom input | `fx_debug_view` |
+| Debug views | 1 light chroma, 2 emissive, 3 HDR luminance (false color, blue −4 EV, green 0, red +4 EV), 4 bloom input. Later milestones add 5, 6 (M3) and 7 (AO). | `fx_debug_view` |
 | Shader hot reload | Polls `*.glsl` modification times and recompiles in place, keeping material IDs stable. On a compile error the old program keeps running. | `fx_shader_hot_reload` |
+
+## What M2 adds
+
+| Feature | How | Setting |
+| --- | --- | --- |
+| TAA | Halton jitter around the scene draw only (the held item and HUD are drawn after post-processing). Depth-based reprojection through the previous unjittered matrix, YCoCg variance clipping, and a Catmull-Rom history fetch so pixel art stays crisp. Off with MSAA or SSAA. | `fx_taa`, `fx_taa_blend` |
+| Sharpening | Cross unsharp mask in the final pass | `fx_sharpen` |
+| Ambient occlusion | Half resolution, normal-weighted horizon sampling (HBAO-style rather than full GTAO), noise rotated per frame. Applied inside the TAA resolve so the noise converges. Bright pixels (emissive, sunlit) keep their light. | `fx_ao`, `fx_ao_strength`, `fx_ao_radius` |
+| Sky light | Golden hour warmth and blue moonlight, graded by sun elevation | `fx_sky_tint` |
+| Ambient floor | A little light everywhere, so caves are dark but never pure black | `fx_ambient_floor` |
+| Entity lighting | Mobs, players and items get the colored-light tint and a rim light | `fx_rim_light` |
+| Moods | `client/fx_moods/*.conf` (vibrant, cozy, dark, neutral) plus your own in `<user dir>/fx_moods/`. Plain keys are applied as settings when selected. `cave.*`, `night.*` and `underwater.*` keys are targets blended in over about 1.5 s. Cave detection uses the sky light reaching the camera. | `fx_mood` |
+| Mood tuner | Pause menu → Mood: sliders for every tunable `fx_*` value over the running world, plus "Save as mood". The same values are in Settings → Mood Renderer. | |
 
 ## What M3 adds
 
@@ -81,11 +94,12 @@ The scripts behind these are `util/fx/abshot.sh` and `util/fx/smoketest.sh`. The
 
 ## Known gaps
 
-- Entities (mobs, players, dropped items) are not tinted yet. The object shader still uses white artificial light.
 - Inventory and wield item meshes have no emissive maps.
 - Glass behind glass refracts the opaque scene only, so the nearer pane doesn't see the farther one.
-- SSR has no temporal accumulation yet (M2's TAA). Reflections of thin geometry can shimmer when moving.
+- SSR runs before TAA's resolve but is not itself accumulated. Thin reflected details can still shimmer slightly.
 - Underwater detection uses the node at the camera. Caustics and shafts also apply to anything seen above the surface while submerged.
 - Hue can bleed through thin walls (T1 by design). The M4 RGB light volume fixes this.
 - `fx_debug_view`, `fx_colored_light` and `fx_hdr_composite` are shader defines. Change them and either restart or save a shader file with hot reload on.
 - The flake and devenv have not been run on NixOS yet. If `pkgs.luanti`'s recipe drifts from master's CMake options, adjust the flake's `cmakeFlags`.
+- Cave detection reads the sky light at the camera, so a deep, roofed-over build counts as a cave.
+- TAA does not reproject moving entities (no motion vectors). Variance clipping keeps ghosting short.

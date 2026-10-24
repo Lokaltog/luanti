@@ -151,6 +151,13 @@ public:
 		u32 daynight_ratio = (float)m_client->getEnv().getDayNightRatio();
 		video::SColorf sunlight;
 		get_sunlight_color(&sunlight, daynight_ratio);
+		{ // fx: golden hour and blue moonlight
+			float rgb[3] = {sunlight.r, sunlight.g, sunlight.b};
+			fx::gradeSunlight(rgb, m_client->getEnv().getTimeOfDayF());
+			sunlight.r = rgb[0];
+			sunlight.g = rgb[1];
+			sunlight.b = rgb[2];
+		}
 		m_day_light.set(sunlight, services);
 
 		u32 animation_timer = m_client->getEnv().getFrameTime() % 1000000;

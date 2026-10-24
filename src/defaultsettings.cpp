@@ -363,6 +363,11 @@ void set_default_settings()
 	settings->setDefault("fx_ao", "true");
 	settings->setDefault("fx_ao_strength", "1.0");
 	settings->setDefault("fx_ao_radius", "1.5");
+	settings->setDefault("fx_sky_tint", "0.8");
+	settings->setDefault("fx_ambient_floor", "0.03");
+	settings->setDefault("fx_rim_light", "0.35");
+	settings->setDefault("fx_mood", "neutral");
+	settings->setDefault("fx_open_tuner_on_start", "false");
 	settings->setDefault("fx_auto_screenshot", "");
 	settings->setDefault("fx_auto_screenshot_delay", "20");
 	settings->setDefault("fx_surfaces", "true");

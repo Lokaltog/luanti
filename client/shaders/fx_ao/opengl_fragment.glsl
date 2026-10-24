@@ -40,9 +40,13 @@ void main(void)
 	vec3 pr = scenePos(uv + vec2(2.0 * px.x, 0.0)), pl = scenePos(uv - vec2(2.0 * px.x, 0.0));
 	vec3 pu = scenePos(uv + vec2(0.0, 2.0 * px.y)), pd = scenePos(uv - vec2(0.0, 2.0 * px.y));
 	vec3 ax = pr - p, bx = p - pl, ay = pu - p, by = p - pd;
-	float eps = 1e-4 * length(fxEyePos - p);
-	vec3 dx = (length(ax) < length(bx) && length(ax) > eps) || length(bx) <= eps ? ax : bx;
-	vec3 dy = (length(ay) < length(by) && length(ay) > eps) || length(by) <= eps ? ay : by;
+	// On a continuous surface both one-sided steps agree: use the central
+	// difference (4 px baseline, robust to quantization). At a depth edge they
+	// disagree: use the smaller step so the normal belongs to this surface.
+	vec3 dx = length(ax - bx) < 0.5 * length(ax + bx) ? ax + bx
+		: (length(ax) < length(bx) ? ax : bx);
+	vec3 dy = length(ay - by) < 0.5 * length(ay + by) ? ay + by
+		: (length(ay) < length(by) ? ay : by);
 	vec3 n = normalize(cross(dx, dy));
 	vec3 to_eye = fxEyePos - p;
 	if (dot(n, to_eye) < 0.0)

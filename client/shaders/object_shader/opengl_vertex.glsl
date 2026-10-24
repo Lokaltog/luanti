@@ -32,6 +32,62 @@ VARYING_ highp vec3 eyeVec;
 VARYING_ float nightRatio;
 // Color of the light emitted by the light sources.
 const vec3 artificialLight = vec3(1.04, 1.04, 1.04);
+
+#ifdef FX_ENABLE
+uniform float fxAmbientFloor;
+#endif
+
+// fx: same light list and tint as nodes_shader/opengl_vertex.glsl (keep in sync)
+#if defined(FX_ENABLE) && defined(FX_COLORED_LIGHT)
+// fx: nearest light sources this frame, positions relative to cameraOffset (BS units)
+uniform int fxLightCount;
+uniform vec4 fxLightPosRadius[FX_LIGHT_MAX]; // xyz = position, w = radius
+uniform vec4 fxLightColorSeed[FX_LIGHT_MAX]; // rgb = chroma, a = floor: flicker amp*100, fract: seed
+uniform float fxLightSaturation;
+VARYING_ vec3 fxChroma; // for debug view 1
+
+// Hue (and flicker) of the artificial light at p. Intensity is NOT changed here:
+// the engine's flood-filled scalar light stays authoritative, so colour may
+// bleed through walls but brightness never does.
+vec3 fxArtificialLight(vec3 p, float seconds)
+{
+	vec3 acc = vec3(0.0);
+	float wsum = 0.0;
+	float flick = 0.0;
+	for (int i = 0; i < FX_LIGHT_MAX; i++) {
+		if (i >= fxLightCount)
+			break;
+		vec4 pr = fxLightPosRadius[i];
+		vec3 d = pr.xyz - p;
+		float dist2 = dot(d, d);
+		float r2 = pr.w * pr.w;
+		if (dist2 >= r2)
+			continue;
+		float fall = 1.0 - dist2 / r2;
+		// sharper ownership near a light: inverse square in nodes (BS = 10)
+		float w = fall * fall / (dist2 * 0.01 + 1.0);
+		vec4 cs = fxLightColorSeed[i];
+		float amp = floor(cs.a) * 0.01;
+		float seed = fract(cs.a) * 97.0;
+		float n = sin(seconds * 7.3 + seed) * 0.5
+			+ sin(seconds * 13.7 + seed * 1.7) * 0.3
+			+ sin(seconds * 23.1 + seed * 2.3) * 0.2;
+		acc += w * cs.rgb;
+		flick += w * amp * n;
+		wsum += w;
+	}
+	if (wsum <= 1e-5) {
+		fxChroma = vec3(1.0);
+		return artificialLight;
+	}
+	vec3 chroma = acc / wsum;
+	fxChroma = chroma;
+	// keep the luminance of upstream's white light so exposure is unchanged
+	float lum = dot(chroma, vec3(0.2126, 0.7152, 0.0722));
+	chroma = min(chroma * (1.04 / max(lum, 0.05)), vec3(2.4));
+	return mix(artificialLight, chroma, fxLightSaturation) * (1.0 + flick / wsum);
+}
+#endif
 VARYING_ float vIDiff;
 
 #ifdef USE_SKINNING
@@ -144,9 +200,18 @@ void main(void)
 
 	// The alpha gives the ratio of sunlight in the incoming light.
 	nightRatio = 1.0 - color.a;
+#if defined(FX_ENABLE) && defined(FX_COLORED_LIGHT)
+	vec3 fxLight = fxArtificialLight(worldPosition, animationTimer * 100.0);
+	color.rgb = color.rgb * (color.a * dayLight.rgb +
+		nightRatio * fxLight) * 2.0;
+#else
 	color.rgb = color.rgb * (color.a * dayLight.rgb +
 		nightRatio * artificialLight.rgb) * 2.0;
+#endif
 	color.a = 1.0;
+#ifdef FX_ENABLE
+	color.rgb += fxAmbientFloor * (1.0 - clamp(dot(color.rgb, vec3(0.333)) * 6.0, 0.0, 1.0));
+#endif
 
 	// Emphase blue a bit in darker places
 	// See C++ implementation in mapblock_mesh.cpp final_color_blend()

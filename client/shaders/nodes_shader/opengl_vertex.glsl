@@ -46,6 +46,10 @@ VARYING_ highp vec3 eyeVec;
 // Color of the light emitted by the light sources.
 const vec3 artificialLight = vec3(1.04, 1.04, 1.04);
 
+#ifdef FX_ENABLE
+uniform float fxAmbientFloor;
+#endif
+
 #if defined(FX_ENABLE) && defined(FX_COLORED_LIGHT)
 // fx: nearest light sources this frame, positions relative to cameraOffset (BS units)
 uniform int fxLightCount;
@@ -272,6 +276,11 @@ void main(void)
 		nightRatio * artificialLight.rgb) * 2.0;
 #endif
 	color.a = 1.0;
+
+#ifdef FX_ENABLE
+	// fx: a little light everywhere, fading out as real light arrives
+	color.rgb += fxAmbientFloor * (1.0 - clamp(dot(color.rgb, vec3(0.333)) * 6.0, 0.0, 1.0));
+#endif
 
 	// Emphase blue a bit in darker places
 	// See C++ implementation in mapblock_mesh.cpp final_color_blend()
