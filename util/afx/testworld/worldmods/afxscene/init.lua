@@ -54,6 +54,18 @@ core.register_node("afxscene:flower", {description = "Flower", drawtype = "plant
 core.register_node("afxscene:sand", {description = "Sand", tiles = {"[fill:16x16:#e0d090"},
 	groups = {sand = 1, crumbly = 3}})
 
+core.register_node("afxscene:clock", {description = "Wall clock", drawtype = "signlike",
+	tiles = {"[fill:16x16:#f0e8d0"}, paramtype = "light", paramtype2 = "wallmounted",
+	walkable = false, groups = {clock = 1, attached_node = 1}})
+core.register_node("afxscene:rail", {description = "Rail", drawtype = "raillike",
+	tiles = {"[fill:16x16:#806040"}, paramtype = "light", walkable = false, groups = {rail = 1}})
+core.register_node("afxscene:fence", {description = "Fence", drawtype = "fencelike",
+	tiles = {"[fill:16x16:#a07040"}, paramtype = "light", groups = {fence = 1, wood = 1}})
+core.register_node("afxscene:spawner", {description = "Spawner", drawtype = "glasslike",
+	tiles = {"[fill:16x16:#202830"}, groups = {cracky = 1}})
+core.register_node("afxscene:mossy_cobble", {description = "Mossy cobble",
+	tiles = {"[fill:16x16:#506850"}, groups = {cracky = 2, stone = 1}})
+
 --[[ Building ]]
 
 local MIN, MAX = v(-48, -40, -48), v(64, 96, 48)
@@ -178,6 +190,62 @@ function BUILD.sky_island(b)
 	end
 	b.fill(v(1, 83, 1), v(5, 85, 5), "afxscene:leaves")
 	b.fill(v(3, 80, 3), v(3, 85, 3), "afxscene:trunk")
+end
+
+function BUILD.storm(b)
+	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	-- an open shelter: four posts and a plank roof
+	for _, c in ipairs({{-3, -3}, {3, -3}, {-3, 3}, {3, 3}}) do
+		b.fill(v(c[1], 0, c[2]), v(c[1], 3, c[2]), "afxscene:trunk")
+	end
+	b.fill(v(-4, 4, -4), v(4, 4, 4), "afxscene:planks")
+	tree(b, 12, 2, 5)
+	tree(b, 15, -3, 6)
+	tree(b, 11, -7, 5)
+	tree(b, 16, 5, 5)
+end
+
+function BUILD.shore(b)
+	b.fill(v(MIN.x, -10, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	-- a lake to the north, a sandy bank
+	b.fill(v(-24, -5, 6), v(24, -1, 40), "basenodes:water_source")
+	b.fill(v(-24, -1, 4), v(24, -1, 5), "afxscene:sand")
+	tree(b, -6, -4, 5)
+	tree(b, -10, -9, 6)
+	tree(b, 4, -10, 5)
+	tree(b, 9, -5, 5)
+end
+
+function BUILD.home(b)
+	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	b.fill(v(-5, -1, -5), v(5, -1, 5), "afxscene:planks")
+	b.fill(v(-5, 0, -5), v(5, 4, 5), "afxscene:planks")
+	b.fill(v(-4, 0, -4), v(4, 3, 4), "air")
+	b.fill(v(-6, 5, -6), v(6, 5, 6), "afxscene:planks")          -- roof with eaves
+	b.fill(v(5, 1, -1), v(5, 2, 1), "afxscene:glass")             -- east window
+	b.fill(v(0, 0, -5), v(0, 1, -5), "air")                       -- doorway
+	b.fill(v(-3, 0, 3), v(-2, 0, 3), "afxscene:bed")
+	b.fill(v(3, 0, 4), v(3, 0, 4), "afxscene:chest")
+	b.fill(v(4, 0, -3), v(4, 0, -3), "afxscene:furnace_active")
+	b.fill(v(-4, 2, 0), v(-4, 2, 0), "afxscene:lamp")
+	b.fill(v(-4, 2, 3), v(-4, 2, 3), "afxscene:clock")
+end
+
+function BUILD.mineshaft(b)
+	b.fill(v(MIN.x, -30, MIN.z), v(MAX.x, 10, MAX.z), "basenodes:stone")
+	-- a long gallery with rails and timber frames
+	b.fill(v(-30, -20, -1), v(30, -18, 1), "air")
+	b.fill(v(-30, -20, 0), v(30, -20, 0), "afxscene:rail")
+	for x = -28, 28, 4 do
+		b.fill(v(x, -20, -1), v(x, -19, -1), "afxscene:fence")
+		b.fill(v(x, -20, 1), v(x, -19, 1), "afxscene:fence")
+		b.fill(v(x, -18, -1), v(x, -18, 1), "afxscene:planks")
+	end
+	-- a dungeon room off its east end
+	b.fill(v(34, -21, -5), v(44, -16, 5), "afxscene:mossy_cobble")
+	b.fill(v(35, -20, -4), v(43, -17, 4), "air")
+	b.fill(v(31, -20, 0), v(34, -19, 0), "air")
+	b.fill(v(39, -20, 0), v(39, -20, 0), "afxscene:spawner")
 end
 
 function BUILD.cliff(b)
@@ -348,7 +416,67 @@ TIMELINE.sky_island = {
 	{wait = 12},
 }
 
+local function strike(dist, dir)
+	local p = P():get_pos()
+	local s = vector.add(p, vector.multiply(dir or v(0.6, 0, 0.8), dist))
+	core.log("action", "afxscene: strike at " .. math.floor(dist) .. " nodes")
+	afx_ambience.thunder_at(s)
+end
+
+local function dig(pos)
+	local pl = P()
+	local node = core.get_node(pos)
+	if node.name ~= "air" then core.node_dig(pos, node, pl) end
+end
+
+TIMELINE.storm = {
+	{fn = function() afx_ambience.gust_now(1.4) end, wait = 12, log = "windy, a gust"},
+	{fn = function() afx_ambience.set_rain(0.8) end, wait = 1,
+		log = "rain begins"},
+	{fn = function()
+		-- the game's rain bed swells in (afx_ambience ramps the surfaces)
+		local h = core.sound_play("afx_out_rain", {to_player = player_name, loop = true, gain = 0.05})
+		core.sound_fade(h, 0.04, 0.8)
+	end, wait = 14},
+	{fn = function() strike(700) end, wait = 9, log = "far strike"},
+	{fn = function() strike(90, v(-0.8, 0, 0.6)) end, wait = 10, log = "near strike"},
+	{walk = v(0, 0, 0), speed = 3, steps = "default_grass_footstep", log = "under the shelter"},
+	{wait = 8},
+	{fn = function() afx_ambience.set_rain(0) end, wait = 3, log = "rain stops"},
+	{walk = v(13, 0, 0), speed = 2.5, steps = "default_grass_footstep", log = "under the trees"},
+	{wait = 16},
+}
+
+TIMELINE.shore = {
+	{fn = function() core.set_timeofday(0.18) end, wait = 12, log = "night by the lake"},
+	{walk = v(0, 0, 3), speed = 1.5, steps = "default_grass_footstep", log = "to the water's edge"},
+	{wait = 8},
+	{fn = function() set_time(0.18, 0.27, 14) end, wait = 16, log = "dawn"},
+	{walk = v(4, 0, -6), speed = 2.5, steps = "default_grass_footstep", log = "to a tree"},
+	{fn = function() dig(v(9, 4, -7)) end, wait = 8, log = "breaking leaves"},
+}
+
+TIMELINE.home = {
+	{fn = function()
+		core.set_timeofday(0.9)
+		afx_ambience.set_rain(0.7)
+		bed("afx_out_rain", 0.7)
+	end, wait = 22, log = "home on a rainy night"},
+	{walk = v(0, 0, -4), speed = 2, steps = "default_wood_footstep", log = "to the door"},
+	{wait = 6},
+	{walk = v(-2, 0, 2), speed = 2, steps = "default_wood_footstep", log = "back by the bed"},
+	{wait = 8},
+}
+
+TIMELINE.mineshaft = {
+	{wait = 16, log = "in the mineshaft"},
+	{walk = v(26, -20, 0), speed = 2.5, steps = "default_hard_footstep", log = "along the rails"},
+	{walk = v(38, -20, -2), speed = 2, steps = "default_hard_footstep", log = "into the dungeon"},
+	{wait = 30},
+}
+
 local START = {
+	storm = v(-14, 0, -2), shore = v(0, 0, -6), home = v(-2, 0, 2), mineshaft = v(-20, -20, 0),
 	descent = v(0, 0, 1), meadow = v(0, 0, 0), beach = v(4, 0, -2), sky_island = v(0, 80, -2),
 	hut_rain = v(0, 0, -14), tunnel_wind = v(22, 0, 0), forest = v(0, 0, 0),
 	cavern = v(-10, -8, -10), cliff = v(0, 0, 0),

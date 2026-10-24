@@ -99,6 +99,8 @@ constexpr f32 SOUNDTHREAD_DTIME = 0.016f;
 constexpr u64 PLAYING_SOUNDS_PRINT_INTERVAL = 10;
 // afx: unclassified non-positional sounds longer than this are treated as music
 constexpr f32 MUSIC_MIN_SECONDS = 45.0f;
+// afx: positional one-shots farther than this (nodes) wait for the sound to arrive
+constexpr f32 SOUND_DELAY_MIN_DIST = 34.0f;
 
 static_assert(SOUND_DURATION_MAX_SINGLE >= MIN_STREAM_BUFFER_LENGTH * 2.0f,
 		"There's no benefit in streaming if we can't queue more than 2 buffers.");

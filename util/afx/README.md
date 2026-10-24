@@ -76,6 +76,31 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
 - **Proximity sources**: rivers (flowing water), waterfalls (flow over a drop), insects over flowers by day, bees at nests, crackle at fires and lit furnaces. Under water you get an underwater bed, and the engine routes everything else through the wall EQ.
 - Scenarios `descent`, `meadow`, `beach` and `sky_island` in `tour.sh`.
 
+## Round 4: weather, water, life, places
+
+- **Sound takes time to travel** (engine). Positional one-shots farther than 34 nodes start after distance / 343 s, so thunder arrives after the flash and far explosions arrive late. Loops are exempt. Stop, fade and move requests for a sound still in flight are honoured.
+- **Unnamed long sounds stay dry** (engine). A non-positional sound longer than 45 s that no rule names is treated as music, so the game's music doesn't reverberate in caves.
+- **Weather** (`weather.lua`):
+  - Gusts: wind rises over a few seconds, holds and dies away, on top of slow swells. Exposure (height above the surrounding ground) scales it, so ridges and peaks blow harder.
+  - Rain starts with a few fat drops, then the surface layers swell in over 30 s.
+  - Gutters run off the eaves while it rains, and the canopy keeps dripping for 90 s afterwards. Birds come back gradually.
+  - Thunder: far strikes get a low-passed roll; near strikes get a crack, unless the game plays its own (VoxeLibre's lightning mod).
+- **Water** (`water.lua`):
+  - Waves lap at the actual edge between water and land.
+  - Underground rivers are found within 22 nodes and heard through the rock.
+  - Wading and falling into water make splashes.
+- **Life** (`life.lua`):
+  - A dawn chorus (birds four times as frequent, songbirds only, louder bed) and gulls on the coast by day.
+  - Breaking leaves, or sometimes punching a trunk, flushes 2–4 birds with alarm calls and leaf rustle, and the tree goes quiet afterwards. Birds don't call from right above you.
+  - Frogs croak from the far bank at night. As you reach the water's edge they plop in and the chorus stops for 25 s.
+  - Villages: day and night beds when villagers are around.
+- **Places** (`places.lua`):
+  - Home (3+ signs of home, under a roof): a clock (item frame or `group:clock` node), a purring tamed cat, and lit furnaces humming.
+  - Mineshafts (rails + timber): creaks. Dungeons (spawner or mossy stonework): chains.
+  - The Nether and the End have their own beds, plus distant chimes in the End.
+- **Game-aware.** The mod defers to the game's own water, lava, fire and thunder sounds where it has them, so nothing doubles. Node lists (furnaces, campfires, bee nests, rails, spawners) are built by name when the game loads, which also covers Mineclonia's naming.
+- Scenarios `storm`, `shore`, `home` and `mineshaft`, plus `tour.sh <out> voxelibre`: a real-game tour of VoxeLibre. Point `games/voxelibre` at a VoxeLibre checkout. The tour visits forest, rain, plains at dusk, a cave, snow, a thunderstorm, the Nether and the End.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

@@ -98,12 +98,15 @@ local GAME_HAS_WATER_LAVA = core.get_modpath("vl_env_sounds") ~= nil or
 
 -- Fires, lit furnaces and campfires, beehives: by name, since games differ
 -- in their groups. Filled once all mods are loaded.
-local HOT_NODES, BEE_NODES = {"group:fire"}, {}
+-- Fire crackles on its own in games with a fire mod (mcl_fire, fire)
+local GAME_HAS_FIRE = core.get_modpath("mcl_fire") ~= nil or core.get_modpath("fire") ~= nil
+local HOT_NODES, BEE_NODES, FURNACE_NODES = GAME_HAS_FIRE and {} or {"group:fire"}, {}, {}
 core.register_on_mods_loaded(function()
 	for name, def in pairs(core.registered_nodes) do
 		local lit = name:find("_active") or name:find("_lit") or name:find(":lit_")
-		if (name:find("furnace") or name:find("smoker") or name:find("campfire") or
-				name:find("blast_furnace")) and lit then
+		if (name:find("furnace") or name:find("smoker")) and lit then
+			FURNACE_NODES[#FURNACE_NODES + 1] = name
+		elseif name:find("campfire") and lit then
 			HOT_NODES[#HOT_NODES + 1] = name
 		elseif name:find("campfire") and not name:find("_off") and not name:find("unlit") and
 				(def.light_source or 0) > 0 then
@@ -176,7 +179,8 @@ end
 
 local FADE = 0.5 -- gain per second
 
--- wanted: key -> {sound=, pos= (nil: a non-positional bed), gain=, fade=}
+-- wanted: key -> {sound=, pos= or object= (neither: a non-positional bed),
+--                 gain=, fade=, range=}
 local function reconcile(pname, st, wanted)
 	for key, w in pairs(wanted) do
 		if w.gain < 0.01 then wanted[key] = nil end
@@ -193,10 +197,11 @@ local function reconcile(pname, st, wanted)
 	end
 	for key, w in pairs(wanted) do
 		if not st.emitters[key] then
+			local positional = w.pos or w.object
 			local handle = core.sound_play(w.sound, {
-				pos = w.pos, to_player = pname, loop = true, gain = 0.01,
-				max_hear_distance = w.pos and 32 or nil,
-				pitch = w.pos and rand(0.95, 1.05) or 1,
+				pos = w.pos, object = w.object, to_player = pname, loop = true, gain = 0.01,
+				max_hear_distance = positional and (w.range or 32) or nil,
+				pitch = positional and rand(0.95, 1.05) or 1,
 				start_time = rand(0, 20),
 			})
 			if handle then
@@ -274,9 +279,19 @@ local function rain_emitters(ppos, intensity, wanted)
 					if not node then break end
 					local def = core.registered_nodes[node.name]
 					if def and def.walkable then
-						local leafy = core.get_item_group(node.name, "leaves") > 0
-						if (leafy or not under_sky) and sky_open(vector.offset(p, 0, 1, 0)) then
-							roof[#roof + 1] = {pos = p, name = node.name}
+						-- climb through a roof up to 4 thick to its top
+						local top, tname = p, node.name
+						for _ = 1, 4 do
+							local q = vector.offset(top, 0, 1, 0)
+							local qn = core.get_node_or_nil(q)
+							local qd = qn and core.registered_nodes[qn.name]
+							if not (qd and qd.walkable) then break end
+							top, tname = q, qn.name
+						end
+						local leafy = core.get_item_group(tname, "leaves") > 0
+						if (leafy or not under_sky) and sky_open(vector.offset(top, 0, 1, 0)) then
+							-- heard at the ceiling, where it drums
+							roof[#roof + 1] = {pos = p, name = tname}
 						end
 						break
 					end
@@ -364,7 +379,9 @@ local function place(ppos)
 	return p
 end
 
-local function bed_targets(ppos, wanted, raining, snowing)
+local function bed_targets(ctx, wanted)
+	local ppos, raining, snowing = ctx.ppos, ctx.rain, ctx.snow
+	if ctx.dimension ~= "overworld" then return end
 	local tod = core.get_timeofday()
 	local day = math.max(0, math.min(1, (0.32 - math.abs(tod - 0.5)) / 0.05))
 	local night = 1 - day
@@ -378,24 +395,32 @@ local function bed_targets(ppos, wanted, raining, snowing)
 	local p = place(ppos)
 	-- Higher and more exposed is windier; floating islands howl
 	local height = math.max(0, math.min(1, (ppos.y - 40) / 60))
-	local calm_birds = (raining > 0 or snowing > 0) and 0 or 1
+	local calm_birds = (raining > 0 or snowing > 0) and 0 or (ctx.birds_back or 1)
 	-- Snow hushes the world: a fresh blanket on the ground, or snow falling
 	local snow_cover = math.min(1, count(ppos, 8, -3, 1, {"group:snow_cover", "group:snow",
 		"group:snow_layer", "group:top_snow"}) / 60)
 	local hush = 1 - 0.55 * math.max(snowing, snow_cover)
 
+	-- ctx.wind: gusts over minutes x exposure (ridges, peaks), see weather.lua
+	local wind = ctx.wind or 1
 	wanted.b_wind = {sound = "afx_out_wind",
-		gain = hush * (0.35 * (1 - 0.6 * p.forest) + 0.2 * height), fade = 0.2}
+		gain = hush * wind * (0.35 * (1 - 0.6 * p.forest) + 0.2 * height), fade = 0.25}
 	wanted.b_howl = {sound = "afx_out_wind_howl",
-		gain = 0.7 * height + 0.3 * p.cold + 0.25 * snowing, fade = 0.2}
-	wanted.b_trees = {sound = "afx_out_wind_trees", gain = hush * 0.6 * p.forest, fade = 0.2}
+		gain = (0.7 * height + 0.3 * p.cold + 0.25 * snowing) * math.min(1.5, wind), fade = 0.25}
+	wanted.b_trees = {sound = "afx_out_wind_trees",
+		gain = hush * 0.6 * p.forest * (0.5 + 0.5 * wind), fade = 0.3}
+	-- Birdsong peaks at dawn
+	local dawn = math.max(0, 1 - math.abs(ctx.tod - 0.26) / 0.06)
 	wanted.b_birds = {sound = "afx_out_birds_far",
-		gain = day * calm_birds * (0.25 * p.meadow + 0.35 * p.forest) * (1 - height), fade = 0.15}
+		gain = math.max(day, dawn) * calm_birds * (0.25 * p.meadow + 0.35 * p.forest) *
+			(1 + 0.8 * dawn) * (1 - height), fade = 0.15}
 	wanted.b_crickets = {sound = "afx_out_crickets",
 		gain = night * calm_birds * hush * 0.45 * math.max(p.meadow, p.forest, p.dry) *
 			(1 - p.cold), fade = 0.1}
 	wanted.b_frogs = {sound = "afx_out_frogs",
-		gain = night * 0.4 * math.max(p.swamp, p.coast * 0.5), fade = 0.1}
+		gain = night * 0.4 * math.max(p.swamp, p.coast * 0.5) * (ctx.frogs_quiet and 0 or 1),
+		fade = ctx.frogs_quiet and 0.6 or 0.1}
+	wanted.b_gulls = {sound = "afx_out_gulls", gain = day * calm_birds * 0.35 * p.coast, fade = 0.15}
 	wanted.b_jungle = {sound = "afx_out_jungle", gain = 0.6 * p.jungle, fade = 0.2}
 	wanted.b_waves = {sound = "afx_out_waves", gain = 0.7 * p.coast, fade = 0.2}
 end
@@ -431,8 +456,8 @@ local function proximity_emitters(ppos, wanted)
 		end
 	end
 
-	-- Insects over flowers, by day
-	if day then
+	-- Insects over flowers, by day, when it's dry
+	if day and afx_ambience.rain_at(ppos) == 0 then
 		local flowers = core.find_nodes_in_area(lo, hi, {"group:flower"})
 		for _, c in ipairs(nearest(clusters(flowers), ppos, 2)) do
 			if c.n >= 3 then
@@ -442,8 +467,13 @@ local function proximity_emitters(ppos, wanted)
 	end
 
 	-- Bees, fires, lit furnaces and campfires
-	local hot = core.find_nodes_in_area(lo, hi, HOT_NODES)
+	local hot = #HOT_NODES > 0 and core.find_nodes_in_area(lo, hi, HOT_NODES) or {}
 	local bees = #BEE_NODES > 0 and core.find_nodes_in_area(lo, hi, BEE_NODES) or {}
+	local furnaces = #FURNACE_NODES > 0 and core.find_nodes_in_area(lo, hi, FURNACE_NODES) or {}
+	for _, c in ipairs(nearest(clusters(furnaces), ppos, 2)) do
+		wanted["fu" .. c.key] = {sound = "afx_furnace", pos = c.pos, gain = 0.45, range = 12}
+		wanted["fc" .. c.key] = {sound = "afx_fire", pos = c.pos, gain = 0.15, range = 10}
+	end
 	for _, c in ipairs(nearest(clusters(hot), ppos, 2)) do
 		wanted["fi" .. c.key] = {sound = "afx_fire", pos = c.pos, gain = math.min(0.6, 0.25 + 0.05 * c.n)}
 	end
@@ -464,7 +494,9 @@ end
 --[[ One-shots: birds and drips ]]
 
 local DAY_BIRDS = {"afx_bird_robin", "afx_bird_cardinal", "afx_bird_lark", "afx_bird_robin",
-	"afx_bird_cardinal", "afx_bird_crow"}
+	"afx_bird_bluebird", "afx_bird_goldfinch", "afx_bird_goldfinch", "afx_bird_crow"}
+local SONGBIRDS = {"afx_bird_robin", "afx_bird_bluebird", "afx_bird_goldfinch",
+	"afx_bird_cardinal", "afx_bird_lark"}
 local NIGHT_BIRDS = {"afx_bird_owl"}
 
 local function maybe_bird(pname, st, ppos, now, raining)
@@ -472,15 +504,23 @@ local function maybe_bird(pname, st, ppos, now, raining)
 	local tod = core.get_timeofday()
 	local night = tod < 0.2 or tod > 0.8
 	-- Exponential gaps: mostly quiet, sometimes two calls close together
-	local mean = CFG.bird_interval * (night and 2.5 or 1)
+	local tod_ = core.get_timeofday()
+	local dawn = math.abs(tod_ - 0.26) < 0.05
+	local mean = CFG.bird_interval * (night and 2.5 or 1) * (dawn and 0.25 or 1)
 	st.next_bird = now - math.log(math.max(1e-3, rand(0, 1))) * mean + 3
 	if raining > 0 then return end
 	local leaves = core.find_nodes_in_area(vector.offset(ppos, -20, -2, -20),
 			vector.offset(ppos, 20, 14, 20), {"group:leaves"})
 	if #leaves < 6 then return end -- no trees, no birds
-	local spot = pick(leaves)
-	if vector.distance(spot, ppos) < 5 then spot = pick(leaves) end
-	local sound = night and pick(NIGHT_BIRDS) or pick(DAY_BIRDS)
+	-- Birds keep their distance: none right above the player
+	local spot
+	for _ = 1, 6 do
+		spot = pick(leaves)
+		if vector.distance(spot, ppos) >= 7 then break end
+		spot = nil
+	end
+	if not spot then return end
+	local sound = night and pick(NIGHT_BIRDS) or (dawn and pick(SONGBIRDS) or pick(DAY_BIRDS))
 	core.sound_play(sound, {pos = spot, to_player = pname, gain = rand(0.35, 0.8),
 		pitch = rand(0.92, 1.08), max_hear_distance = 40}, true)
 	log(pname .. ": " .. sound .. " at " .. core.pos_to_string(spot))
@@ -512,37 +552,83 @@ local function maybe_drip(pname, st, ppos, now)
 		gain = rand(0.2, 0.6), pitch = rand(0.85, 1.15), max_hear_distance = 24}, true)
 end
 
+--[[ Layers from the other files ]]
+
+local layers, ticks = {}, {}
+-- fn(ctx, wanted): add loops to `wanted`; called once a second per player
+function afx_ambience.register_layer(fn) layers[#layers + 1] = fn end
+-- fn(player, dtime): a fast tick (~5 Hz) for reactions
+function afx_ambience.register_tick(fn) ticks[#ticks + 1] = fn end
+
+afx_ambience.lib = {
+	CFG = CFG, log = log, rand = rand, pick = pick, clusters = clusters, nearest = nearest,
+	sky_open = sky_open, count = count, has = has, rained_on = rained_on,
+	player_state = player_state, rain_sound_for = rain_sound_for,
+	GAME_HAS_WATER_LAVA = GAME_HAS_WATER_LAVA,
+}
+
+local function dimension(pos)
+	local w = rawget(_G, "mcl_worlds")
+	if w and w.pos_to_dimension then
+		return w.pos_to_dimension(pos)
+	end
+	return "overworld"
+end
+
+local modpath = core.get_modpath(core.get_current_modname())
+for _, f in ipairs({"weather.lua", "water.lua", "life.lua", "places.lua"}) do
+	dofile(modpath .. "/" .. f)
+end
+
 --[[ Main loop ]]
 
-local timer = 0
-local SCAN = 1.0
+local timer, tick_timer = 0, 0
+local SCAN, TICK = 1.0, 0.2
 
 core.register_globalstep(function(dtime)
+	tick_timer = tick_timer + dtime
+	if tick_timer >= TICK then
+		for _, player in ipairs(core.get_connected_players()) do
+			for _, fn in ipairs(ticks) do fn(player, tick_timer) end
+		end
+		tick_timer = 0
+	end
+
 	timer = timer + dtime
 	if timer < SCAN then return end
 	timer = 0
 	local now = core.get_us_time() / 1e6
+	local tod = core.get_timeofday()
 	for _, player in ipairs(core.get_connected_players()) do
 		local pname = player:get_player_name()
 		local st = player_state(pname)
 		local ppos = player:get_pos()
-		local rain = afx_ambience.rain_at(ppos)
+		local ear = vector.round(vector.offset(ppos, 0, 1.6, 0))
+		local ctx = {
+			player = player, pname = pname, st = st, ppos = ppos, ear = ear, now = now,
+			tod = tod, day = math.max(0, math.min(1, (0.32 - math.abs(tod - 0.5)) / 0.05)),
+			rain = afx_ambience.rain_at(ppos), snow = afx_ambience.snow_at(ppos),
+			dimension = dimension(ppos), under_sky = sky_open(ear),
+			daylight = core.get_node_light(ear, 0.5) or 0,
+		}
+		ctx.underground = ctx.daylight <= 3 and not ctx.under_sky
 		local wanted = {}
-		if CFG.rain_surfaces and rain > 0 then
-			rain_emitters(ppos, rain, wanted)
+		for _, fn in ipairs(layers) do fn(ctx, wanted) end
+		if CFG.rain_surfaces and ctx.rain > 0 then
+			rain_emitters(ppos, ctx.rain * (ctx.rain_ramp or 1), wanted)
 		end
 		if CFG.lava and not GAME_HAS_WATER_LAVA then
 			lava_emitters(ppos, wanted)
 		end
 		if CFG.beds then
-			bed_targets(ppos, wanted, rain, afx_ambience.snow_at(ppos))
+			bed_targets(ctx, wanted)
 		end
 		if CFG.proximity then
 			proximity_emitters(ppos, wanted)
 		end
 		underwater_bed(player, wanted)
 		reconcile(pname, st, wanted)
-		maybe_bird(pname, st, ppos, now, rain)
+		maybe_bird(pname, st, ppos, now, ctx.rain + ctx.snow)
 		maybe_drip(pname, st, ppos, now)
 	end
 end)

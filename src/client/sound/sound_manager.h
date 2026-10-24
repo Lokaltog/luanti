@@ -81,6 +81,18 @@ private:
 	f32 m_afx_report_timer = 0.0f;
 	f32 m_afx_probe_ms = 0.0f;
 
+	// afx: positional sounds waiting for their sound to travel to the ear
+	struct DelayedSound {
+		sound_handle_t id;
+		SoundSpec spec;
+		v3f pos, vel;   // node space
+		f32 due;        // seconds left
+		std::optional<std::pair<f32, f32>> fade; // step, target
+	};
+	std::vector<DelayedSound> m_delayed;
+	bool takeDelayed(sound_handle_t id, DelayedSound **out);
+	void stepDelayed(f32 dtime);
+
 	// stuff for only-once / rate-limited warnings
 	std::unordered_set<std::string> m_warned_positional_stereo_sounds;
 	u64 m_next_lingering_sounds_print; // timestamp from porting::getTimeS()

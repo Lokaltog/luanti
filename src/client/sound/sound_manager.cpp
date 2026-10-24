@@ -375,6 +375,8 @@ void OpenALSoundManager::step(f32 dtime)
 		m_time_until_dead_removal = REMOVE_DEAD_SOUNDS_INTERVAL;
 	}
 
+	if (!m_is_paused)
+		stepDelayed(dtime);
 	doFades(dtime);
 	stepStreams(dtime);
 	stepAcoustics(dtime);
@@ -480,9 +482,53 @@ void OpenALSoundManager::playSound(sound_handle_t id, const SoundSpec &spec)
 			spec.use_local_fallback, spec.start_time, std::nullopt);
 }
 
+bool OpenALSoundManager::takeDelayed(sound_handle_t id, DelayedSound **out)
+{
+	for (auto &d : m_delayed) {
+		if (d.id == id) {
+			*out = &d;
+			return true;
+		}
+	}
+	return false;
+}
+
+void OpenALSoundManager::stepDelayed(f32 dtime)
+{
+	for (size_t i = 0; i < m_delayed.size();) {
+		DelayedSound &d = m_delayed[i];
+		d.due -= dtime;
+		if (d.due > 0.0f) {
+			++i;
+			continue;
+		}
+		DelayedSound ready = std::move(d);
+		m_delayed[i] = std::move(m_delayed.back());
+		m_delayed.pop_back();
+		std::optional<std::pair<v3f, v3f>> pos_vel({
+				swap_handedness(ready.pos), swap_handedness(ready.vel)});
+		playSoundGeneric(ready.id, ready.spec.name, ready.spec.loop, ready.spec.gain,
+				ready.spec.fade, ready.spec.pitch, ready.spec.use_local_fallback,
+				ready.spec.start_time, pos_vel);
+		if (ready.fade)
+			fadeSound(ready.id, ready.fade->first, ready.fade->second);
+	}
+}
+
 void OpenALSoundManager::playSoundAt(sound_handle_t id, const SoundSpec &spec,
 		const v3f &pos_, const v3f &vel_)
 {
+	// afx: sound takes time to arrive. Far one-shots (thunder after the
+	// flash, a distant explosion) wait distance / 343 s. Loops are left
+	// alone: they're ambience, and nobody hears the moment they start.
+	if (m_afx_active && m_afx_params.enabled && !spec.loop) {
+		const f32 dist = (pos_ - m_listener_pos_node).getLength();
+		if (dist > SOUND_DELAY_MIN_DIST) {
+			m_delayed.push_back({id, spec, pos_, vel_, dist / 343.0f, std::nullopt});
+			return;
+		}
+	}
+
 	std::optional<std::pair<v3f, v3f>> pos_vel_opt({
 			swap_handedness(pos_),
 			swap_handedness(vel_)
@@ -494,12 +540,24 @@ void OpenALSoundManager::playSoundAt(sound_handle_t id, const SoundSpec &spec,
 
 void OpenALSoundManager::stopSound(sound_handle_t sound)
 {
+	DelayedSound *d;
+	if (takeDelayed(sound, &d)) {
+		*d = std::move(m_delayed.back());
+		m_delayed.pop_back();
+		reportRemovedSound(sound);
+		return;
+	}
 	m_sounds_playing.erase(sound);
 	reportRemovedSound(sound);
 }
 
 void OpenALSoundManager::fadeSound(sound_handle_t soundid, f32 step, f32 target_gain)
 {
+	DelayedSound *d;
+	if (step != 0.0f && takeDelayed(soundid, &d)) {
+		d->fade = std::make_pair(step, target_gain);
+		return;
+	}
 	// Ignore the command if step isn't valid.
 	if (step == 0.0f)
 		return;
@@ -514,6 +572,13 @@ void OpenALSoundManager::fadeSound(sound_handle_t soundid, f32 step, f32 target_
 void OpenALSoundManager::updateSoundPosVel(sound_handle_t id, const v3f &pos_,
 		const v3f &vel_)
 {
+	DelayedSound *d;
+	if (takeDelayed(id, &d)) {
+		d->pos = pos_;
+		d->vel = vel_;
+		return;
+	}
+
 	v3f pos = swap_handedness(pos_);
 	v3f vel = swap_handedness(vel_);
 

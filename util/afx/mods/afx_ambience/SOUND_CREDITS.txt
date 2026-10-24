@@ -11,3 +11,13 @@ Sounds in this mod were made by util/afx/import_sounds.py from:
   ambience (CC0). See its SOUND_LICENCES.txt for authors.
 
 Personal use. Check each source's license before redistributing.
+
+Round 4 additions:
+- Animalia by ElCeejo (github.com/ElCeejo/animalia): bluebird, goldfinch,
+  cardinal, frog calls. See its license files.
+- Minetest Game (github.com/minetest/minetest_game): furnace (default_furnace_active).
+- VoxeLibre: door creak (slowed into timber creaks), chainmail (chains),
+  water splash.
+- Moodist: thunder (cut into near cracks and far rolls), waves (shore), seagulls,
+  walk on leaves (rustle), clock, cat purring, night village, chickens.
+- ambient_sounds: ethereal fiery (Nether), ethereal crystal (End chimes).

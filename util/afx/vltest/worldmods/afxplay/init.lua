@@ -61,6 +61,24 @@ local function find_cave(center)
 	return best, best_n
 end
 
+-- Open air inside another dimension's band [y0, y1]: an air node with
+-- solid ground under it and room around, near (0, 0).
+local function find_in_band(y0, y1)
+	local lo, hi = v(-40, y0, -40), v(40, y1, 40)
+	local airs = core.find_nodes_in_area(lo, hi, {"air"})
+	for _ = 1, 3000 do
+		if #airs == 0 then break end
+		local p = airs[math.random(#airs)]
+		local below = core.registered_nodes[core.get_node(vector.offset(p, 0, -1, 0)).name]
+		if below and below.walkable and below.name ~= "mcl_core:lava_source" and
+				core.get_node(vector.offset(p, 0, 1, 0)).name == "air" then
+			local n = #core.find_nodes_in_area(vector.offset(p, -3, 0, -3),
+					vector.offset(p, 3, 4, 3), {"air"})
+			if n > 120 then return p end
+		end
+	end
+end
+
 local function emerge(center, r, cb)
 	core.emerge_area(vector.offset(center, -r, -70, -r), vector.offset(center, r, 90, r),
 		function(_, _, remaining) if remaining == 0 then cb() end end)
@@ -115,6 +133,15 @@ local function tour()
 			weather("none"); go(SPOTS.plains); set_time(0.72, 0.85, 16) end},
 		{log = "cave", wait = 28, fn = function() core.set_timeofday(0.5); go(SPOTS.cave) end},
 		{log = "snow", wait = 16, fn = function() go(SPOTS.snow); weather("snow") end},
+		{log = "thunderstorm", wait = 6, fn = function()
+			go(SPOTS.forest); core.set_timeofday(0.5); weather("thunder") end},
+		{log = "far strike", wait = 9, fn = function()
+			lightning.strike(vector.offset(SPOTS.forest, 420, 0, 300)) end},
+		{log = "near strike", wait = 12, fn = function()
+			lightning.strike(vector.offset(SPOTS.forest, 40, 0, -50)) end},
+		{log = "nether", wait = 20, fn = function()
+			weather("none"); if SPOTS.nether then go(SPOTS.nether) end end},
+		{log = "the end", wait = 22, fn = function() if SPOTS.the_end then go(SPOTS.the_end) end end},
 		{log = "end", wait = 1, fn = function() weather("none") end},
 	})
 end
@@ -130,7 +157,7 @@ core.register_on_joinplayer(function(player)
 	local s, sb = find_biome(function(b) return b == "IcePlains" or b == "ColdTaiga" end)
 	say(("found %s %s, %s %s, %s %s"):format(fb, core.pos_to_string(f or v(0,0,0)),
 		pb, core.pos_to_string(p or v(0,0,0)), sb, core.pos_to_string(s or v(0,0,0))))
-	local todo = 3
+	local todo
 	local function done()
 		todo = todo - 1
 		if todo > 0 then return end
@@ -144,7 +171,22 @@ core.register_on_joinplayer(function(player)
 			core.pos_to_string(SPOTS.snow), core.pos_to_string(SPOTS.cave), tostring(n)))
 		core.after(1, tour)
 	end
+	todo = 5
 	emerge(f, 24, done)
 	emerge(p, 48, done)
 	emerge(s, 24, done)
+	local nmin, nmax = mcl_vars.mg_nether_min, mcl_vars.mg_nether_max
+	core.emerge_area(v(-48, nmin + 20, -48), v(48, nmin + 80, 48), function(_, _, rem)
+		if rem > 0 then return end
+		SPOTS.nether = find_in_band(nmin + 25, nmin + 75)
+		say("nether spot " .. core.pos_to_string(SPOTS.nether or v(0, 0, 0)))
+		done()
+	end)
+	local emin = mcl_vars.mg_end_min
+	core.emerge_area(v(-48, emin + 40, -48), v(48, emin + 100, 48), function(_, _, rem)
+		if rem > 0 then return end
+		SPOTS.the_end = find_in_band(emin + 45, emin + 95)
+		say("end spot " .. core.pos_to_string(SPOTS.the_end or v(0, 0, 0)))
+		done()
+	end)
 end)

@@ -111,8 +111,8 @@ def main(assets, out):
         encode(normalise(x, db), os.path.join(out, name + ".ogg"), **kw)
         made.append(name)
 
-    def emitter(name, src, seconds, start=0.0, db=-20.0, **kw):
-        x = seamless(decode(src, mono=True), seconds, start)
+    def emitter(name, src, seconds, start=0.0, db=-20.0, xfade=1.5, **kw):
+        x = seamless(decode(src, mono=True), seconds, start, xfade)
         encode(normalise(x, db), os.path.join(out, name + ".ogg"), **kw)
         made.append(name)
 
@@ -192,6 +192,80 @@ def main(assets, out):
             stereo=True)
     for i in range(1, 6):
         oneshot(f"afx_mood_stinger.{i}", f"{vl}/PLAYER/vl_cavesounds/sounds/cave{i}.ogg", db=-24)
+
+    # ---- Round 4 ----
+    an = os.path.join(assets, "animalia/sounds")
+    mtg = os.path.join(assets, "minetest_game/mods")
+
+    def segment(name, src, start, length, db, mono=True, attack=0.0, **kw):
+        x = decode(src, mono=mono)[int(start * RATE):int((start + length) * RATE)].copy()
+        if attack > 0:
+            n = int(attack * RATE)
+            x[:n] *= np.linspace(0, 1, n)[:, None] ** 2
+        tail = int(min(1.5, length / 4) * RATE)
+        x[-tail:] *= np.linspace(1, 0, tail)[:, None] ** 2
+        encode(normalise(x, db), os.path.join(out, name + ".ogg"), **kw)
+        made.append(name)
+
+    # Thunder: three claps in one recording. Near = the crack as recorded;
+    # far = the rumble, low-passed and with a rounded attack.
+    th = f"{md}/rain/thunder.mp3"
+    for i, st in enumerate([0.3, 20.7, 41.8]):
+        segment(f"afx_thunder_near.{i + 1}", th, st, 12, -16)
+    for i, st in enumerate([21.4, 42.6]):
+        segment(f"afx_thunder_far.{i + 1}", th, st, 16, -20, attack=0.8, lowpass=500)
+
+    # Water's edge, after the rain
+    emitter("afx_shore", f"{md}/nature/waves.mp3", 30, start=40, db=-24, lowpass=3000)
+    emitter("afx_drip_after", f"{md}/nature/droplets.mp3", 30, start=12, db=-28)
+    emitter("afx_gutter", f"{md}/nature/river.mp3", 20, start=50, db=-30, highpass=600)
+    bed("afx_out_gulls", f"{md}/animals/seagulls.mp3", 35, start=3, db=-32)
+
+    # Reactions: leaf rustle bursts, bird alarm calls, frogs, a plop
+    for i, st in enumerate([1.0, 6.5, 12.0]):
+        segment(f"afx_leaf_rustle.{i + 1}", f"{md}/nature/walk-on-leaves.mp3", st, 1.2, -22)
+    for sp in ["bluebird", "goldfinch", "cardinal"]:
+        for i in (1, 2, 3):
+            oneshot(f"afx_bird_{sp}.{i}", f"{an}/{sp}/animalia_{sp}.{i}.ogg", db=-22)
+    for i in (1, 2, 3):
+        oneshot(f"afx_frog.{i}", f"{an}/frog/animalia_frog_{i}.ogg", db=-24)
+    oneshot("afx_plop", f"{vl}/ITEMS/mcl_fishing/sounds/watersplash.ogg", db=-26,
+            lowpass=2200)
+
+    # Home: furnace, a clock, a cat
+    emitter("afx_furnace", f"{mtg}/default/sounds/default_furnace_active.ogg", 8, db=-28,
+            lowpass=3000)
+    # A tick must not double up in the loop crossfade: cut on a whole number
+    # of tick periods with a very short splice
+    clk = decode(f"{md}/things/clock.mp3", mono=True)[:, 0]
+    env = np.abs(clk)
+    ac = np.correlate(env[:RATE * 6] - env[:RATE * 6].mean(),
+                      env[:RATE * 6] - env[:RATE * 6].mean(), "full")[RATE * 6 - 1:]
+    period = (np.argmax(ac[int(0.3 * RATE):int(1.5 * RATE)]) + int(0.3 * RATE)) / RATE
+    emitter("afx_clock", f"{md}/things/clock.mp3", period * round(10 / period), start=1,
+            db=-30, xfade=0.03)
+    emitter("afx_purr", f"{md}/animals/cat-purring.mp3", 24, start=4, db=-26)
+
+    # Villages
+    bed("afx_out_village_night", f"{md}/places/night-village.mp3", 40, start=20, db=-32)
+    bed("afx_out_village_day", f"{md}/animals/chickens.mp3", 40, start=30, db=-34,
+        lowpass=4000)
+
+    # Structures: a door's creak slowed into old timbers; mail rings as chains
+    door = f"{vl}/ITEMS/mcl_doors/sounds/doors_door_open.ogg"
+    for i, r in enumerate([0.45, 0.55, 0.38]):
+        oneshot(f"afx_creak.{i + 1}", door, db=-24, rate_scale=r, lowpass=2500)
+    chain = f"{vl}/ITEMS/mcl_armor/sounds/mcl_armor_equip_chainmail.ogg"
+    for i, r in enumerate([0.8, 0.65]):
+        oneshot(f"afx_chains.{i + 1}", chain, db=-26, rate_scale=r)
+
+    # Other worlds
+    bed("afx_in_nether", f"{am}/ambient_sounds_ethereal_fiery_main.ogg", 24, start=1, db=-26)
+    bed("afx_in_end", f"{md}/nature/howling-wind.mp3", 40, start=10, db=-32,
+        rate_scale=0.7, lowpass=900)
+    for i, r in enumerate([0.5, 0.42]):
+        oneshot(f"afx_end_chime.{i + 1}", f"{am}/ambient_sounds_ethereal_crystal_2.ogg",
+                db=-28, rate_scale=r)
 
     print(f"wrote {len(made)} sounds to {out}")
     for m in made:
