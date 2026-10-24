@@ -41,6 +41,7 @@ sound_volume = 1.0
 mute_sound = false
 afx_debug = true
 afxscene_scenario = $SCEN
+afx_ambience_use_biomes = false
 enable_ipv6 = false
 ipv6_server = false
 CONF

@@ -7,6 +7,7 @@
 #include "test.h"
 #include "client/afx/afx_types.h"
 #include "client/afx/afx_smoother.h"
+#include "client/afx/afx_mood.h"
 #include "afx_worlds.h"
 
 #include <cmath>
@@ -33,6 +34,7 @@ public:
 	void testDoor();
 	void testUnderwater();
 	void testSmoother();
+	void testMood();
 };
 
 static TestAfx g_test_instance;
@@ -48,6 +50,7 @@ void TestAfx::runTests(IGameDef *gamedef)
 	TEST(testDoor);
 	TEST(testUnderwater);
 	TEST(testSmoother);
+	TEST(testMood);
 }
 
 void TestAfx::testOpenField()
@@ -227,4 +230,47 @@ void TestAfx::testSmoother()
 	float len = s.current().outdoor_dir.getLength();
 	UASSERT(len > 0.9f && len < 1.1f);
 	UASSERT(s.current().outdoor_dir.X > 0.f && s.current().outdoor_dir.Z > 0.f);
+}
+
+void TestAfx::testMood()
+{
+	// Noon in a field: neither
+	MoodInputs field;
+	field.env = openField().probe(v3f(0, 1.6f, 0));
+	Mood f = moodTarget(field);
+	UASSERT(f.tension < 0.1f && f.cozy < 0.1f);
+
+	// Night in the same field: a little uneasy, not scary
+	MoodInputs night = field;
+	night.daylight = 0.1f;
+	night.light = 0.2f;
+	Mood n = moodTarget(night);
+	UASSERT(n.tension > 0.2f && n.tension < 0.7f);
+
+	// Dark stone cave far from the sky: dread
+	MoodInputs cave;
+	cave.env = stoneCave().probe(v3f(0, 0, 0));
+	cave.light = 0.05f;
+	Mood c = moodTarget(cave);
+	UASSERT(c.tension > 0.75f);
+
+	// Same cave with a bed, a chest, a furnace and lamps lit: home
+	MoodInputs home = cave;
+	home.light = 0.9f;
+	home.homey = 6;
+	Mood h = moodTarget(home);
+	UASSERT(h.tension < 0.2f);
+	UASSERT(h.cozy > 0.8f);
+
+	// Dread creeps in, relief arrives fast
+	MoodSmoother sm;
+	for (int i = 0; i < 60 * 3; i++)
+		sm.step(1.f / 60, c);
+	UASSERT(sm.current().tension < 0.2f); // 3 s in: barely
+	for (int i = 0; i < 60 * 40; i++)
+		sm.step(1.f / 60, c);
+	UASSERT(sm.current().tension > 0.7f);
+	for (int i = 0; i < 60 * 3; i++)
+		sm.step(1.f / 60, f);
+	UASSERT(sm.current().tension < 0.35f); // 3 s back out: mostly gone
 }

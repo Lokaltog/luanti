@@ -39,9 +39,24 @@ core.register_node("afxscene:door", {
 	groups = {wood = 1, axey = 1},
 })
 
+-- Signs of home (the engine's mood reads these) and other props
+core.register_node("afxscene:bed", {description = "Bed", tiles = {"[fill:16x16:#c03030"},
+	groups = {bed = 1, wool = 1}})
+core.register_node("afxscene:chest", {description = "Chest", tiles = {"[fill:16x16:#906030"},
+	groups = {container = 1, wood = 1}})
+core.register_node("afxscene:furnace_active", {description = "Furnace", tiles = {"[fill:16x16:#806050"},
+	light_source = 12, groups = {furnace = 1, cracky = 2}})
+core.register_node("afxscene:lamp", {description = "Lamp", tiles = {"[fill:16x16:#ffe0a0"},
+	light_source = 14, groups = {cracky = 3}})
+core.register_node("afxscene:flower", {description = "Flower", drawtype = "plantlike",
+	tiles = {"[fill:16x16:#ff60a0"}, paramtype = "light", sunlight_propagates = true,
+	walkable = false, groups = {flower = 1, snappy = 3}})
+core.register_node("afxscene:sand", {description = "Sand", tiles = {"[fill:16x16:#e0d090"},
+	groups = {sand = 1, crumbly = 3}})
+
 --[[ Building ]]
 
-local MIN, MAX = v(-48, -24, -48), v(48, 40, 48)
+local MIN, MAX = v(-48, -40, -48), v(64, 96, 48)
 
 local function builder()
 	local vm = core.get_voxel_manip()
@@ -106,6 +121,63 @@ function BUILD.cavern(b)
 	b.fill(v(-14, -8, -14), v(14, 4, 14), "air")
 	b.fill(v(6, -9, 6), v(12, -9, 12), "basenodes:lava_source")
 	b.fill(v(6, -8, 6), v(12, -8, 12), "air")
+end
+
+function BUILD.descent(b)
+	b.fill(v(MIN.x, -40, MIN.z), v(MAX.x, -2, MAX.z), "basenodes:stone")
+	b.fill(v(MIN.x, -1, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	-- home
+	b.fill(v(-4, -1, -4), v(4, -1, 4), "afxscene:planks")
+	b.fill(v(-4, 0, -4), v(4, 5, 4), "afxscene:planks")
+	b.fill(v(-3, 0, -3), v(3, 4, 3), "air")
+	b.fill(v(0, 0, -4), v(0, 1, -4), "air")
+	b.fill(v(-2, 0, 2), v(-1, 0, 2), "afxscene:bed")
+	b.fill(v(2, 0, 3), v(2, 0, 3), "afxscene:chest")
+	b.fill(v(3, 0, -2), v(3, 0, -2), "afxscene:furnace_active")
+	b.fill(v(-3, 3, 0), v(-3, 3, 0), "afxscene:lamp")
+	b.fill(v(3, 3, 0), v(3, 3, 0), "afxscene:lamp")
+	b.fill(v(0, 4, 0), v(0, 4, 0), "afxscene:lamp")
+	-- a ramp down into the dark
+	for i = 0, 24 do
+		b.fill(v(10 + i, -1 - i, -1), v(10 + i, 2 - i, 1), "air")
+	end
+	b.fill(v(34, -24, -14), v(62, -12, 14), "air")
+end
+
+function BUILD.meadow(b)
+	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	for _, f in ipairs({{3, 2}, {4, 3}, {2, 4}, {5, 1}, {-3, 5}, {-4, 4}, {-2, 6}, {6, -3}, {7, -2}, {5, -4}}) do
+		b.fill(v(f[1], 0, f[2]), v(f[1], 0, f[2]), "afxscene:flower")
+	end
+	tree(b, 16, 10, 5)
+	tree(b, -15, 14, 6)
+	tree(b, 12, -16, 5)
+end
+
+function BUILD.beach(b)
+	b.fill(v(MIN.x, -12, MIN.z), v(MAX.x, -7, MAX.z), "basenodes:stone")
+	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, 6), "afxscene:sand")
+	b.fill(v(MIN.x, -6, 7), v(MAX.x, -2, MAX.z), "basenodes:water_source")
+	-- a cliff with a waterfall
+	b.fill(v(-24, 0, -10), v(-14, 8, 0), "basenodes:stone")
+	b.fill(v(-16, 8, -6), v(-16, 8, -6), "basenodes:water_source")
+	b.fill(v(-15, 0, -6), v(-15, 8, -6), "basenodes:water_flowing")
+	b.fill(v(-14, 0, -6), v(-10, 0, -6), "basenodes:water_flowing")
+end
+
+function BUILD.sky_island(b)
+	for x = -10, 10 do
+		for z = -10, 10 do
+			local d = math.sqrt(x * x + z * z)
+			if d <= 10 then
+				local depth = math.floor((10 - d) * 0.8) + 1
+				b.fill(v(x, 79 - depth, z), v(x, 78, z), "basenodes:stone")
+				b.fill(v(x, 79, z), v(x, 79, z), "basenodes:dirt_with_grass")
+			end
+		end
+	end
+	b.fill(v(1, 83, 1), v(5, 85, 5), "afxscene:leaves")
+	b.fill(v(3, 80, 3), v(3, 85, 3), "afxscene:trunk")
 end
 
 function BUILD.cliff(b)
@@ -229,7 +301,55 @@ local TIMELINE = {
 	},
 }
 
+local function set_time(from, to, seconds, done)
+	local t = 0
+	local function tick()
+		t = t + 0.2
+		local k = math.min(1, t / seconds)
+		core.set_timeofday(from + (to - from) * k)
+		if k < 1 then core.after(0.2, tick) elseif done then done() end
+	end
+	tick()
+end
+
+TIMELINE.descent = {
+	{wait = 8, log = "home, lamps lit"},
+	{walk = v(0, 0, -6), speed = 2.5, steps = hut_steps, log = "out the door"},
+	{walk = v(9, 0, 0), speed = 3, steps = "default_grass_footstep"},
+	{walk = v(34, -24, 0), speed = 2.5, steps = "default_hard_footstep", log = "down into the dark"},
+	{walk = v(46, -24, 2), speed = 2, steps = "default_hard_footstep", log = "in the cavern"},
+	{wait = 35, log = "waiting in the dark"},
+	{walk = v(34, -24, 0), speed = 3, steps = "default_hard_footstep", log = "back"},
+	{walk = v(9, 0, 0), speed = 3.5, steps = "default_hard_footstep", log = "up the ramp"},
+	{walk = v(0, 0, -12), speed = 3, steps = "default_grass_footstep", log = "out under the sky"},
+	{wait = 10},
+}
+
+TIMELINE.meadow = {
+	{wait = 18, log = "noon in a meadow"},
+	{fn = function() set_time(0.5, 0.86, 12) end, wait = 12, log = "dusk"},
+	{wait = 25, log = "night"},
+}
+
+TIMELINE.beach = {
+	{wait = 10, log = "on the beach"},
+	{walk = v(-11, 0, -4), speed = 3, steps = "default_grass_footstep", log = "to the waterfall"},
+	{wait = 7},
+	{walk = v(0, 0, 5), speed = 3, steps = "default_grass_footstep", log = "to the sea"},
+	{walk = v(0, -4.5, 12), speed = 2, log = "under water"},
+	{wait = 8},
+	{walk = v(0, 0, 4), speed = 2.5, log = "back out"},
+	{wait = 5},
+}
+
+TIMELINE.sky_island = {
+	{fn = function() bed("afx_out_wind", 0.0) end, wait = 12, log = "on a floating island"},
+	{walk = v(9, 80, 0), speed = 2, steps = "default_grass_footstep", log = "to the edge"},
+	{wait = 12},
+}
+
 local START = {
+	descent = v(0, 0, 1), meadow = v(0, 0, 0), beach = v(4, 0, -2), sky_island = v(0, 80, -2),
 	hut_rain = v(0, 0, -14), tunnel_wind = v(22, 0, 0), forest = v(0, 0, 0),
 	cavern = v(-10, -8, -10), cliff = v(0, 0, 0),
 }

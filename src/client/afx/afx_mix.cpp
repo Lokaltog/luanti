@@ -83,7 +83,7 @@ Bus classify(const std::string &name, bool positional, const BusRules &rules)
 		return Bus::World;
 	if (starts("afx_out_"))
 		return Bus::Outdoor;
-	if (starts("afx_in_"))
+	if (starts("afx_in_") || starts("afx_mood_"))
 		return Bus::Indoor;
 	if (anyMatch(rules.dry, name))
 		return Bus::Dry;

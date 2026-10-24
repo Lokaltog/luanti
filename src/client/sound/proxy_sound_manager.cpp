@@ -119,6 +119,7 @@ void ProxySoundManager::addSoundToGroup(const std::string &sound_name,
 		const std::string &group_name)
 {
 	send(sound_manager_messages_to_mgr::AddSoundToGroup{sound_name, group_name});
+	m_known_groups.insert(group_name);
 }
 
 void ProxySoundManager::playSound(sound_handle_t id, const SoundSpec &spec)

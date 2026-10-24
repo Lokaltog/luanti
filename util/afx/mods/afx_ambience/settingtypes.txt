@@ -17,3 +17,14 @@ afx_ambience_lava (Lava) bool true
 afx_ambience_radius (Scan radius) int 10 4 24
 
 afx_ambience_debug (Debug log) bool false
+
+#    Biome ambience beds: wind, wind in trees, distant birds, crickets at
+#    night, frogs, jungle, waves. Muffled by the engine indoors.
+afx_ambience_beds (Biome beds) bool true
+
+#    Rivers, waterfalls, insects over flowers, bees, fires and lit furnaces.
+afx_ambience_proximity (Nearby sources) bool true
+
+#    Use the biome map (names like "forest", "desert", "ocean") for the beds.
+#    Off: only the nodes around the player count.
+afx_ambience_use_biomes (Use biome names) bool true

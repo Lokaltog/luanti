@@ -29,6 +29,9 @@ local CFG = {
 	bird_interval = setting_num("afx_ambience_bird_interval", 25), -- mean seconds
 	cave = setting_bool("afx_ambience_cave", true),
 	lava = setting_bool("afx_ambience_lava", true),
+	beds = setting_bool("afx_ambience_beds", true),
+	use_biomes = setting_bool("afx_ambience_use_biomes", true),
+	proximity = setting_bool("afx_ambience_proximity", true),
 	radius = setting_num("afx_ambience_radius", 10),
 	debug = setting_bool("afx_ambience_debug", false),
 }
@@ -134,15 +137,18 @@ end
 
 local FADE = 0.5 -- gain per second
 
+-- wanted: key -> {sound=, pos= (nil: a non-positional bed), gain=, fade=}
 local function reconcile(pname, st, wanted)
-	-- wanted: key -> {sound=, pos=, gain=}
+	for key, w in pairs(wanted) do
+		if w.gain < 0.01 then wanted[key] = nil end
+	end
 	for key, e in pairs(st.emitters) do
 		local w = wanted[key]
 		if not w then
-			core.sound_fade(e.handle, FADE, 0)
+			core.sound_fade(e.handle, e.fade, 0)
 			st.emitters[key] = nil
-		elseif math.abs(w.gain - e.gain) > 0.05 then
-			core.sound_fade(e.handle, FADE, w.gain)
+		elseif math.abs(w.gain - e.gain) > 0.02 then
+			core.sound_fade(e.handle, w.fade or FADE, w.gain)
 			e.gain = w.gain
 		end
 	end
@@ -150,12 +156,13 @@ local function reconcile(pname, st, wanted)
 		if not st.emitters[key] then
 			local handle = core.sound_play(w.sound, {
 				pos = w.pos, to_player = pname, loop = true, gain = 0.01,
-				max_hear_distance = 32, pitch = rand(0.95, 1.05),
+				max_hear_distance = w.pos and 32 or nil,
+				pitch = w.pos and rand(0.95, 1.05) or 1,
 				start_time = rand(0, 20),
 			})
 			if handle then
-				core.sound_fade(handle, FADE, w.gain)
-				st.emitters[key] = {handle = handle, gain = w.gain}
+				core.sound_fade(handle, w.fade or FADE, w.gain)
+				st.emitters[key] = {handle = handle, gain = w.gain, fade = w.fade or FADE}
 			end
 		end
 	end
@@ -274,6 +281,141 @@ local function lava_emitters(ppos, wanted)
 	end
 end
 
+--[[ Beds: what the place sounds like from afar (outdoor bus: the engine
+     muffles them indoors and underground and steers them through openings) ]]
+
+local function count(ppos, r, dy0, dy1, names)
+	return #core.find_nodes_in_area(vector.offset(ppos, -r, dy0, -r),
+			vector.offset(ppos, r, dy1, r), names)
+end
+
+local function has(name, words)
+	for _, w in ipairs(words) do
+		if name:find(w, 1, true) then return true end
+	end
+	return false
+end
+
+-- What kind of place, 0..1 each, from the biome name and the nodes around.
+local function place(ppos)
+	local p = {forest = 0, meadow = 0, jungle = 0, coast = 0, cold = 0, dry = 0, swamp = 0}
+	local bd = CFG.use_biomes and core.get_biome_data and core.get_biome_data(ppos)
+	local bname = bd and core.get_biome_name(bd.biome) or ""
+	bname = bname:lower()
+	if has(bname, {"jungle", "bamboo"}) then p.jungle = 1
+	elseif has(bname, {"forest", "taiga", "birch", "grove", "roofed"}) then p.forest = 0.7
+	elseif has(bname, {"desert", "mesa", "badlands", "savanna"}) then p.dry = 1
+	elseif has(bname, {"ocean", "beach", "shore", "coast"}) then p.coast = 0.7
+	elseif has(bname, {"ice", "snow", "frozen", "cold"}) then p.cold = 1
+	elseif has(bname, {"swamp", "mangrove", "marsh"}) then p.swamp = 1
+	else p.meadow = 0.8 end
+
+	-- Local evidence beats the biome map: trees around make it a forest,
+	-- open water makes it a shore, flowers make it a meadow.
+	local leaves = count(ppos, 14, -4, 16, {"group:leaves"})
+	p.forest = math.max(p.forest, math.min(1, leaves / 120))
+	local water = count(ppos, 14, -6, 1, {"group:water"})
+	p.coast = math.max(p.coast, math.min(1, (water - 40) / 300))
+	local flowers = count(ppos, 10, -3, 3, {"group:flower"})
+	p.meadow = math.max(p.meadow, math.min(1, flowers / 12))
+	return p
+end
+
+local function bed_targets(ppos, wanted, raining)
+	local tod = core.get_timeofday()
+	local day = math.max(0, math.min(1, (0.32 - math.abs(tod - 0.5)) / 0.05))
+	local night = 1 - day
+	local p = place(ppos)
+	-- Deep underground nothing of this would be audible: free the voices
+	if ppos.y < -40 and not sky_open(vector.round(vector.offset(ppos, 0, 1.6, 0))) then
+		return
+	end
+	-- Higher and more exposed is windier; floating islands howl
+	local height = math.max(0, math.min(1, (ppos.y - 40) / 60))
+	local calm_birds = raining > 0 and 0 or 1
+
+	wanted.b_wind = {sound = "afx_out_wind", gain = 0.35 * (1 - 0.6 * p.forest) + 0.2 * height, fade = 0.2}
+	wanted.b_howl = {sound = "afx_out_wind_howl", gain = 0.7 * height + 0.3 * p.cold, fade = 0.2}
+	wanted.b_trees = {sound = "afx_out_wind_trees", gain = 0.6 * p.forest, fade = 0.2}
+	wanted.b_birds = {sound = "afx_out_birds_far",
+		gain = day * calm_birds * (0.25 * p.meadow + 0.35 * p.forest) * (1 - height), fade = 0.15}
+	wanted.b_crickets = {sound = "afx_out_crickets",
+		gain = night * calm_birds * 0.45 * math.max(p.meadow, p.forest, p.dry), fade = 0.1}
+	wanted.b_frogs = {sound = "afx_out_frogs",
+		gain = night * 0.4 * math.max(p.swamp, p.coast * 0.5), fade = 0.1}
+	wanted.b_jungle = {sound = "afx_out_jungle", gain = 0.6 * p.jungle, fade = 0.2}
+	wanted.b_waves = {sound = "afx_out_waves", gain = 0.7 * p.coast, fade = 0.2}
+end
+
+--[[ Proximity: things that sound where they are ]]
+
+local function proximity_emitters(ppos, wanted)
+	local r = CFG.radius + 2
+	local lo, hi = vector.subtract(ppos, r), vector.add(ppos, r)
+	local day = math.abs(core.get_timeofday() - 0.5) < 0.27
+
+	-- Running water: flowing nodes; a waterfall where flow falls onto flow
+	local flowing, falls = {}, {}
+	for _, p in ipairs(core.find_nodes_in_area(lo, hi, {"group:water"})) do
+		local name = core.get_node(p).name
+		if name:find("flowing") then
+			local below = core.get_node(vector.offset(p, 0, -1, 0)).name
+			if below:find("flowing") or below == "air" then
+				falls[#falls + 1] = p
+			else
+				flowing[#flowing + 1] = p
+			end
+		end
+	end
+	for _, c in ipairs(nearest(clusters(falls), ppos, 2)) do
+		if c.n >= 3 then
+			wanted["wf" .. c.key] = {sound = "afx_waterfall", pos = c.pos, gain = math.min(0.9, 0.2 + 0.05 * c.n)}
+		end
+	end
+	for _, c in ipairs(nearest(clusters(flowing), ppos, 3)) do
+		if c.n >= 2 then
+			wanted["rv" .. c.key] = {sound = "afx_river", pos = c.pos, gain = math.min(0.6, 0.1 + 0.04 * c.n)}
+		end
+	end
+
+	-- Insects over flowers, by day
+	if day then
+		local flowers = core.find_nodes_in_area(lo, hi, {"group:flower"})
+		for _, c in ipairs(nearest(clusters(flowers), ppos, 2)) do
+			if c.n >= 3 then
+				wanted["fl" .. c.key] = {sound = "afx_insects", pos = c.pos, gain = math.min(0.35, 0.05 * c.n)}
+			end
+		end
+	end
+
+	-- Bees, fires, lit furnaces and campfires
+	local hot, bees = {}, {}
+	for _, p in ipairs(core.find_nodes_in_area(lo, hi, {"group:fire", "group:bee_nest",
+			"group:beehive", "group:furnace", "group:campfire"})) do
+		local name = core.get_node(p).name
+		if has(name, {"bee"}) then
+			bees[#bees + 1] = p
+		elseif not has(name, {"furnace"}) or has(name, {"active", "lit"}) then
+			hot[#hot + 1] = p
+		end
+	end
+	for _, c in ipairs(nearest(clusters(hot), ppos, 2)) do
+		wanted["fi" .. c.key] = {sound = "afx_fire", pos = c.pos, gain = math.min(0.6, 0.25 + 0.05 * c.n)}
+	end
+	for _, c in ipairs(nearest(clusters(bees), ppos, 2)) do
+		wanted["be" .. c.key] = {sound = "afx_bees", pos = c.pos, gain = 0.5}
+	end
+end
+
+--[[ Under water ]]
+
+local function underwater_bed(player, wanted)
+	local head = vector.round(vector.offset(player:get_pos(), 0, 1.6, 0))
+	if core.get_item_group(core.get_node(head).name, "water") > 0 then
+		wanted.u_water = {sound = "afx_in_underwater", gain = 0.7, fade = 2.0}
+	end
+end
+
 --[[ One-shots: birds and drips ]]
 
 local DAY_BIRDS = {"afx_bird_robin", "afx_bird_cardinal", "afx_bird_lark", "afx_bird_robin",
@@ -303,7 +445,9 @@ local function maybe_drip(pname, st, ppos, now)
 	if not CFG.cave or now < st.next_drip then return end
 	st.next_drip = now + rand(1.2, 6)
 	local ear = vector.round(vector.offset(ppos, 0, 1.6, 0))
-	if sky_open(ear) or ppos.y > 20 then return end
+	-- Only where daylight never reaches (a cave, not a cellar with a door)
+	local day_light = core.get_node_light(ear, 0.5)
+	if not day_light or day_light > 3 then return end
 	-- A ceiling: solid stone with air under it, within a few nodes up
 	local ceil = core.find_nodes_in_area(vector.offset(ear, -8, 2, -8),
 			vector.offset(ear, 8, 16, 8), {"group:stone", "group:pickaxey", "group:cracky"})
@@ -312,7 +456,8 @@ local function maybe_drip(pname, st, ppos, now)
 		if #ceil == 0 then break end
 		local p = pick(ceil)
 		local below = core.get_node_or_nil(vector.offset(p, 0, -1, 0))
-		if below and below.name == "air" then
+		local def = core.registered_nodes[core.get_node(p).name]
+		if below and below.name == "air" and def and (def.light_source or 0) == 0 then
 			under[#under + 1] = vector.offset(p, 0, -0.6, 0)
 			break
 		end
@@ -344,6 +489,13 @@ core.register_globalstep(function(dtime)
 		if CFG.lava then
 			lava_emitters(ppos, wanted)
 		end
+		if CFG.beds then
+			bed_targets(ppos, wanted, rain)
+		end
+		if CFG.proximity then
+			proximity_emitters(ppos, wanted)
+		end
+		underwater_bed(player, wanted)
 		reconcile(pname, st, wanted)
 		maybe_bird(pname, st, ppos, now, rain)
 		maybe_drip(pname, st, ppos, now)

@@ -75,6 +75,7 @@ private:
 	ListenerFrame m_listener_frame;
 	v3f m_listener_pos_node;
 	bool m_afx_active = false; // sources are routed through EFX
+	bool m_afx_doppler_set = false;
 	f32 m_afx_apply_timer = 0.0f;
 	f32 m_afx_occlusion_timer = 0.0f;
 	f32 m_afx_report_timer = 0.0f;

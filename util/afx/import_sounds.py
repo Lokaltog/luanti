@@ -32,8 +32,11 @@ def decode(path, mono=False):
     return x.reshape(-1, 1 if mono else 2)
 
 
-def encode(x, path, lowpass=None, highpass=None):
+def encode(x, path, lowpass=None, highpass=None, rate_scale=None):
     filters = []
+    if rate_scale:
+        # slow it down (pitch and tempo together), like a tape
+        filters.append(f"asetrate={int(RATE * rate_scale)},aresample={RATE}")
     if highpass:
         filters.append(f"highpass=f={highpass}")
     if lowpass:
@@ -113,10 +116,12 @@ def main(assets, out):
         encode(normalise(x, db), os.path.join(out, name + ".ogg"), **kw)
         made.append(name)
 
-    def oneshot(name, src, db=-20.0, trim=None, **kw):
-        x = decode(src, mono=True)
+    def oneshot(name, src, db=-20.0, trim=None, start=0.0, stereo=False, **kw):
+        x = decode(src, mono=not stereo)
+        x = x[int(start * RATE):]
         if trim:
-            x = x[:int(trim * RATE)]
+            x = x[:int(trim * RATE)].copy()
+            x[:int(0.3 * RATE)] *= np.linspace(0, 1, int(0.3 * RATE))[:, None]
             x[-int(0.05 * RATE):] *= np.linspace(1, 0, int(0.05 * RATE))[:, None]
         encode(normalise(x, db), os.path.join(out, name + ".ogg"), **kw)
         made.append(name)
@@ -164,6 +169,29 @@ def main(assets, out):
     # Thunder and a cave bed for later milestones
     oneshot("afx_thunder.1", f"{vl}/ENVIRONMENT/lightning/sounds/lightning_thunder.2.ogg", db=-16)
     bed("afx_in_cave", f"{am}/ambient_sounds_cave_large_2.ogg", 20, start=2, db=-34)
+
+    # Biome beds
+    bed("afx_out_waves", f"{md}/nature/waves.mp3", 40, start=10, db=-26)
+    bed("afx_out_jungle", f"{md}/nature/jungle.mp3", 40, start=30, db=-28)
+    bed("afx_out_frogs", f"{md}/animals/frog.mp3", 40, start=10, db=-30)
+
+    # Proximity loops (mono, positional)
+    emitter("afx_river", f"{md}/nature/river.mp3", 30, start=10, db=-24)
+    emitter("afx_waterfall", f"{md}/nature/waterfall.mp3", 18, start=2, db=-22)
+    emitter("afx_bees", f"{md}/animals/beehive.mp3", 30, start=5, db=-26)
+    emitter("afx_insects", f"{md}/animals/beehive.mp3", 30, start=12, db=-30, highpass=300)
+
+    # Under water (non-positional, indoor bus: never muffled further)
+    bed("afx_in_underwater", f"{md}/places/underwater.mp3", 30, start=5, db=-26)
+
+    # Mood layers, played by the engine from its tension/cozy scalars
+    bed("afx_mood_dread", f"{am}/ambient_sounds_cave_3.ogg", 40, start=5, db=-30,
+        rate_scale=0.8, lowpass=1500)
+    bed("afx_mood_cozy", f"{md}/nature/campfire.mp3", 30, start=40, db=-32, lowpass=1800)
+    oneshot("afx_mood_relief", f"{md}/things/wind-chimes.mp3", start=12, trim=7, db=-28,
+            stereo=True)
+    for i in range(1, 6):
+        oneshot(f"afx_mood_stinger.{i}", f"{vl}/PLAYER/vl_cavesounds/sounds/cave{i}.ogg", db=-24)
 
     print(f"wrote {len(made)} sounds to {out}")
     for m in made:

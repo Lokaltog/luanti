@@ -19,6 +19,8 @@ class ProxySoundManager final : public ISoundManager
 	std::unordered_set<std::string> m_known_sound_names;
 	// afx: last report from the sound thread
 	afx::Report m_acoustic_report;
+	// afx: groups known to exist (from addSoundToGroup)
+	std::unordered_set<std::string> m_known_groups;
 
 	void send(SoundManagerMsgToMgr msg)
 	{
@@ -63,6 +65,10 @@ public:
 	void setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> snap,
 			const afx::Params &params) override;
 	bool getAcousticReport(afx::Report &out) const override;
+	bool hasSoundGroup(const std::string &group) const override
+	{
+		return m_known_groups.count(group) != 0;
+	}
 };
 
 } // namespace sound

@@ -34,6 +34,11 @@ Material classifyNode(const ContentFeatures &f);
 /// Call every frame with the listener (camera) position in node space.
 void update(Client *client, ISoundManager *sound, v3f ear, float dtime);
 
+struct Mood;
+/// Smoothed tension and cozy (see afx_mood.h); for other client systems
+/// such as the fx renderer.
+const Mood &mood();
+
 /// One line for the F5 debug text, or "" when afx_debug is off.
 std::string debugLine(ISoundManager *sound);
 

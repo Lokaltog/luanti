@@ -61,6 +61,21 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
   - Real recordings, built by `import_sounds.py`. Credits are in the mod.
   - `/afx_rain <0..1|off>` forces rain for testing.
 
+## Round 3: mood, biomes, proximity
+
+- **Mood** (`client/afx/afx_mood.h`). Two slow scalars computed on the client:
+  - **tension**: rises with darkness (weighted by how shut-in you are), being underground (no path to the sky), large ringing caverns, and night outdoors.
+  - **cozy**: signs of home within 8 nodes (beds, chests, furnaces, lamps) combined with light.
+  - **Timing**: dread creeps in over about 20 s, relief arrives in about 3 s.
+  - **Layers**: the engine plays the `afx_mood_dread` drone and the `afx_mood_cozy` hearth layers itself, whenever a mod provides those sounds.
+  - **Stingers**: when deep in dread, an occasional `afx_mood_stinger` plays far off in the dark (positional, so it gets occluded and reverberated).
+  - **Relief**: `afx_mood_relief` (chimes) plays when you come back out under the sky after real dread.
+  - `afx::mood()` exposes both scalars to other client code, so the fx renderer can key grading or exposure on the same numbers.
+  - Settings: `afx_mood` (level) and `afx_doppler` (OpenAL Doppler, default 0.5).
+- **Biome beds** (afx_ambience). Wind, wind in trees, distant birds, crickets at night, frogs, jungle and waves. They are mixed from biome names plus local evidence (leaves, open water, flowers) and fade with time of day. Rain silences the birds. Height above y=40 adds howling wind, so floating islands howl.
+- **Proximity sources**: rivers (flowing water), waterfalls (flow over a drop), insects over flowers by day, bees at nests, crackle at fires and lit furnaces. Under water you get an underwater bed, and the engine routes everything else through the wall EQ.
+- Scenarios `descent`, `meadow`, `beach` and `sky_island` in `tour.sh`.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

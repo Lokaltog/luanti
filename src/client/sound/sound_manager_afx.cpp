@@ -27,6 +27,10 @@ void OpenALSoundManager::setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> 
 	const bool rules_changed = params.dry_sounds != m_afx_params.dry_sounds ||
 			params.outdoor_sounds != m_afx_params.outdoor_sounds ||
 			params.indoor_sounds != m_afx_params.indoor_sounds;
+	if (params.doppler != m_afx_params.doppler || !m_afx_doppler_set) {
+		alDopplerFactor(std::max(0.0f, params.doppler));
+		m_afx_doppler_set = true;
+	}
 	m_afx_params = params;
 	if (rules_changed)
 		m_bus_rules = afx::BusRules::fromParams(params);

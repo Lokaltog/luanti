@@ -148,6 +148,11 @@ public:
 	virtual bool getAcousticReport(afx::Report &out) const { return false; }
 
 	/**
+	 * afx: is there a loaded sound group with this name (media or sound pack)?
+	 */
+	virtual bool hasSoundGroup(const std::string &group) const { return false; }
+
+	/**
 	 * Get and reset the list of sounds that were stopped.
 	 */
 	std::vector<sound_handle_t> pollRemovedSounds()
