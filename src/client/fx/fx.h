@@ -84,6 +84,15 @@ struct Params {
 	float rim_light = 0.35f;       // fx_rim_light (entities)
 	// M4
 	bool light_volume = true;      // fx_light_volume (needs restart: shader define)
+	// M5
+	bool materials = true;         // fx_materials (needs restart: textures + define)
+	float normal_strength = 1.0f;  // fx_normal_strength
+	float parallax_depth = 0.05f;  // fx_parallax_depth (fraction of a tile)
+	float specular = 1.0f;         // fx_specular
+	float glints = 1.0f;           // fx_glints
+	bool particles = true;         // fx_particles (read by the fx_ambience mod)
+	float heat_haze = 1.0f;        // fx_heat_haze
+	float contact_shadows = 0.6f;  // fx_contact_shadows
 };
 
 /*
@@ -124,6 +133,19 @@ void deinit();
 /// `size` (if non-zero) forces the companion to the base texture's size.
 std::string companionName(ITextureSource *tsrc, const std::string &image,
 		bool auto_emissive, core::dimension2du size = {0, 0});
+
+/// Material maps (M5, PACK_FORMAT v2 item 5, LabPBR layout) for the base atom
+/// of `image`: `<stem>_n.png` and `<stem>_s.png`, each resized to `size`,
+/// neutral fills where missing. Returns false if neither map is authored.
+bool materialLayers(ITextureSource *tsrc, const std::string &image,
+		core::dimension2du size, std::string &normal, std::string &specular);
+
+/// Shared neutral material array (flat normal, rough, no emission) bound to
+/// tiles whose array bunch has no authored maps.
+video::ITexture *neutralMaterialTexture(ITextureSource *tsrc);
+
+/// Texture slot for the material array: layer 2i = _n, 2i+1 = _s.
+constexpr int TEXTURE_LAYER_MATERIAL = 7;
 
 /// Texture modifier implementation: `[fx_autoemissive:<threshold>`.
 /// Keeps pixels brighter than `threshold` (smoothstep), darkens the rest.

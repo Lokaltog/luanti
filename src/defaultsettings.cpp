@@ -368,6 +368,14 @@ void set_default_settings()
 	settings->setDefault("fx_rim_light", "0.35");
 	settings->setDefault("fx_mood", "neutral");
 	settings->setDefault("fx_light_volume", "true");
+	settings->setDefault("fx_materials", "true");
+	settings->setDefault("fx_normal_strength", "1.0");
+	settings->setDefault("fx_parallax_depth", "0.05");
+	settings->setDefault("fx_specular", "1.0");
+	settings->setDefault("fx_glints", "1.0");
+	settings->setDefault("fx_particles", "true");
+	settings->setDefault("fx_heat_haze", "1.0");
+	settings->setDefault("fx_contact_shadows", "0.6");
 	settings->setDefault("fx_open_tuner_on_start", "false");
 	settings->setDefault("fx_auto_screenshot", "");
 	settings->setDefault("fx_auto_screenshot_delay", "20");

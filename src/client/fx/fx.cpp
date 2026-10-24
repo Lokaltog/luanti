@@ -60,6 +60,8 @@ static const char *const SETTING_NAMES[] = {
 	"fx_water_absorption", "fx_caustics", "fx_underwater_shafts",
 	"fx_taa", "fx_taa_blend", "fx_sharpen", "fx_ao", "fx_ao_strength", "fx_ao_radius",
 	"fx_sky_tint", "fx_ambient_floor", "fx_rim_light", "fx_light_volume",
+	"fx_materials", "fx_normal_strength", "fx_parallax_depth", "fx_specular", "fx_glints",
+	"fx_particles", "fx_heat_haze", "fx_contact_shadows",
 };
 
 // Float settings that moods and the tuner may change, with slider ranges.
@@ -85,6 +87,12 @@ static const FloatParam FLOAT_PARAMS[] = {
 	{"fx_underwater_shafts", "Underwater shafts", 0.f, 2.f, &Params::underwater_shafts},
 	{"fx_sharpen", "Sharpen", 0.f, 1.f, &Params::sharpen},
 	{"fx_taa_blend", "TAA history", 0.5f, 0.97f, &Params::taa_blend},
+	{"fx_normal_strength", "Normal maps", 0.f, 2.f, &Params::normal_strength},
+	{"fx_parallax_depth", "Parallax depth", 0.f, 0.15f, &Params::parallax_depth},
+	{"fx_specular", "Specular", 0.f, 2.f, &Params::specular},
+	{"fx_glints", "Glints", 0.f, 2.f, &Params::glints},
+	{"fx_heat_haze", "Heat haze", 0.f, 2.f, &Params::heat_haze},
+	{"fx_contact_shadows", "Contact shadows", 0.f, 1.f, &Params::contact_shadows},
 };
 
 const std::vector<TunableParam> &tunableParams()
@@ -137,6 +145,14 @@ static void readParams()
 	p.ambient_floor = s->getFloat("fx_ambient_floor");
 	p.rim_light = s->getFloat("fx_rim_light");
 	p.light_volume = s->getBool("fx_light_volume");
+	p.materials = s->getBool("fx_materials");
+	p.normal_strength = s->getFloat("fx_normal_strength");
+	p.parallax_depth = s->getFloat("fx_parallax_depth");
+	p.specular = s->getFloat("fx_specular");
+	p.glints = s->getFloat("fx_glints");
+	p.particles = s->getBool("fx_particles");
+	p.heat_haze = s->getFloat("fx_heat_haze");
+	p.contact_shadows = s->getFloat("fx_contact_shadows");
 	s_base = p;
 	s_params = p; // situational blend is re-applied next frame
 }
@@ -418,6 +434,45 @@ std::string companionName(ITextureSource *tsrc, const std::string &image,
 	}
 	verbosestream << "fx: companion of \"" << image << "\" = \"" << result + suffix << "\"" << std::endl;
 	return result + suffix;
+}
+
+bool materialLayers(ITextureSource *tsrc, const std::string &image,
+		core::dimension2du size, std::string &normal, std::string &specular)
+{
+	// base atom: the first plain file name at the start of the string
+	std::smatch m;
+	std::string stem;
+	if (std::regex_search(image, m, s_atom_re) && m.position() == 0)
+		stem = m[1].str();
+	std::ostringstream fill;
+	auto make = [&] (const char *suffix, const char *neutral, std::string &out) {
+		const std::string authored = stem + suffix;
+		if (!stem.empty() && tsrc->isKnownSourceImage(authored)) {
+			std::ostringstream os;
+			os << "(" << authored << ")^[resize:" << size.Width << "x" << size.Height;
+			out = os.str();
+			return true;
+		}
+		std::ostringstream os;
+		os << "[fill:" << size.Width << "x" << size.Height << ":" << neutral;
+		out = os.str();
+		return false;
+	};
+	// LabPBR neutrals: flat normal, no AO, top height / rough, dielectric, no emission
+	const bool n = make("_n.png", "#8080ffff", normal);
+	const bool s = make("_s.png", "#000000ff", specular);
+	return n || s;
+}
+
+video::ITexture *neutralMaterialTexture(ITextureSource *tsrc)
+{
+	static video::ITexture *tex = nullptr;
+	static ITextureSource *owner = nullptr;
+	if (!tex || owner != tsrc) {
+		tex = tsrc->addArrayTexture({"[fill:1x1:#8080ffff", "[fill:1x1:#000000ff"});
+		owner = tsrc;
+	}
+	return tex;
 }
 
 void applyAutoEmissive(video::IImage *image, float threshold)
@@ -1101,6 +1156,8 @@ public:
 		const std::string aa = g_settings->get("antialiasing");
 		if (p.light_volume && p.colored_light)
 			constants["FX_LIGHT_VOLUME"] = 1;
+		if (p.materials)
+			constants["FX_MATERIALS"] = 1;
 		if (p.taa && aa != "fsaa" && aa != "ssaa")
 			constants["FX_TAA"] = 1;
 		if (p.ao)
@@ -1124,6 +1181,12 @@ class FxUniformSetter : public IShaderUniformSetter
 	CachedVertexShaderSetting<float> m_volume_valid{"fxVolumeValid"};
 	CachedVertexShaderSetting<int> m_held_index{"fxHeldLightIndex"};
 	CachedPixelShaderSetting<float> m_rim_light{"fxRimLight"};
+	CachedPixelShaderSetting<float> m_normal_strength{"fxNormalStrength"};
+	CachedPixelShaderSetting<float> m_parallax_depth{"fxParallaxDepth"};
+	CachedPixelShaderSetting<float> m_specular{"fxSpecular"};
+	CachedPixelShaderSetting<float> m_glints{"fxGlints"};
+	CachedPixelShaderSetting<float> m_heat_haze{"fxHeatHaze"};
+	CachedPixelShaderSetting<float> m_contact_shadows{"fxContactShadows"};
 	CachedPixelShaderSetting<float> m_emissive_strength{"fxEmissiveStrength"};
 	CachedPixelShaderSetting<float> m_bloom_threshold{"fxBloomThreshold"};
 	CachedPixelShaderSetting<float> m_bloom_knee{"fxBloomKnee"};
@@ -1187,6 +1250,10 @@ public:
 				m_held_index.set(&held, services);
 			}
 			m_rim_light.set(&p.rim_light, services);
+			m_normal_strength.set(&p.normal_strength, services);
+			m_parallax_depth.set(&p.parallax_depth, services);
+			m_specular.set(&p.specular, services);
+			m_glints.set(&p.glints, services);
 			m_emissive_strength.set(&p.emissive_strength, services);
 			float valid = s_copy.valid ? 1.f : 0.f;
 			m_scene_valid.set(&valid, services);
@@ -1194,6 +1261,8 @@ public:
 			m_inv_view_proj.set(s_cam.inv_view_proj.pointer(), services);
 			m_underwater.set(&s_cam.underwater, services);
 			m_shafts.set(&p.underwater_shafts, services);
+			m_heat_haze.set(&p.heat_haze, services);
+			m_contact_shadows.set(&p.contact_shadows, services);
 			m_prev_view_proj.set(s_cam.prev_view_proj.pointer(), services);
 			m_offset_delta.set(s_cam.offset_delta, services);
 			m_jitter.set(s_cam.jitter, services);

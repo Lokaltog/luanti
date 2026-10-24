@@ -45,6 +45,8 @@ CASES=(
 	"mood_dark|fx_mood=dark"
 	"testpack_emissive|texture_path=@ROOT@/util/fx/testpack fx_debug_view=2"
 	"testpack_render|texture_path=@ROOT@/util/fx/testpack"
+	"materials|texture_path=@ROOT@/util/fx/testpack fxscene_time=0.35 fxscene_view=materials"
+	"materials_off|texture_path=@ROOT@/util/fx/testpack fxscene_time=0.35 fxscene_view=materials fx_materials=false"
 )
 if [ -n "${ONLY:-}" ]; then
 	mapfile -t CASES < <(printf '%s\n' "${CASES[@]}" | grep -E "^($ONLY)\|")

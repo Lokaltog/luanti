@@ -36,6 +36,8 @@ void TileLayer::applyMaterialOptions(video::SMaterial &material, int layer) cons
 	material.setTexture(0, texture);
 	if (fx_texture)
 		material.setTexture(2 /* fx::TEXTURE_LAYER_FX */, fx_texture);
+	if (fx_mat_texture)
+		material.setTexture(7 /* fx::TEXTURE_LAYER_MATERIAL */, fx_mat_texture);
 
 	material.BackfaceCulling = (material_flags & MATERIAL_FLAG_BACKFACE_CULLING) != 0;
 	if (!(material_flags & MATERIAL_FLAG_TILEABLE_HORIZONTAL)) {

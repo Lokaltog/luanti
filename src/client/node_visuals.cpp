@@ -32,6 +32,7 @@ using GetShaderCallback = std::function<u32 /* shader id */ (bool /* array_textu
 struct PreLoadedTexture {
 	video::ITexture *texture = nullptr;
 	video::ITexture *fx_texture = nullptr; // emissive companion array
+	video::ITexture *fx_mat_texture = nullptr; // _n/_s material array (2 layers per base layer)
 	u32 texture_id = 0;
 	u16 texture_layer_idx = 0;
 	bool used = false; // For debugging
@@ -175,6 +176,7 @@ static void fillTileAttribs(TileLayer *layer, TileAttribContext context,
 		} else {
 			layer->texture = tex.texture;
 			layer->fx_texture = tex.fx_texture;
+			layer->fx_mat_texture = tex.fx_mat_texture;
 			layer->texture_id = tex.texture_id;
 			layer->texture_layer_idx = tex.texture_layer_idx;
 		}
@@ -608,6 +610,21 @@ void NodeVisuals::fillNodeVisuals(NodeDefManager *ndef, Client *client, void *pr
 				companions.push_back(fx::companionName(tsrc, name,
 						fx_emissive_pool.count(name) > 0, size));
 			t.fx_texture = tsrc->addArrayTexture(companions);
+		}
+		if (t.texture && fx::params().enabled && fx::params().materials) {
+			// fx M5: _n/_s maps, interleaved; bunches without any share a neutral array
+			auto size = tsrc->getTextureDimensions(bunch[0]);
+			std::vector<std::string> layers;
+			layers.reserve(bunch.size() * 2);
+			bool any = false;
+			for (auto &name : bunch) {
+				std::string n, s;
+				any |= fx::materialLayers(tsrc, name, size, n, s);
+				layers.push_back(n);
+				layers.push_back(s);
+			}
+			t.fx_mat_texture = any ? tsrc->addArrayTexture(layers)
+					: fx::neutralMaterialTexture(tsrc);
 		}
 		preload_progress += bunch.size();
 		client->showUpdateProgressTexture(progress_callback_args,

@@ -89,6 +89,7 @@ struct TileLayer
 			has_color == other.has_color &&
 			color == other.color &&
 			fx_texture == other.fx_texture &&
+			fx_mat_texture == other.fx_mat_texture &&
 			need_polygon_offset == other.need_polygon_offset;
 		// texture_layer_idx and scale are notably part of the vertex data
 	}
@@ -136,6 +137,8 @@ struct TileLayer
 
 	/// fx: emissive companion (2D or array, same type as `texture`)
 	video::ITexture *fx_texture = nullptr;
+	/// fx: material maps (array only: layer 2i = _n, 2i+1 = _s)
+	video::ITexture *fx_mat_texture = nullptr;
 
 	u32 shader_id = 0;
 

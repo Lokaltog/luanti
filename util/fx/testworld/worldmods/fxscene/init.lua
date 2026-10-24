@@ -33,6 +33,15 @@ glass("glass_fluted", frame)
 glass("glass_frosted", "[fill:16x16:#e0f0ff30^[fill:16x1:0,0:#c8d8e0")
 glass("glass_red", "[fill:16x16:#ff304070")
 
+-- M5 material test blocks (maps in util/fx/testpack)
+for _, name in ipairs({"gold_ore", "gold_block"}) do
+	core.register_node("fxscene:" .. name, {
+		description = name,
+		tiles = {"fxscene_" .. name .. ".png"},
+		groups = {dig_immediate = 3},
+	})
+end
+
 -- fxscene_time: time of day 0..1 (default midnight)
 -- fxscene_view: "room" (default) or "underwater"
 core.register_on_joinplayer(function(player)
@@ -130,7 +139,20 @@ core.register_on_joinplayer(function(player)
 		for i, x in ipairs({-6, 0, 6}) do
 			core.add_item({x = x, y = 0.5, z = 11}, "basenodes:cobble")
 		end
-		if core.settings:get("fxscene_view") == "underwater" then
+		-- M5: a row of material samples, only in "materials" view
+		local samples = {"basenodes:stone", "basenodes:cobble", "fxscene:gold_ore",
+			"fxscene:gold_block", "basenodes:ice"}
+		for i, name in ipairs(core.settings:get("fxscene_view") == "materials" and samples or {}) do
+			for y = 0, 1 do
+				core.set_node({x = -5 + (i - 1) * 2, y = y, z = 2}, {name = name})
+				core.set_node({x = -4 + (i - 1) * 2, y = y, z = 2}, {name = name})
+			end
+		end
+		if core.settings:get("fxscene_view") == "materials" then
+			player:set_pos({x = 0, y = 0.6, z = -2.2})
+			player:set_look_horizontal(0)
+			player:set_look_vertical(0.12)
+		elseif core.settings:get("fxscene_view") == "underwater" then
 			player:set_pos({x = 0.5, y = -5.4, z = 3.0})
 			player:set_look_horizontal(0)
 			player:set_look_vertical(0.05)

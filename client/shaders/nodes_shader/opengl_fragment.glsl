@@ -457,10 +457,15 @@ vec2 uv_repeat(vec2 v)
 }
 
 #include "fx_common/surface.glsl"
+#include "fx_common/material.glsl"
 
 void main(void)
 {
 	vec2 uv = varTexCoord.st;
+#ifdef FX_MAT_ACTIVE
+	fxBuildTBN(uv);
+	uv = fxParallax(uv);
+#endif
 
 #ifdef USE_ARRAY_TEXTURE
 	vec4 base = texture(baseTexture, vec3(uv, float(varTexLayer))).rgba;
@@ -610,6 +615,10 @@ void main(void)
 	}
 #endif
 
+#ifdef FX_MAT_ACTIVE
+	col.rgb = fxShadeMaterial(col.rgb, base, uv);
+#endif
+
 #ifdef FX_SURFACE_ACTIVE
 	if (fxSceneValid > 0.5) {
 		col.rgb = fxSurface(col.rgb, base);
@@ -650,6 +659,9 @@ void main(void)
 	vec3 fxE = texture(fxMaterial, vec3(uv, float(varTexLayer))).rgb;
 #else
 	vec3 fxE = texture2D(fxMaterial, uv).rgb;
+#endif
+#ifdef FX_MAT_ACTIVE
+	fxE = max(fxE, fxMatEmission);
 #endif
 	{
 		vec3 lin = pow(max(col.rgb, vec3(0.0)), vec3(2.2));
