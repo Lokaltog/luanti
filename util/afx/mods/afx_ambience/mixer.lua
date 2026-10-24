@@ -70,6 +70,8 @@ end
 
 core.register_chatcommand("afx", {
 	description = "Environmental audio mixer",
+	-- it writes the server's settings: singleplayer, or the server's admin
+	privs = core.is_singleplayer() and {} or {server = true},
 	func = function(name)
 		core.show_formspec(name, "afx_ambience:mixer", formspec())
 		return true
@@ -78,6 +80,7 @@ core.register_chatcommand("afx", {
 
 core.register_on_player_receive_fields(function(player, formname, fields)
 	if formname ~= "afx_ambience:mixer" then return end
+	if not core.is_singleplayer() and not core.check_player_privs(player, "server") then return end
 	for k, v in pairs(fields) do
 		local ev = core.explode_scrollbar_event(v)
 		if ev.type == "CHG" or ev.type == "VAL" then

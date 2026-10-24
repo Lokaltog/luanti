@@ -161,8 +161,24 @@ end
 
 -- Minetest Game's env_sounds and VoxeLibre's vl_env_sounds already put
 -- positional sounds on flowing water and lava.
-local GAME_HAS_WATER_LAVA = core.get_modpath("vl_env_sounds") ~= nil or
-		core.get_modpath("env_sounds") ~= nil
+-- Does the game play water and lava itself? Its module name differs between
+-- games (env_sounds, vl_env_sounds, ...); its sound files give it away.
+local function game_has_env_sounds()
+	if core.get_modpath("vl_env_sounds") or core.get_modpath("env_sounds") then return true end
+	for _, m in ipairs(core.get_modnames()) do
+		if m ~= "afx_ambience" then
+			local files = core.get_dir_list(core.get_modpath(m) .. "/sounds", false) or {}
+			for _, f in ipairs(files) do
+				if f:find("^env_sounds_water") or f:find("^env_sounds_lava") or
+						f:find("^mcl_env_sounds") or f:find("^vl_env_sounds") then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+local GAME_HAS_WATER_LAVA = game_has_env_sounds()
 
 -- Fires, lit furnaces and campfires, beehives: by name, since games differ
 -- in their groups. Filled once all mods are loaded.
@@ -256,7 +272,12 @@ local function reconcile(pname, st, wanted)
 	end
 	for key, e in pairs(st.emitters) do
 		local w = wanted[key]
-		if not w then
+		-- the same key somewhere else now (roof rain over another room):
+		-- let the old one fade where it was and start again over there
+		if w and w.pos and e.pos and vector.distance(w.pos, e.pos) > 1.5 then
+			core.sound_fade(e.handle, e.fade, 0)
+			st.emitters[key] = nil
+		elseif not w then
 			core.sound_fade(e.handle, e.fade, 0)
 			st.emitters[key] = nil
 		elseif math.abs(w.gain - e.gain) > 0.02 then
@@ -275,7 +296,7 @@ local function reconcile(pname, st, wanted)
 			})
 			if handle then
 				core.sound_fade(handle, w.fade or FADE, w.gain)
-				st.emitters[key] = {handle = handle, gain = w.gain, fade = w.fade or FADE}
+				st.emitters[key] = {handle = handle, gain = w.gain, fade = w.fade or FADE, pos = w.pos}
 			end
 		end
 	end
@@ -318,11 +339,13 @@ end
 -- loud up close; keep them under the rain bed itself.
 local SURFACE_GAIN = 0.25
 
-local function rain_emitters(ppos, intensity, wanted)
+local function rain_emitters(ctx, intensity, wanted)
+	local ppos = ctx.ppos
 	intensity = intensity * SURFACE_GAIN
 	local r = CFG.radius
 	local ear = vector.offset(ppos, 0, 1.6, 0)
-	local under_sky = sky_open(vector.round(ear))
+	-- out in it (a jungle floor under a canopy counts: the open path is wide)
+	local under_sky = ctx.under_sky or ctx.exposure > 0.4
 
 	-- Windows and glass roofs within reach
 	local glass = core.find_nodes_in_area(vector.subtract(ppos, r), vector.add(ppos, r),
@@ -359,8 +382,10 @@ local function rain_emitters(ppos, intensity, wanted)
 						end
 						local leafy = core.get_item_group(tname, "leaves") > 0
 						if (leafy or not under_sky) and sky_open(vector.offset(top, 0, 1, 0)) then
-							-- heard at the ceiling, where it drums
-							roof[#roof + 1] = {pos = p, name = tname}
+							-- heard at the ceiling, where it drums: indoors that's
+							-- the ceiling's own material (planks under a leafy top
+							-- still drum like planks)
+							roof[#roof + 1] = {pos = p, name = under_sky and tname or node.name}
 						end
 						break
 					end
@@ -518,7 +543,9 @@ local function bed_targets(ctx, wanted)
 		gain = night * 0.4 * math.max(p.swamp, p.coast * 0.5) * (ctx.frogs_quiet and 0 or 1),
 		fade = ctx.frogs_quiet and 0.6 or 0.1}
 	wanted.b_gulls = {sound = "afx_out_gulls", gain = day * calm_birds * 0.35 * p.coast, fade = 0.15}
-	wanted.b_jungle = {sound = "afx_out_jungle", gain = 0.6 * p.jungle, fade = 0.2}
+	-- the jungle quiets at night (the crickets take over) and under rain
+	wanted.b_jungle = {sound = "afx_out_jungle",
+		gain = 0.6 * p.jungle * (0.4 + 0.6 * day) * (raining > 0 and 0.3 or 1), fade = 0.2}
 	wanted.b_waves = {sound = "afx_out_waves", gain = 0.7 * p.coast, fade = 0.2}
 end
 
@@ -739,7 +766,10 @@ local function where(ctx)
 		-- a cave is rock around you; a dark plank room is not
 		ctx.underground = not ctx.under_sky and ctx.daylight <= 3 and ctx.exposure < 0.15 and
 				(h.homey or 0) < 2 and (h.natural or 1) > 0.55
-		ctx.indoors = not ctx.under_sky and not ctx.underground and (h.enclosure or 0) > 0.5
+		-- a jungle floor under a dense canopy has no sky right above, but the
+		-- open path is wide: that's outdoors
+		ctx.indoors = not ctx.under_sky and not ctx.underground and (h.enclosure or 0) > 0.5 and
+				ctx.exposure < 0.4
 		ctx.underwater = (h.underwater or 0) > 0.5
 	else
 		ctx.exposure = ctx.under_sky and 1 or math.max(0, (ctx.daylight - 3) / 12)
@@ -780,7 +810,7 @@ core.register_globalstep(function(dtime)
 		local wanted = {}
 		for _, fn in ipairs(layers) do fn(ctx, wanted) end
 		if CFG.rain_surfaces and ctx.rain > 0 then
-			rain_emitters(ppos, ctx.rain * (ctx.rain_ramp or 1), wanted)
+			rain_emitters(ctx, ctx.rain * (ctx.rain_ramp or 1), wanted)
 		end
 		if CFG.lava and not GAME_HAS_WATER_LAVA then
 			lava_emitters(ppos, wanted)
@@ -797,7 +827,7 @@ core.register_globalstep(function(dtime)
 		if not ctx.underground and ctx.exposure + ctx.through > 0.03 then
 			maybe_bird(pname, st, ppos, now, ctx.rain + ctx.snow)
 		end
-		maybe_drip(pname, st, ppos, now)
+		if ctx.underground then maybe_drip(pname, st, ppos, now) end
 	end
 end)
 

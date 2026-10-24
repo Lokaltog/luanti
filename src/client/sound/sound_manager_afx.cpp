@@ -32,7 +32,7 @@ void OpenALSoundManager::setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> 
 	const bool rules_changed = params.dry_sounds != m_afx_params.dry_sounds ||
 			params.outdoor_sounds != m_afx_params.outdoor_sounds ||
 			params.indoor_sounds != m_afx_params.indoor_sounds;
-	if (params.doppler != m_afx_params.doppler || !m_afx_doppler_set) {
+	if (params.enabled && (params.doppler != m_afx_params.doppler || !m_afx_doppler_set)) {
 		alDopplerFactor(std::max(0.0f, params.doppler));
 		m_afx_doppler_set = true;
 	}
@@ -94,7 +94,10 @@ void OpenALSoundManager::applyHrtf(bool on)
 	if (!reset)
 		return;
 	// Keep the aux sends the context was made with
-	const ALCint attrs[] = {ALC_MAX_AUXILIARY_SENDS, 6, ALC_HRTF_SOFT, on ? ALC_TRUE : ALC_FALSE, 0};
+	// Off hands the choice back to OpenAL Soft (its headphone detection),
+	// rather than forcing HRTF off
+	const ALCint attrs[] = {ALC_MAX_AUXILIARY_SENDS, 6, ALC_HRTF_SOFT,
+			on ? ALC_TRUE : ALC_DONT_CARE_SOFT, 0};
 	if (!reset(m_device, attrs)) {
 		warningstream << "afx: resetting the device for HRTF failed" << std::endl;
 		return;
@@ -114,8 +117,12 @@ void OpenALSoundManager::deactivateAcoustics()
 	neutral.wet = 0.f;
 	neutral.echo = 0.f;
 	m_efx->applyEnvironment(neutral, m_listener_frame);
-	for (auto &[id, snd] : m_sounds_playing)
-		m_efx->clearSource(snd->getSourceId());
+	for (auto &[id, snd] : m_sounds_playing) {
+		m_efx->resetSource(snd->getSourceId(), snd->isStereo());
+		snd->resetAfx();
+	}
+	alDopplerFactor(1.0f); // OpenAL's default, what the engine had before afx
+	m_afx_doppler_set = false;
 	m_roomtone.reset();
 	m_remote = m_remote_target = afx::RemoteSpace();
 	m_efx->applyRemote(m_remote, m_listener_frame);
@@ -216,6 +223,12 @@ void OpenALSoundManager::applyMix(PlayingSound &snd)
 			const afx::Occlusion &o = snd.getOcclusion();
 			const v3f from = o.path > 0.5f ? o.virt_pos : snd.getPosNode();
 			afx::carryWeather(mix, from - m_listener_pos_node, m_afx_params);
+			// OpenAL only distance-attenuates sends into reverbs; the muffle
+			// EQ and the echo slot get the source's full level at any range.
+			// Give them the direct path's 1/d (reference distance 1 node).
+			const f32 att = 1.0f / std::max(1.0f, (from - m_listener_pos_node).getLength());
+			mix.muffle_send *= att;
+			mix.echo_send *= att;
 		}
 	}
 	if (snd.getBus() == afx::Bus::Dry)
@@ -239,7 +252,7 @@ void OpenALSoundManager::prepareSound(PlayingSound &snd)
 		if (m_afx_params.debug) {
 			const afx::Occlusion &o = snd.getOcclusion();
 			afx::Acoustics env = m_afx_smoother.current();
-			afx::Mix mix = afx::mixFor(snd.getBus(), env, o, m_afx_params, false);
+			afx::Mix mix = afx::mixFor(snd.getBus(), env, o, m_afx_params, snd.isFootstep());
 			infostream << "afx src " << snd.getLoggingName() << " bus " << (int)snd.getBus() << " d "
 					<< (snd.getPosNode() - m_listener_pos_node).getLength()
 					<< " occ " << o.amount << " hf " << o.hf << " wall " << o.wall
@@ -329,8 +342,23 @@ void OpenALSoundManager::stepRoomTone(f32 dtime)
 		if (m_roomtone->isStreaming())
 			m_sounds_streaming_next_bigstep.push_back(m_roomtone);
 	}
+	// silent for a while (out under the sky): let it go
+	if (t.gain < 0.002f) {
+		m_roomtone_quiet += dtime;
+		if (m_roomtone_quiet > 5.0f) {
+			m_roomtone.reset();
+			m_roomtone_quiet = 0.0f;
+			m_roomtone_retry = 0.0f;
+			return;
+		}
+	} else {
+		m_roomtone_quiet = 0.0f;
+	}
 	m_roomtone->setGain(t.gain);
-	m_roomtone->setPitch(t.pitch);
+	if (std::fabs(t.pitch - m_roomtone_pitch) > 0.01f) {
+		m_roomtone->setPitch(t.pitch);
+		m_roomtone_pitch = t.pitch;
+	}
 	m_efx->applySource(m_roomtone->getSourceId(), t.mix, false, false, env, m_listener_frame);
 }
 

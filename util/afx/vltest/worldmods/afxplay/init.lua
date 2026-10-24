@@ -5,6 +5,12 @@
 -- then visits them on a fixed timeline: forest at noon, the same forest in
 -- rain, plains at dusk into night, a dark cave, snow falling in the cold.
 
+-- afxplay_mode=review: grass walks and houses in rain (see review.lua)
+if core.settings:get("afxplay_mode") == "review" then
+	dofile(core.get_modpath("afxplay") .. "/review.lua")
+	return
+end
+
 local name
 local function P() return core.get_player_by_name(name) end
 local function say(msg) core.log("action", "afxplay: " .. msg) end

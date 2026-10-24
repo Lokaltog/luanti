@@ -118,7 +118,8 @@ static void dullen(Mix &m, float gain, float hf)
 	gain = std::clamp(gain, 0.f, 1.f);
 	m.direct_gain = gain * (0.1f + 0.9f * hf);
 	m.direct_hf = hf;
-	m.muffle_send = std::min(1.f, m.muffle_send + 0.8f * gain * (1.f - hf));
+	// what the bright share leaves out, through the EQ (unity in the lows)
+	m.muffle_send = std::min(1.f, m.muffle_send + (gain - m.direct_gain));
 }
 
 Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &params,
@@ -145,9 +146,11 @@ Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &pa
 			hf = lerpf(hf, occ.path_hf, p);
 			m.muffle_send *= 1.f - 0.6f * p;
 		}
+		// The listener's room only rings with what reaches it: what comes
+		// round or through the opening, and what comes through the wall
+		const float wall_part = m.muffle_send;
 		dullen(m, clear, hf);
-		// The listener's room only rings with what reaches it
-		m.reverb_send = std::min(1.f, clear + m.muffle_send);
+		m.reverb_send = std::min(1.f, clear + wall_part);
 		m.reverb_hf = hf;
 		m.echo_send = clear;
 		break;
@@ -265,8 +268,13 @@ void carrySpace(Mix &m, const SourceSpace &s, const RemoteSpace &r, const Acoust
 	const float ratio = std::max(s.decay, 0.05f) / std::max(r.decay, 0.05f);
 	const float similar = std::exp(-2.f * std::fabs(std::log(ratio)));
 	const float o = std::clamp(occ.amount * params.occlusion, 0.f, 1.f) * (1.f - occ.path);
+	// only what actually reaches us: behind solid rock, nothing of its
+	// space either
 	m.remote_send = params.source_space * spaceContrast(s, env) * similar *
-			(1.f - 0.5f * o) * dry * (1.f - std::clamp(env.deafen, 0.f, 1.f));
+			(1.f - o) * dry * (1.f - std::clamp(env.deafen, 0.f, 1.f));
+	// what the space next door's slot already carries back through the
+	// opening, the remote slot shouldn't play again
+	m.remote_send *= 1.f - std::clamp(env.coupling, 0.f, 1.f);
 	m.remote_send = std::clamp(m.remote_send, 0.f, 1.f);
 }
 
@@ -278,7 +286,7 @@ RoomTone roomTone(const Acoustics &env, const Params &params)
 	const float enclosed = smoothstep(0.55f, 0.95f, env.enclosure);
 	const float hard = std::clamp(1.f - env.absorption, 0.f, 1.f);
 	const float size = std::clamp(env.mean_free_path / 14.f, 0.f, 1.f);
-	t.gain = params.roomtone * 0.09f * enclosed * (0.1f + 0.9f * hard * hard) * (0.55f + 0.45f * size);
+	t.gain = params.roomtone * 0.06f * enclosed * (0.1f + 0.9f * hard * hard) * (0.55f + 0.45f * size);
 	t.gain *= 1.f - std::clamp(env.submerged, 0.f, 1.f);
 	t.gain *= 1.f - 0.7f * std::clamp(env.duck, 0.f, 1.f);
 	t.gain *= 1.f - std::clamp(env.deafen, 0.f, 1.f);

@@ -54,7 +54,10 @@ end)
 core.register_on_punchnode(function(pos, node, puncher)
 	if not L.CFG.birds or not puncher or not puncher:is_player() then return end
 	-- a few punches on a trunk shake the birds out too
-	if core.get_item_group(node.name, "tree") > 0 and math.random() < 0.25 then
+	-- (a living tree: leaves above, not the corner log of a log house)
+	if core.get_item_group(node.name, "tree") > 0 and math.random() < 0.25 and
+			#core.find_nodes_in_area(vector.offset(pos, -2, 1, -2), vector.offset(pos, 2, 5, 2),
+				{"group:leaves"}) >= 6 then
 		flush(vector.offset(pos, 0, 3, 0), puncher:get_player_name())
 	end
 end)

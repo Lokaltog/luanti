@@ -58,6 +58,7 @@ afxscene_scenario = $SCEN
 afx_ambience_use_biomes = false
 enable_ipv6 = false
 ipv6_server = false
+port = $((30000 + ${XVFB_DISPLAY:-98}))
 CONF
 for kv in "$@"; do echo "${kv%%=*} = ${kv#*=}" >> "$CONF"; done
 
@@ -76,7 +77,7 @@ if [ -n "${AFX_XDO:-}" ]; then
 	(sh -c "$AFX_XDO") &
 fi
 ALSOFT_CONF="$WORK/alsoft.conf" timeout ${TOUR_TIMEOUT:-300} "$ROOT/bin/luanti" --config "$CONF" \
-	--go --info --world "$WORK/world" --name tester --password "" >"$LOG" 2>&1 || true
+	--go --info --port $((30000 + ${XVFB_DISPLAY:-98})) --world "$WORK/world" --name tester --password "" >"$LOG" 2>&1 || true
 
 python3 "$ROOT/util/afx/cut_scenario.py" "$LOG" "$WORK/raw.wav" "$OUT/$SCEN.wav"
 ffmpeg -v error -y -i "$OUT/$SCEN.wav" -codec:a libmp3lame -q:a 2 "$OUT/$SCEN.mp3"

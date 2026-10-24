@@ -1,0 +1,36 @@
+[
+  {"name": "muffle", "scenario": "voxelibre", "timeout": 280,
+   "args": ["afxplay_mode=muffle", "afx_score=0", "afx_mood=0", "mcl_game_music=false"],
+   "segments": {
+     "forest floor": {"bed": [-32, -10]},
+     "sealed plank house": {"bed_rel": ["forest floor", -45, -18], "peak_rel": ["forest floor", null, -15]},
+     "pocket 4 down": {"peak_rel": ["forest floor", null, -18], "bed": [null, -38]},
+     "pocket 8 down": {"peak_rel": ["forest floor", null, -18], "bed": [null, -38]},
+     "pocket 22 down": {"bed": [null, -38]}
+   }},
+  {"name": "review", "scenario": "voxelibre", "timeout": 300,
+   "args": ["afxplay_mode=review", "afx_score=0", "afx_mood=0", "mcl_game_music=false"],
+   "segments": {
+     "step tallgrass walk": {"peak_rel": ["step grass control", null, 4]},
+     "step double grass walk": {"peak_rel": ["step grass control", null, 6]},
+     "step tallgrass sprint": {"peak_rel": ["step grass control", null, 6]},
+     "step plains house rain": {"bed_rel": ["step jungle outdoors rain", null, -8]},
+     "step jungle house rain": {"bed_rel": ["step jungle outdoors rain", null, -8],
+                                "peak_rel": ["step jungle outdoors rain", null, -4]},
+     "step rain stops, jungle house": {"bed_rel": ["step jungle outdoors rain", null, -6]}
+   }},
+  {"name": "hut_rain", "scenario": "hut_rain", "timeout": 160,
+   "args": ["afx_score=0", "afx_mood=0"],
+   "segments": {
+     "outside in the rain": {"bed": [-36, -18]},
+     "inside, door open": {"bed_rel": ["outside in the rain", -26, -6]},
+     "door shut": {"bed_rel": ["outside in the rain", null, -8]}
+   }},
+  {"name": "knock", "scenario": "knock", "timeout": 100,
+   "args": ["afx_score=0", "afx_mood=0"],
+   "env": {"AFX_XDO": "sleep 5; for i in $(seq 40); do xdotool mousedown 1; sleep 0.45; xdotool mouseup 1; sleep 0.3; done"},
+   "segments": {
+     "punching rock with a cave behind it": {"bed_rel": ["solid again", 15, null]},
+     "solid again": {"bed": [null, -40]}
+   }}
+]

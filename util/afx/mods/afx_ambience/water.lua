@@ -78,30 +78,51 @@ A.register_layer(function(ctx, wanted)
 	ctx.shore = cells
 end)
 
---[[ Wading and splashing (fast tick) ]]
+--[[ Swimming and diving (fast tick) ]]
 
 A.register_tick(function(player, dtime)
-	local st = L.player_state(player:get_player_name())
+	local pname = player:get_player_name()
+	local st = L.player_state(pname)
 	local pos = player:get_pos()
 	local feet = core.get_node(vector.round(vector.offset(pos, 0, 0.2, 0))).name
 	local head = core.get_node(vector.round(vector.offset(pos, 0, 1.6, 0))).name
 	local in_water = is_water(feet)
+	local under = is_water(head)
 	local vel = player:get_velocity()
-	local pname = player:get_player_name()
+	local now = core.get_us_time() / 1e6
 
-	-- Falling into water: one big splash
+	-- In: a plunge, bigger the faster you hit the water
 	if in_water and not st.was_in_water and vel.y < -3 then
-		afx_ambience.play("afx_plop", {pos = pos, to_player = pname,
-			gain = math.min(1, 0.4 + (-vel.y) / 15), pitch = L.rand(0.6, 0.75),
-			max_hear_distance = 24}, true)
+		afx_ambience.play("afx_splash_in", {pos = pos, to_player = pname,
+			gain = math.min(0.9, 0.3 + (-vel.y) / 18), pitch = L.rand(0.9, 1.05),
+			max_hear_distance = 32}, true)
 	end
-	-- Wading: feet in water, head out, moving
-	st.wade_t = (st.wade_t or 0) + dtime
-	local speed = math.sqrt(vel.x * vel.x + vel.z * vel.z)
-	if in_water and not is_water(head) and speed > 1 and st.wade_t > 0.55 then
-		st.wade_t = 0
-		afx_ambience.play("afx_plop", {pos = pos, to_player = pname,
-			gain = L.rand(0.15, 0.3), pitch = L.rand(0.95, 1.25), max_hear_distance = 12}, true)
+	-- Head goes under / comes up
+	if under and not st.was_under then
+		st.under_since = now
+	elseif not under and st.was_under then
+		local held = now - (st.under_since or now)
+		afx_ambience.play("afx_splash_out", {pos = vector.offset(pos, 0, 1.4, 0), to_player = pname,
+			gain = 0.45, pitch = L.rand(0.95, 1.1), max_hear_distance = 20}, true)
+		-- a long dive, or out of breath: a gasp as you break the surface
+		local breath, max_breath = player:get_breath(), player:get_properties().breath_max or 10
+		if held > 6 or breath < max_breath - 2 then
+			core.after(0.15, function()
+				afx_ambience.play("afx_dry_gasp", {to_player = pname,
+					gain = math.min(0.7, 0.3 + held / 30), pitch = L.rand(1.05, 1.15)}, true)
+			end)
+		end
+	end
+	-- Strokes: moving under water, or swimming at the surface. (Wading in
+	-- the shallows is the game's own water footstep.)
+	local speed = vector.length(vel)
+	st.swim_d = (st.swim_d or 0) + speed * dtime
+	if (under or (in_water and is_water(core.get_node(vector.round(vector.offset(pos, 0, -0.6, 0))).name)))
+			and speed > 1 and st.swim_d > 1.6 then
+		st.swim_d = 0
+		afx_ambience.play("afx_swim", {pos = vector.offset(pos, 0, 0.8, 0), to_player = pname,
+			gain = under and 0.22 or 0.3, pitch = L.rand(0.9, 1.1), max_hear_distance = 14}, true)
 	end
 	st.was_in_water = in_water
+	st.was_under = under
 end)

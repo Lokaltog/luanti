@@ -33,19 +33,31 @@ end
 
 core.register_on_leaveplayer(function(p) loops[p:get_player_name()] = nil end)
 
-local function walkable(name)
+-- Ground that gets muddy: dirt, grass, sand; not planks, stone or roofs
+local function soil(name)
 	local d = core.registered_nodes[name]
-	return d and d.walkable
+	if not d or not d.walkable then return false end
+	local g = d.groups or {}
+	if (g.stone or 0) > 0 or (g.wood or 0) > 0 or (g.tree or 0) > 0 then return false end
+	return (g.soil or 0) > 0 or (g.dirt or 0) > 0 or (g.sand or 0) > 0 or
+		(g.grass_block or 0) > 0 or name:find("dirt") ~= nil or name:find("grass") ~= nil or
+		name:find("mud") ~= nil
 end
 
--- Tall, soft plants you push through
+-- Tall, soft plants you push through (not kelp under water, cobwebs,
+-- torches, rails or carpets of moss: real growth)
+local brushy_cache = {}
 local function brushy(name)
+	local b = brushy_cache[name]
+	if b ~= nil then return b end
 	local d = core.registered_nodes[name]
-	if not d or d.walkable then return false end
-	local g = d.groups or {}
-	return d.drawtype == "plantlike" or d.drawtype == "plantlike_rooted" or
-		(g.grass or 0) > 0 or (g.flora or 0) > 0 or (g.flower or 0) > 0 or
-		(g.plant or 0) > 0 or (g.leaves or 0) > 0 or (g.double_plant or 0) > 0
+	local g = d and d.groups or {}
+	b = d ~= nil and not d.walkable and d.drawtype == "plantlike" and d.liquidtype == "none" and
+		((g.grass or 0) > 0 or (g.flora or 0) > 0 or (g.flower or 0) > 0 or
+		(g.plant or 0) > 0 or (g.double_plant or 0) > 0 or (g.leaves or 0) > 0) and
+		not name:find("cobweb") and not name:find("web")
+	brushy_cache[name] = b
+	return b
 end
 
 -- From how far the player actually moved since the last tick: covers
@@ -88,23 +100,29 @@ A.register_tick(function(player, dtime)
 	end
 	st.last_breath = breath
 
-	-- Moving through plants: a rustle per stride, louder in tall growth
+	-- Moving through plants: a soft rustle every couple of strides, a little
+	-- more in tall growth. It sits right by the ear, so it stays well under
+	-- the footsteps (the game's grass step is ~0.13).
 	local feet = core.get_node(vector.round(vector.offset(pos, 0, 0.3, 0))).name
 	local body = core.get_node(vector.round(vector.offset(pos, 0, 1.2, 0))).name
 	local depth = (brushy(feet) and 1 or 0) + (brushy(body) and 1 or 0)
-	st.brush_t = (st.brush_t or 0) + dtime
-	if depth > 0 and hspeed > 1.2 and st.brush_t > math.max(0.25, 1.4 / hspeed) then
-		st.brush_t = 0
-		afx_ambience.play("afx_leaf_rustle", {pos = vector.offset(pos, 0, 0.6 * depth, 0),
-			to_player = pname, gain = math.min(0.6, 0.12 * depth * hspeed),
-			pitch = L.rand(1.05, 1.35), max_hear_distance = 10}, true)
+	st.brush_d = (st.brush_d or 0) + hspeed * dtime
+	if depth > 0 and hspeed > 1.2 and st.brush_d > 1.8 then
+		st.brush_d = 0
+		-- non-positional: a positional sound this close to the ear clips
+		-- (the engine's x3 for positional sounds hits AL_MAX_GAIN)
+		afx_ambience.play("afx_leaf_rustle", {to_player = pname,
+			gain = math.min(0.14, 0.028 * depth * hspeed),
+			pitch = L.rand(1.05, 1.35)}, true)
+	elseif depth == 0 then
+		st.brush_d = 0
 	end
 
 	-- Wet ground: a little squelch under each step outdoors after rain
 	local below = core.get_node(vector.round(vector.offset(pos, 0, -0.6, 0))).name
-	local wet = A.wetness and A.wetness(now) or 0
+	local wet = A.wetness and A.wetness(now, pname) or 0
 	st.wet_d = (st.wet_d or 0) + hspeed * dtime
-	if wet > 0.2 and hspeed > 1.2 and walkable(below) and st.wet_d > 1.6 and
+	if wet > 0.2 and hspeed > 1.2 and soil(below) and st.wet_d > 1.6 and
 			L.sky_open(vector.round(vector.offset(pos, 0, 1, 0))) then
 		st.wet_d = 0
 		afx_ambience.play("afx_plop", {pos = pos, to_player = pname,
@@ -115,5 +133,5 @@ A.register_tick(function(player, dtime)
 	local item = player:get_wielded_item():get_name()
 	loop_to(pname, "tick", "afx_dry_tick", item:find("clock") and 0.5 or 0, 1, 2)
 	loop_to(pname, "shell", "afx_dry_seashell",
-		(item:find("shell") or item:find("conch")) and 0.6 or 0, 1, 0.5)
+		(item:find("nautilus") or item:find("conch") or item:find("seashell")) and 0.6 or 0, 1, 0.5)
 end)

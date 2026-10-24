@@ -667,6 +667,31 @@ static float blockedCost(const VoxelSnapshot &snap, v3f from, v3f to, float &hf_
 
 Occlusion occlusion(const VoxelSnapshot &snap, v3f from, v3f to)
 {
+	// A sound set into a block (rain drumming in a ceiling plank, a furnace)
+	// is heard from its open face toward the listener, not through the
+	// blocks beside it.
+	{
+		const v3s16 c = floorNode(to);
+		const u8 cell = snap.at(c);
+		if (cellBlocks(cell, 0) || cellBlocks(cell, 1) || cellBlocks(cell, 2)) {
+			const v3f toward = from - intToFloat(c, 1.f);
+			float best = -2.f;
+			v3s16 bestd(0, 0, 0);
+			for (const auto &nb : NEIGHBORS) {
+				const u8 n = snap.at(c + nb);
+				if (cellBlocks(n, 0) || cellBlocks(n, 1) || cellBlocks(n, 2))
+					continue;
+				const float dot = toward.getLengthSQ() > 1e-6f ?
+						intToFloat(nb, 1.f).dotProduct(v3f(toward).normalize()) : 0.f;
+				if (dot > best) {
+					best = dot;
+					bestd = nb;
+				}
+			}
+			if (best > -2.f)
+				to = intToFloat(c, 1.f) + intToFloat(bestd, 0.55f);
+		}
+	}
 	// Five rays: the direct one plus four ending a node off the emitter on
 	// the plane facing the listener. Averaging the two clearest lets sound
 	// bend around a pillar or a door frame (cheap diffraction).
@@ -827,8 +852,8 @@ void routeAround(const VoxelSnapshot &snap, const AirField &f, v3f ear, v3f src,
 			break;
 		c = c + NEIGHBORS[par - 1];
 	}
-	if (!found || turn == floorNode(src))
-		return; // in plain sight after all
+	if (!found || turn == s)
+		return; // in plain sight after all (from its open face)
 
 	const v3f tp = intToFloat(turn, 1.f);
 	v3f dir = tp - ear;
@@ -836,7 +861,7 @@ void routeAround(const VoxelSnapshot &snap, const AirField &f, v3f ear, v3f src,
 	if (d_turn < 1e-3f)
 		return;
 	dir /= d_turn;
-	v3f onward = src - tp;
+	v3f onward = intToFloat(s, 1.f) - tp;
 	const float d_on = onward.getLength();
 	float bend = 0.f;
 	if (d_on > 0.5f) {
@@ -979,9 +1004,10 @@ static float floorHollowness(const VoxelSnapshot &snap, v3s16 ear_cell)
 	case Material::Glass: mat = 0.7f; break;
 	case Material::Stone: mat = 0.45f; break;
 	case Material::Earth: mat = 0.3f; break;
+	case Material::Soft: case Material::Snow: return 0.f; // a carpet, wool: dead
 	default: mat = 0.2f;
 	}
-	if (cellThinAxis(snap.at(fl)) >= 0)
+	if (cellThinAxis(snap.at(fl)) >= 0 && m != Material::Earth)
 		mat = std::max(mat, 0.9f); // a slab or a trapdoor
 
 	// Thickness, then how much empty space lies under it
@@ -993,15 +1019,23 @@ static float floorHollowness(const VoxelSnapshot &snap, v3s16 ear_cell)
 	}
 	if (thick > 2)
 		return 0.f;
+	// Only under the floor itself: columns whose floor cell blocks too (not
+	// the air past a doorstep or a raised edge), and not open sky (a bridge's
+	// underside is the outdoors, not a cavity)
 	int air = 0, total = 0;
 	for (s16 dz = -1; dz <= 1; dz++)
-	for (s16 dx = -1; dx <= 1; dx++)
-	for (s16 dy = 1; dy <= 3; dy++) {
-		const u8 c = snap.at(b + v3s16(dx, (s16)-dy, dz));
-		total++;
-		if (!(c & CELL_UNLOADED) && cellMaterial(c) == Material::Air)
-			air++;
+	for (s16 dx = -1; dx <= 1; dx++) {
+		if (!cellBlocks(snap.at(fl + v3s16(dx, 0, dz)), 1))
+			continue;
+		for (s16 dy = 1; dy <= 3; dy++) {
+			const u8 c = snap.at(b + v3s16(dx, (s16)-dy, dz));
+			total++;
+			if (!(c & CELL_UNLOADED) && !(c & CELL_SKY) && cellMaterial(c) == Material::Air)
+				air++;
+		}
 	}
+	if (total == 0)
+		return 0.f;
 	return clampf(mat * (air / (float)total) * (thick == 1 ? 1.f : 0.5f) * 1.4f, 0.f, 1.f);
 }
 

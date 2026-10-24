@@ -74,11 +74,22 @@ end
 
 --[[ Rain: first drops, then the downpour; dripping and gutters after ]]
 
-local rain = {on = false, since = 0, stopped = -1000}
+-- Per player: one in a downpour, another in a dry desert
+local function rain_of(st)
+	st.rain = st.rain or {on = false, since = 0, stopped = -1000, last_gutter = 0}
+	return st.rain
+end
+
+local function solid_top(p)
+	local n = core.get_node_or_nil(p)
+	local d = n and core.registered_nodes[n.name]
+	return d and d.walkable
+end
 
 local function rain_layer(ctx, wanted)
 	local now = ctx.now
 	local raining = ctx.rain > 0
+	local rain = rain_of(ctx.st)
 	if raining and not rain.on then
 		rain.on, rain.since = true, now
 	elseif not raining and rain.on then
@@ -93,13 +104,28 @@ local function rain_layer(ctx, wanted)
 	ctx.rain_ramp = raining and math.min(1, 0.15 + (now - rain.since) / 30) or 1
 
 	local st = ctx.st
-	-- The first fat drops: single splats on surfaces near you
-	if raining and now - rain.since < 12 then
+	-- The first fat drops: single splats on surfaces near you that the rain
+	-- actually reaches (out here, not in your room or inside the walls)
+	if raining and now - rain.since < 12 and not ctx.indoors and not ctx.underground and
+			(ctx.under_sky or ctx.exposure > 0.4) then
 		if not st.next_drop or now >= st.next_drop then
 			st.next_drop = now + L.rand(0.3, 1.2)
-			local p = vector.offset(ctx.ppos, L.rand(-5, 5), L.rand(0, 3), L.rand(-5, 5))
-			afx_ambience.play("afx_drip", {pos = p, to_player = ctx.pname,
-				gain = L.rand(0.15, 0.4), pitch = L.rand(0.6, 0.9), max_hear_distance = 16}, true)
+			for _ = 1, 4 do
+				local c = vector.round(vector.offset(ctx.ppos, L.rand(-5, 5), 3, L.rand(-5, 5)))
+				-- down to the first solid top under open sky
+				for dy = 0, -6, -1 do
+					local q = vector.offset(c, 0, dy, 0)
+					if solid_top(q) then
+						if L.sky_open(vector.offset(q, 0, 1, 0)) then
+							afx_ambience.play("afx_drip", {pos = vector.offset(q, 0, 0.5, 0),
+								to_player = ctx.pname, gain = L.rand(0.15, 0.35),
+								pitch = L.rand(0.6, 0.9), max_hear_distance = 16}, true)
+						end
+						break
+					end
+				end
+				break
+			end
 		end
 	end
 
@@ -118,9 +144,13 @@ local function rain_layer(ctx, wanted)
 	end
 
 	-- Gutters: under a roof, water running off its edge while it rains and
-	-- for a little after
-	local gutter = raining and 1 or math.max(0, 1 - after / 40)
-	if gutter > 0 and not ctx.under_sky and not ctx.underground then
+	-- for a little after (dying away from where it was, never swelling)
+	local gutter = raining and (ctx.rain_ramp or 1) or
+			(rain.last_gutter or 0) * math.max(0, 1 - after / 40)
+	if raining then rain.last_gutter = gutter end
+	-- only where the outside is in earshot through air: a porch, a doorway
+	local got_gutter = false
+	if gutter > 0 and not ctx.under_sky and not ctx.underground and ctx.exposure > 0.05 then
 		local ear = ctx.ear
 		for dx = -5, 5 do
 			for dz = -5, 5 do
@@ -129,18 +159,21 @@ local function rain_layer(ctx, wanted)
 					local p = vector.offset(ear, dx, 0, dz)
 					local n = core.get_node_or_nil(p)
 					if n and n.name == "air" and L.sky_open(p) then
-						-- the roof edge just inward of it, 1-5 nodes up
+						-- a real overhang: air just inward of it at ear height (not
+						-- a wall), with the roof edge 1-3 nodes above that
 						local ix = dx - (dx > 0 and 1 or dx < 0 and -1 or 0)
 						local iz = dz - (dz > 0 and 1 or dz < 0 and -1 or 0)
+						local inward = core.get_node_or_nil(vector.offset(ear, ix, 0, iz))
 						local roofed = false
-						for up = 1, 5 do
-							local rn = core.get_node_or_nil(vector.offset(ear, ix, up, iz))
-							local rdef = rn and core.registered_nodes[rn.name]
-							if rdef and rdef.walkable then roofed = true break end
+						if inward and inward.name == "air" then
+							for up = 1, 3 do
+								if solid_top(vector.offset(ear, ix, up, iz)) then roofed = true break end
+							end
 						end
-						if roofed and not wanted.gutter then
-							wanted.gutter = {sound = "afx_gutter", pos = p,
-								gain = 0.35 * gutter * (ctx.rain_ramp or 1), range = 14}
+						if roofed and not got_gutter then
+							local key = "gutter" .. core.hash_node_position(p)
+							got_gutter = true
+							wanted[key] = {sound = "afx_gutter", pos = p, gain = 0.35 * gutter, range = 14}
 						end
 					end
 				end
@@ -181,6 +214,8 @@ local function on_strike(pos, game_crack)
 				afx_ambience.play("afx_thunder_near", {pos = pos, to_player = pname,
 					gain = 1.0, max_hear_distance = 1000}, true)
 			end
+		elseif game_crack and d < 500 then
+			-- the game's own thunder already reaches this far
 		else
 			-- Far strikes: just the roll, quieter with distance
 			afx_ambience.play("afx_thunder_far", {pos = pos, to_player = pname,
@@ -236,15 +271,31 @@ local function is_gap(p)
 end
 
 A.register_layer(function(ctx, wanted)
-	if ctx.under_sky or ctx.underground or ctx.dimension ~= "overworld" then return end
+	if not ctx.indoors or ctx.dimension ~= "overworld" then return end
 	local wind = ctx.wind or 0
 	if wind < 0.85 then return end
-	local airs = core.find_nodes_in_area(vector.offset(ctx.ear, -6, -2, -6),
-			vector.offset(ctx.ear, 6, 3, 6), {"air"})
-	local gaps = {}
-	for _, p in ipairs(airs) do
-		local w = is_gap(p)
-		if w then gaps[#gaps + 1] = {pos = p, narrow = w == 4} end
+	-- Gaps are looked for every 10 s or after moving 3 nodes, not every second
+	local st = ctx.st
+	local gaps = st.gaps
+	if not gaps or ctx.now > (st.gaps_t or 0) + 10 or
+			vector.distance(st.gaps_at or ctx.ear, ctx.ear) > 3 then
+		gaps = {}
+		local airs = core.find_nodes_in_area(vector.offset(ctx.ear, -6, -2, -6),
+				vector.offset(ctx.ear, 6, 3, 6), {"air"})
+		-- the ones in walls: next to something solid; then at most 160 of them
+		local cand = {}
+		for _, p in ipairs(airs) do
+			if walkable(vector.offset(p, 1, 0, 0)) or walkable(vector.offset(p, -1, 0, 0)) or
+					walkable(vector.offset(p, 0, 0, 1)) or walkable(vector.offset(p, 0, 0, -1)) then
+				cand[#cand + 1] = p
+			end
+		end
+		for i = 1, math.min(#cand, 160) do
+			local p = #cand > 160 and cand[math.random(#cand)] or cand[i]
+			local w = is_gap(p)
+			if w then gaps[#gaps + 1] = {pos = p, narrow = w == 4} end
+		end
+		st.gaps, st.gaps_t, st.gaps_at = gaps, ctx.now, ctx.ear
 	end
 	table.sort(gaps, function(a, b)
 		return vector.distance(a.pos, ctx.ear) < vector.distance(b.pos, ctx.ear)
@@ -252,14 +303,16 @@ A.register_layer(function(ctx, wanted)
 	for i = 1, math.min(2, #gaps) do
 		local g = gaps[i]
 		-- a pinhole whistles higher and thinner than a window
-		wanted["draft" .. i] = {sound = "afx_draft", pos = g.pos,
+		wanted["draft" .. core.hash_node_position(g.pos)] = {sound = "afx_draft", pos = g.pos,
 			gain = math.min(0.7, (wind - 0.85) * 1.2) * (g.narrow and 0.8 or 0.6),
 			fade = 0.4, range = 14, pitch = g.narrow and 1.3 or 1.0}
 	end
 end)
 
--- How wet the ground is: 1 while it rains, drying over two minutes after
-function A.wetness(now)
+-- How wet the ground is where this player is: 1 while it rains, drying
+-- over two minutes after
+function A.wetness(now, pname)
+	local rain = rain_of(L.player_state(pname))
 	if rain.on then return math.min(1, (now - rain.since) / 20) end
 	return math.max(0, 1 - (now - rain.stopped) / 120)
 end

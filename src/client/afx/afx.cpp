@@ -22,6 +22,8 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <atomic>
+#include <new>
 #include <unordered_map>
 #include "noise.h"
 #include "porting.h"
@@ -73,14 +75,21 @@ static void readParams()
 	s_params = p;
 }
 
+// Settings can change on any thread (the /afx mixer runs in the server
+// thread in singleplayer): just flag it, and re-read on the main thread.
+static std::atomic<bool> s_params_dirty{false};
+
 static void onSettingChanged(const std::string &, void *)
 {
-	readParams();
+	s_params_dirty = true;
 }
+
+static void resetSession(); // per-world state, below
 
 void init()
 {
 	readParams();
+	resetSession();
 	for (auto name : SETTING_NAMES)
 		g_settings->registerChangedCallback(name, &onSettingChanged, &s_params);
 }
@@ -135,6 +144,10 @@ Material classifyNode(const ContentFeatures &f)
 
 	if (group("leaves") || group("leafdecay") || nameHas(name, {"leaves", "leaf"}))
 		return Material::Foliage;
+	// MCL lineage names the material directly: panes are glass even without
+	// a glass group or drawtype; glowstone is glassy
+	if (group("pane") || group("material_glass"))
+		return Material::Glass;
 	if (group("wool") || group("carpet") || group("bed") || nameHas(name, {"wool", "carpet", "hay"}))
 		return Material::Soft;
 	if (group("snow") || group("snow_cover") || nameHas(name, {"snow"}))
@@ -146,8 +159,16 @@ Material classifyNode(const ContentFeatures &f)
 	// Holey shapes let sound through. Doors, panes and trapdoors are not
 	// here: their collision boxes decide (see thinCode), open or shut.
 	if (f.drawtype == NDT_FENCELIKE ||
-			nameHas(name, {"fence", "bars", "ladder", "lantern", "chain", "scaffold", "rail"}))
+			nameHas(name, {"fence", "xpanes:bar", "iron_bars", "bars", "chain", "scaffold", "rail"}) ||
+			(nameHas(name, {"ladder"}) && !nameHas(name, {"trapdoor"})) ||
+			(nameHas(name, {"lantern"}) && f.drawtype != NDT_NORMAL))
 		return Material::Leaky;
+	if (group("material_wood"))
+		return Material::Wood;
+	if (group("material_stone"))
+		return Material::Stone;
+	if (nameHas(name, {"slime", "honey", "sponge"}))
+		return Material::Soft;
 
 	if (group("wood") || group("tree") || group("planks") || group("axey") ||
 			group("choppy") || nameHas(name, {"wood", "plank", "log"}))
@@ -158,6 +179,9 @@ Material classifyNode(const ContentFeatures &f)
 	if (group("stone") || group("cracky") || group("pickaxey") || group("ore") ||
 			group("metal"))
 		return Material::Stone;
+	// only breakable by hand and nothing else said: something soft
+	if (group("handy"))
+		return Material::Soft;
 	return Material::Earth;
 }
 
@@ -516,10 +540,15 @@ void setWorldState(const std::string &state)
 		s_world.wind_dir = d.normalize();
 }
 
+static struct {
+	v3s16 node{S16_MAX, S16_MAX, S16_MAX}, normal;
+	SoundSpec spec;
+} s_knock;
+
 SoundSpec knockSound(Client *client, v3s16 node, v3s16 normal)
 {
-	static v3s16 last_node(S16_MAX, S16_MAX, S16_MAX), last_normal;
-	static SoundSpec last;
+	v3s16 &last_node = s_knock.node, &last_normal = s_knock.normal;
+	SoundSpec &last = s_knock.spec;
 	if (!s_params.enabled)
 		return SoundSpec();
 	if (node == last_node && normal == last_normal)
@@ -541,8 +570,26 @@ SoundSpec knockSound(Client *client, v3s16 node, v3s16 normal)
 		if (!ok || n.getContent() == CONTENT_IGNORE)
 			return false;
 		const ContentFeatures &f = ndef->get(n);
-		return !f.walkable && f.liquid_type == LIQUID_NONE;
+		if (f.walkable || f.liquid_type != LIQUID_NONE)
+			return false;
+		// sunlit air is the outdoors behind a house wall, not a hidden cave
+		return n.getLight(LIGHTBANK_DAY, ndef->getLightingFlags(n)) != LIGHT_SUN;
 	};
+	// A wall, not a tree trunk or a post: knocking a lone log (chopping a
+	// tree) has air around it, and that's no secret cave
+	{
+		const v3s16 a = normal.X != 0 ? v3s16(0, 1, 0) : v3s16(1, 0, 0);
+		const v3s16 b = normal.Y != 0 ? v3s16(0, 0, 1) : (normal.X != 0 ? v3s16(0, 0, 1) : v3s16(0, 1, 0));
+		int solid = 0;
+		for (const v3s16 &d : {a, v3s16(0, 0, 0) - a, b, v3s16(0, 0, 0) - b}) {
+			bool ok = false;
+			MapNode n = map.getNode(node + d, &ok);
+			if (ok && ndef->get(n).walkable)
+				solid++;
+		}
+		if (solid < 3)
+			return last;
+	}
 	const Knock k = knockProbe(open, node, -normal);
 	if (k.hollow < 0.08f)
 		return last;
@@ -587,6 +634,8 @@ void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 {
 	if (!sound)
 		return;
+	if (s_params_dirty.exchange(false))
+		readParams();
 	const Params &p = s_params;
 	if (!p.enabled) {
 		if (s_was_enabled) {
@@ -662,6 +711,23 @@ std::string debugLine(ISoundManager *sound)
 	os << " | src " << r.sources << " occl " << r.occluded << " routed " << r.routed
 		<< std::setprecision(1) << " | probe " << r.probe_ms << "ms snap " << s_build_ms << "ms";
 	return os.str();
+}
+
+/// A new world: nothing carries over from the last one (the mood beds' ids,
+/// the weather, the node table, the knock cache).
+static void resetSession()
+{
+	s_mood.~MoodState();
+	new (&s_mood) MoodState();
+	s_world.wind_dir = v3f();
+	s_world.wind = 0.f;
+	s_world.rain = 0.f;
+	s_knock.node = v3s16(S16_MAX, S16_MAX, S16_MAX);
+	s_knock.spec = SoundSpec();
+	s_materials = MaterialTable();
+	s_timer = 0.f;
+	s_was_enabled = true;
+	s_last_homey = 0;
 }
 
 } // namespace afx

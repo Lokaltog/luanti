@@ -364,7 +364,9 @@ void TestAfxEfx::testHollowSteps(Loopback &lb)
 		return e;
 	};
 	const double solid = low(run(0.f)), hollow = low(run(1.f));
-	UASSERT(hollow > solid * 2.0);
+	// a boom you notice, not one that buries the step (it was +19 dB)
+	UASSERT(hollow > solid * 1.3);
+	UASSERT(hollow < solid * 4.0);
 	alDeleteBuffers(1, &buf);
 }
 

@@ -52,12 +52,20 @@ A.register_tick(function(player, dtime)
 				core.sound_fade(h, 0.4, gain)
 				beats[pname] = {handle = h, gain = gain, pitch = pitch}
 			end
-		elseif math.abs(b.gain - gain) > 0.05 or math.abs(b.pitch - pitch) > 0.08 then
-			-- pitch is fixed per play: restart at the new tempo
-			core.sound_stop(b.handle)
-			local h = core.sound_play("afx_dry_heart", {to_player = pname, loop = true,
-				gain = gain, pitch = pitch})
-			beats[pname] = h and {handle = h, gain = gain, pitch = pitch} or nil
+		else
+			local now = core.get_us_time() / 1e6
+			if math.abs(b.pitch - pitch) > 0.15 and now - (b.since or 0) > 3 then
+				-- pitch is fixed per play: a new tempo means a new loop,
+				-- crossfaded, at most every few seconds
+				core.sound_fade(b.handle, 1.5, 0)
+				local h = core.sound_play("afx_dry_heart", {to_player = pname, loop = true,
+					gain = 0.01, pitch = pitch})
+				if h then core.sound_fade(h, 1.0, gain) end
+				beats[pname] = h and {handle = h, gain = gain, pitch = pitch, since = now} or nil
+			elseif math.abs(b.gain - gain) > 0.03 then
+				core.sound_fade(b.handle, 0.3, gain)
+				b.gain = gain
+			end
 		end
 	elseif b then
 		core.sound_fade(b.handle, 0.3, 0)

@@ -83,6 +83,7 @@ private:
 	// the build's own voice: a faint looping tone through the room's reverb
 	std::shared_ptr<PlayingSound> m_roomtone;
 	f32 m_roomtone_retry = 0.0f;
+	f32 m_roomtone_quiet = 0.0f, m_roomtone_pitch = -1.0f;
 	// HRTF: -1 = never touched (OpenAL Soft's own config decides)
 	int m_hrtf_set = -1;
 	void applyHrtf(bool on);

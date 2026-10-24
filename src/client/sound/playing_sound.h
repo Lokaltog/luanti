@@ -135,6 +135,19 @@ public:
 		m_space_pos = m_pos_node;
 		m_space_age = 0.0f;
 	}
+	/// afx turned off: heard from where it really is again, no occlusion
+	void resetAfx()
+	{
+		m_occ = m_occ_target = afx::Occlusion();
+		m_space = afx::SourceSpace();
+		if (m_is_positional) {
+			const v3f s = swap_handedness(m_pos_node);
+			alSource3f(m_source_id, AL_POSITION, s.X, s.Y, s.Z);
+			alSourcef(m_source_id, AL_AIR_ABSORPTION_FACTOR, 0.0f);
+		} else {
+			alSource3f(m_source_id, AL_POSITION, 0.0f, 0.0f, 0.0f);
+		}
+	}
 	/// Glide the occlusion toward its target (called every sound-thread step).
 	void stepOcclusion(f32 dtime, f32 tau);
 };

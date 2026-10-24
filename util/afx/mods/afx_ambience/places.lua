@@ -73,7 +73,8 @@ local function cats(ctx, wanted)
 		local ent = obj:get_luaentity()
 		if ent and ent.name and (ent.name:find(":cat") or ent.name:find("kitten")) then
 			-- a tamed or sitting cat close by purrs
-			if ent.tamed or ent.owner or ent.order == "sit" or ent._sitting then
+			-- (mcl_mobs sets owner = "" on wild ones)
+			if ent.tamed or (ent.owner and ent.owner ~= "") or ent.order == "sit" or ent._sitting then
 				wanted.purr = {sound = "afx_purr", object = obj, gain = 0.5, range = 6}
 				return
 			end
@@ -167,10 +168,10 @@ A.register_layer(function(ctx, wanted)
 	if not slot then return end
 	local key = slot .. (core.get_day_count and core.get_day_count() or 0)
 	if st.bell_rung == key then return end
+	st.bell_rung = key -- look once per slot, found or not
 	local bell = core.find_nodes_in_area(vector.offset(ctx.ppos, -64, -16, -64),
 		vector.offset(ctx.ppos, 64, 24, 64), BELLS)[1]
 	if not bell then return end
-	st.bell_rung = key
 	ring(bell, ctx.pname, slot == "dawn" and 3 or 6)
 end)
 

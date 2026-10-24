@@ -35,7 +35,7 @@ sys.path.insert(0, HERE)
 from analyze_tour import read_wav  # noqa: E402
 
 TS = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
-LABEL = re.compile(r"(?:afxplay|afxscene): (.*)$")
+LABEL = re.compile(r"(?:afxplay|afxscene): (?!where)(.*)$")
 SILENT = -120.0
 
 

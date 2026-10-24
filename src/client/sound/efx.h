@@ -60,6 +60,8 @@ public:
 
 	/// Disconnect a source from all sends and filters (afx disabled).
 	void clearSource(ALuint source);
+	/// Also undo bed steering (stereo angles, source radius).
+	void resetSource(ALuint source, bool stereo);
 
 	/// Context attributes asking for enough aux sends; zero-terminated.
 	static const ALCint *contextAttributes();

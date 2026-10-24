@@ -381,6 +381,9 @@ OpenALSoundManager::~OpenALSoundManager()
 	m_internal_sounds.clear();
 	m_roomtone.reset();
 	m_efx.reset();
+	// HRTF we switched on stays on the device after us: hand it back
+	if (m_hrtf_set == 1)
+		applyHrtf(false);
 }
 
 /* Interface */
