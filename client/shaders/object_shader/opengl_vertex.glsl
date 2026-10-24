@@ -151,6 +151,9 @@ void main(void)
 	vec3 fxLight = fxArtificialLight(worldPosition, fxN, animationTimer * 100.0);
 	color.rgb = color.rgb * (color.a * dayLight.rgb +
 		nightRatio * fxLight) * 2.0;
+#ifdef FX_LIGHT_VOLUME
+	color.rgb = max(color.rgb, fxHeldLight()); // materialColor is light here, not tint
+#endif
 #else
 	color.rgb = color.rgb * (color.a * dayLight.rgb +
 		nightRatio * artificialLight.rgb) * 2.0;

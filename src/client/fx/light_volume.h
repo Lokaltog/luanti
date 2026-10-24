@@ -86,6 +86,12 @@ public:
 	bool valid() const { return m_texture != nullptr && m_have_result; }
 	/// Snapshot generation of the uploaded result (bumps on every change).
 	u32 generation() const { return m_uploaded_generation; }
+	/// The held light: a source of `level` at `node` (0: none). Its own
+	/// flood fill (same rule, leak-free) goes into the atlas alpha, which
+	/// the node shader turns into brightness: the engine has no light for a
+	/// held torch. Main thread, every frame; re-uploads only on change.
+	void setHeld(v3s16 node, u8 level);
+
 	/// Light level per channel (0..15) at a node, from the uploaded result.
 	/// False outside the window or before the first result. Main thread.
 	bool sampleLevels(v3s16 node, u8 out[3]) const;
@@ -115,6 +121,8 @@ private:
 	void compute(const Job &job, std::vector<u8> &out_rgba);
 	void workerLoop();
 	void upload(video::IVideoDriver *driver);
+	void writeTexture();
+	void applyHeld();
 
 	std::vector<ContentInfo> m_info;
 	bool m_tables_built = false;
@@ -143,6 +151,9 @@ private:
 
 	video::ITexture *m_texture = nullptr;
 	std::vector<u8> m_uploaded;          // the atlas last uploaded (CPU copy)
+	v3s16 m_held_node;
+	u8 m_held_level = 0;
+	std::vector<u32> m_held_texels;      // atlas texels whose alpha it set
 	v3s16 m_uploaded_origin;
 	u32 m_uploaded_generation = 0;
 	bool m_have_result = false;

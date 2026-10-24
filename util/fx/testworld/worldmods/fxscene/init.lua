@@ -187,7 +187,8 @@ core.register_on_joinplayer(function(player)
 		if view == "hand" then
 			-- the wielded item against a wall 1.5 nodes away (R3: no AO halo)
 			player:hud_set_flags({wielditem = true})
-			player:get_inventory():set_stack("main", 1, "basenodes:cobble")
+			player:get_inventory():set_stack("main", 1,
+				core.settings:get("fxscene_wield") or "basenodes:cobble")
 			player:set_pos({x = -4.5, y = 0, z = 6})
 			player:set_look_horizontal(math.pi / 2)
 			player:set_look_vertical(0.1)

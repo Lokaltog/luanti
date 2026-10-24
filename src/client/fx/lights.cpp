@@ -160,6 +160,7 @@ void Renderer::updateLights(Client *client, Camera *camera)
 	}
 
 	// held light: a torch in hand lights the camera's surroundings
+	u8 held_level = 0;
 	if (prm.held_light) {
 		LocalPlayer *player = client->getEnv().getLocalPlayer();
 		ItemStack selected, hand;
@@ -168,6 +169,8 @@ void Renderer::updateLights(Client *client, Camera *camera)
 		if (!item.empty() && client->ndef()->getId(item.name, id)) {
 			const ContentFeatures &f = client->ndef()->get(id);
 			if (f.light_source > 0 && f.visuals) {
+				// a little dimmer than the placed node
+				held_level = f.light_source > 1 ? f.light_source - 1 : 1;
 				b.info[1] = b.info[0];
 				push(cam_pos + camera->getDirection() * (0.6f * BS),
 						(f.light_source + 1.5f) * BS * 0.85f, f.visuals->fx_light.color,
@@ -175,6 +178,8 @@ void Renderer::updateLights(Client *client, Camera *camera)
 			}
 		}
 	}
+	if (volume)
+		volume->setHeld(cam_node, held_level);
 	driver->setUniformBufferData(UBO_LIGHTS, &b, sizeof(b));
 }
 

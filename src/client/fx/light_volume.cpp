@@ -20,6 +20,7 @@
 #include <ITexture.h>
 #include <algorithm>
 #include <cstring>
+#include <unordered_map>
 
 namespace fx
 {
@@ -292,7 +293,7 @@ void LightVolume::compute(const Job &job, std::vector<u8> &out)
 		for (s16 x = 0; x < SX; x++) {
 			const u8 *l = &lvl[vidx(x, y, z) * 3];
 			const u32 r = l[0] * 17, g = l[1] * 17, b = l[2] * 17;
-			const u32 a = std::max({r, g, b});
+			const u32 a = 0; // alpha: the held light (applyHeld)
 			px[(ty + z) * ATLAS_W + tx + x] = video::SColor(a, r, g, b).color;
 		}
 	}
@@ -338,17 +339,84 @@ void LightVolume::upload(video::IVideoDriver *driver)
 			return;
 		}
 	}
+	m_uploaded.swap(m_result);
+	m_uploaded_origin = m_result_origin;
+	m_uploaded_generation = m_result_generation;
+	m_have_result = true;
+	m_held_texels.clear(); // a fresh atlas has no held light yet
+	applyHeld();           // writes the texture
+}
+
+void LightVolume::writeTexture()
+{
+	if (!m_texture || m_uploaded.empty())
+		return;
 	void *dst = m_texture->lock(video::ETLM_WRITE_ONLY);
 	if (!dst)
 		return;
 	const u32 pitch = m_texture->getPitch();
 	for (u32 row = 0; row < ATLAS_H; row++)
-		std::memcpy((u8 *)dst + row * pitch, m_result.data() + (size_t)row * ATLAS_W * 4, ATLAS_W * 4);
+		std::memcpy((u8 *)dst + row * pitch, m_uploaded.data() + (size_t)row * ATLAS_W * 4, ATLAS_W * 4);
 	m_texture->unlock();
-	m_uploaded.swap(m_result);
-	m_uploaded_origin = m_result_origin;
-	m_uploaded_generation = m_result_generation;
-	m_have_result = true;
+}
+
+void LightVolume::setHeld(v3s16 node, u8 level)
+{
+	level = std::min<u8>(level, 14);
+	if (level == m_held_level && (level == 0 || node == m_held_node))
+		return;
+	m_held_node = node;
+	m_held_level = level;
+	if (m_have_result)
+		applyHeld();
+}
+
+void LightVolume::applyHeld()
+{
+	u32 *px = reinterpret_cast<u32 *>(m_uploaded.data());
+	for (u32 t : m_held_texels)
+		px[t] &= 0x00ffffffu;
+	m_held_texels.clear();
+	auto texel = [&] (v3s16 a) -> s64 { // atlas texel of an absolute node, or -1
+		const v3s16 v = a - m_uploaded_origin;
+		if (v.X < 0 || v.Y < 0 || v.Z < 0 || v.X >= SX || v.Y >= SY || v.Z >= SZ)
+			return -1;
+		return (s64)((v.Y / ATLAS_COLS) * SZ + v.Z) * ATLAS_W + (v.Y % ATLAS_COLS) * SX + v.X;
+	};
+	auto opaque = [&] (v3s16 a) { // from the current snapshot; unknown counts as opaque
+		const v3s16 v = a - m_origin;
+		if (!m_have_content || v.X < 0 || v.Y < 0 || v.Z < 0 || v.X >= SX || v.Y >= SY || v.Z >= SZ)
+			return true;
+		const u16 c = m_content[vidx(v.X, v.Y, v.Z)];
+		return c >= m_info.size() || m_info[c].opaque;
+	};
+	if (m_held_level > 0) {
+		// the engine's rule: one level per step, through what light passes
+		std::vector<std::pair<v3s16, u8>> queue{{m_held_node, m_held_level}};
+		std::unordered_map<v3s16, u8> seen{{m_held_node, m_held_level}};
+		static const v3s16 dirs[6] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+		for (size_t head = 0; head < queue.size(); head++) {
+			const auto [p, l] = queue[head];
+			const s64 t = texel(p);
+			if (t >= 0) {
+				px[t] = (px[t] & 0x00ffffffu) | ((u32)l * 17u) << 24;
+				m_held_texels.push_back((u32)t);
+			}
+			if (l <= 1)
+				continue;
+			for (const v3s16 &d : dirs) {
+				const v3s16 q = p + d;
+				if (opaque(q))
+					continue;
+				auto it = seen.find(q);
+				if (it != seen.end() && it->second >= l - 1)
+					continue;
+				seen[q] = l - 1;
+				queue.emplace_back(q, (u8)(l - 1));
+			}
+		}
+	}
+	writeTexture();
 }
 
 bool LightVolume::sampleLevels(v3s16 node, u8 out[3]) const

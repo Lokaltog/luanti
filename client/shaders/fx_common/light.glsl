@@ -8,6 +8,8 @@
 #if defined(FX_ENABLE) && defined(FX_COLORED_LIGHT)
 // fx: nearest light sources this frame, positions relative to cameraOffset (BS units)
 VARYING_ vec3 fxChroma; // for debug view 1
+float fxHeldLevel = 0.0;  // held light level here (0..1 = 0..15), set by fxArtificialLight
+vec3 fxHeldHue = vec3(1.0);
 
 #ifdef FX_LIGHT_VOLUME
 // fx M4: leak-free RGB light volume, Y slices tiled 8 per row in a 2D atlas
@@ -24,10 +26,8 @@ vec2 fxVolumeTexel(float slice, vec2 xz)
 	return (vec2(mod(slice, FX_VOL_COLS), floor(slice / FX_VOL_COLS)) * FX_VOL_SIZE.xz + xz) / FX_VOL_ATLAS;
 }
 
-// rgb = light level per channel (0..1 = 0..15), a = how much to trust it:
-// 1 inside, fading to 0 over the last 8 nodes before the window's edge
-// (light there may come from outside; the hue then blends to white instead
-// of popping when the window moves)
+// rgb = light level per channel (0..1 = 0..15), a = the held light's level;
+// all zero outside the window
 vec4 fxVolumeSample(vec3 p)
 {
 	vec3 v = (p - fxVolumeOrigin) / FX_BS;
@@ -39,11 +39,17 @@ vec4 fxVolumeSample(vec3 p)
 	// bilinear inside a slice by the hardware, clamped so it never reads a
 	// neighbouring slice; linear between slices by hand
 	vec2 xz = clamp(v.xz, vec2(0.0), FX_VOL_SIZE.xz - 1.0) + 0.5;
-	vec3 c0 = textureLod(fxLightVolume, fxVolumeTexel(y0, xz), 0.0).rgb;
-	vec3 c1 = textureLod(fxLightVolume, fxVolumeTexel(y1, xz), 0.0).rgb;
+	return mix(textureLod(fxLightVolume, fxVolumeTexel(y0, xz), 0.0),
+		textureLod(fxLightVolume, fxVolumeTexel(y1, xz), 0.0), y - y0);
+}
+
+// 1 inside the window, fading to 0 over its last 8 nodes (light there may
+// come from outside: the hue blends to white rather than pop as it moves)
+float fxVolumeTrust(vec3 p)
+{
+	vec3 v = (p - fxVolumeOrigin) / FX_BS;
 	vec3 edge = min(v, FX_VOL_SIZE - 1.0 - v);
-	float trust = smoothstep(0.0, 8.0, min(edge.x, edge.z)) * smoothstep(0.0, 4.0, edge.y);
-	return vec4(mix(c0, c1, y - y0), max(trust, 1e-3));
+	return smoothstep(0.0, 8.0, min(edge.x, edge.z)) * smoothstep(0.0, 4.0, edge.y);
 }
 #endif
 
@@ -75,6 +81,7 @@ vec3 fxArtificialLight(vec3 p, vec3 n, float seconds)
 		if (i == fxHeldLightIndex) {
 			held_acc += w * cs.rgb;
 			held_w += w;
+			fxHeldHue = cs.rgb;
 		}
 		float amp = floor(cs.a) * 0.01;
 		float seed = fract(cs.a) * 97.0;
@@ -88,18 +95,22 @@ vec3 fxArtificialLight(vec3 p, vec3 n, float seconds)
 	float wsum = held_w;
 #ifdef FX_LIGHT_VOLUME
 	if (fxVolumeValid > 0.5) {
-		vec4 vs = fxVolumeSample(p + n * 5.0); // half a node in front of the face
-		if (vs.a > 0.0) {
-			float m = max(vs.r, max(vs.g, vs.b));
+		vec3 q = p + n * 5.0; // half a node in front of the face
+		vec4 vs = fxVolumeSample(q);
+		// alpha 1 can't come from the atlas (held levels stop at 14/15): an
+		// unbound sampler (the wield scene, other objects) reads (0,0,0,1)
+		fxHeldLevel = vs.a > 0.99 ? 0.0 : vs.a;
+		float m = max(vs.r, max(vs.g, vs.b));
+		if (m > 0.0) {
 			// world lights from the volume, weighted by how strong they are here
 			float vw = m * 4.0;
-			vec3 hue = m > 0.001 ? vs.rgb / m : vec3(1.0);
-			acc += mix(vec3(1.0), hue, vs.a) * vw;
+			acc += mix(vec3(1.0), vs.rgb / m, fxVolumeTrust(q)) * vw;
 			wsum += vw;
 		}
 	}
 #endif
 	float f = 1.0 + (fsum > 0.0 ? flick / fsum : 0.0);
+	fxHeldLevel *= f; // the held torch flickers too
 	if (wsum <= 1e-5) {
 		fxChroma = vec3(1.0);
 		return artificialLight * f;
@@ -111,4 +122,18 @@ vec3 fxArtificialLight(vec3 p, vec3 n, float seconds)
 	chroma = min(chroma * (1.04 / max(lum, 0.05)), vec3(2.4));
 	return mix(artificialLight, chroma, fxLightSaturation) * f;
 }
+#ifdef FX_LIGHT_VOLUME
+// Brightness of the held light here (after fxArtificialLight): the engine
+// has none, so it comes from the volume's alpha, combined like the engine
+// combines lights (max). Display-encoded, like the vertex colour.
+vec3 fxHeldLight()
+{
+	if (fxHeldLevel <= 0.0)
+		return vec3(0.0);
+	float l = clamp(fxHeldLevel * 15.0 / 14.0, 0.0, 1.0);
+	float lum = dot(fxHeldHue, vec3(0.2126, 0.7152, 0.0722));
+	vec3 hue = min(fxHeldHue * (1.04 / max(lum, 0.05)), vec3(2.4));
+	return mix(vec3(1.04), hue, fxLightSaturation) * l * l;
+}
+#endif
 #endif
