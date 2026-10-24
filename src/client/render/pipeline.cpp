@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2022 x2048, Dmitry Kostenko <codeforsmile@gmail.com>
 
+#include "client/fx/gpu_timing.h"
+#include <typeinfo>
+#include <cctype>
 #include "pipeline.h"
 #include "client/client.h"
 #include "client/hud.h"
@@ -299,8 +302,16 @@ void RenderPipeline::run(PipelineContext &context)
 	for (auto &object : m_objects)
 		object->reset(context);
 
-	for (auto &step: m_pipeline)
-		step->run(context);
+	for (auto &step: m_pipeline) {
+		// fx: GPU time per step (F5 profiler, GPU page); pipelines time
+		// their own steps
+		if (fx::gpu::enabled() && !dynamic_cast<RenderPipeline *>(step)) {
+			fx::gpu::Scope scope(fx::gpu::intern(step->fxStepName(context)));
+			step->run(context);
+		} else {
+			step->run(context);
+		}
+	}
 
 	context.target_size = original_size;
 }
@@ -313,4 +324,14 @@ void RenderPipeline::setRenderSource(RenderSource *source)
 void RenderPipeline::setRenderTarget(RenderTarget *target)
 {
 	m_output.setRenderTarget(target);
+}
+
+std::string RenderStep::fxStepName(PipelineContext &) const
+{
+	// the class name, without the length prefix of a mangled name
+	std::string n = typeid(*this).name();
+	size_t i = 0;
+	while (i < n.size() && std::isdigit((unsigned char)n[i]))
+		i++;
+	return n.substr(i);
 }

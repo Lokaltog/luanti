@@ -38,6 +38,7 @@ set(client_SRCS
 	${CMAKE_CURRENT_SOURCE_DIR}/fx/params.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/fx/particle_emit.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/fx/particles.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/fx/gpu_timing.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/fx/scene.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/fx/shaders.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/fx/tuner.cpp

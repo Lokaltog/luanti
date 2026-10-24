@@ -301,6 +301,9 @@ public:
 	 * Runs the step. This method is invoked by the pipeline.
 	 */
 	virtual void run(PipelineContext &context) = 0;
+
+	/// fx: the name GPU timing shows for this step (default: the class)
+	virtual std::string fxStepName(PipelineContext &context) const;
 };
 
 /**

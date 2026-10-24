@@ -4,6 +4,7 @@
 // See particles.h for the architecture. This file: GPU resources and passes,
 // the world texture, the per-frame uniform block. Emitters: particle_emit.cpp.
 
+#include "gpu_timing.h"
 #include "particles.h"
 #include "renderer.h"
 #include "fx_test.h"
@@ -463,6 +464,7 @@ void ParticleSystem::fullTargetQuad()
 
 void ParticleSystem::runPasses()
 {
+	gpu::Scope gpu_scope("fx particles: simulate");
 	if (!m_cleared) {
 		for (auto *rt : m_rt_spawn)
 			m_driver->setRenderTargetEx(rt, video::ECBF_COLOR, video::SColor(0, 0, 0, 0));

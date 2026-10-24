@@ -1,6 +1,7 @@
 // Luanti "fx" fork: lifecycle, settings and moods
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
+#include "gpu_timing.h"
 #include "renderer.h"
 #include "particles.h"
 #include "fx_test.h"
@@ -499,6 +500,12 @@ void updateFrame(Client *client, Camera *camera, Sky *sky, float dtime)
 	if (r->particles)
 		r->particles->update(client, camera, dtime);
 	r->pollHotReload(dtime);
+	// test mode: GPU timing on from the start, reported to the log
+	if (test::active() && g_settings->getBool("fx_test_gpu_timing")) {
+		gpu::setEnabled(true);
+		if (r->cam.frame % 60 == 59)
+			infostream << "fx: GPU timing\n" << gpu::report() << std::endl;
+	}
 }
 
 /*

@@ -3,6 +3,7 @@
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 // Copyright (C) 2017 numzero, Lobachevskiy Vitaliy <numzer0@yandex.ru>
 
+#include "client/fx/gpu_timing.h"
 #include "core.h"
 
 #include "pipeline.h"
@@ -31,7 +32,12 @@ void RenderingCore::draw(video::SColor _skycolor, bool _show_hud,
 	context.show_hud = _show_hud;
 
 	pipeline->reset(context);
+	fx::gpu::frameBegin(); // no-op when already open
 	pipeline->run(context);
+	// the next frame opens now, so work issued before its draw (the fx
+	// particle simulation in fx::updateFrame) is counted too
+	fx::gpu::frameEnd();
+	fx::gpu::frameBegin();
 }
 
 v2u32 RenderingCore::getVirtualSize() const

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
+#include "client/fx/gpu_timing.h"
 #include "clientmap.h"
 #include "client.h"
 #include "client/mesh.h"
@@ -1026,6 +1027,8 @@ static u32 transformBuffersToDrawOrder(
 void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 {
 	ZoneScoped;
+	fx::gpu::Scope fx_gpu_scope(pass == scene::ESNRP_TRANSPARENT ? "map: transparent (water, glass, plants)"
+			: pass == scene::ESNRP_SOLID ? "map: solid" : "map: other pass");
 
 	const bool is_transparent_pass = pass == scene::ESNRP_TRANSPARENT;
 
@@ -1197,7 +1200,10 @@ void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 
 	// fx: GPU particles over the transparent geometry (depth-tested)
 	if (is_transparent_pass)
-		fx::drawParticles(driver);
+		{
+			fx::gpu::Scope fx_gpu_scope("fx particles: draw");
+			fx::drawParticles(driver);
+		}
 
 	g_profiler->avg(prefix + "draw meshes [ms]", tt_draw.stop(true));
 

@@ -77,6 +77,11 @@ void PostProcessingStep::run(PipelineContext &context)
 	driver->drawVertexPrimitiveList(&vertices, 4, &indices, 2);
 }
 
+std::string PostProcessingStep::fxStepName(PipelineContext &context) const
+{
+	return context.client->getShaderSource()->getShaderInfo(shader_id).name;
+}
+
 void PostProcessingStep::setBilinearFilter(u8 index, bool value)
 {
 	assert(index < video::MATERIAL_MAX_TEXTURES);

@@ -25,6 +25,7 @@ public:
 	void setRenderTarget(RenderTarget *target) override;
 	void reset(PipelineContext &context) override;
 	void run(PipelineContext &context) override;
+	std::string fxStepName(PipelineContext &context) const override;
 
 	/**
 	 * Configure bilinear filtering for a specific texture layer

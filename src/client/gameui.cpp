@@ -3,6 +3,7 @@
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 // Copyright (C) 2018 nerzhul, Loic Blot <loic.blot@unix-experience.fr>
 
+#include "client/fx/gpu_timing.h"
 #include "gameui.h"
 #include <irrlicht_changes/static_text.h>
 #include <gettext.h>
@@ -219,15 +220,20 @@ void GameUI::updateChatSize()
 
 void GameUI::updateProfiler()
 {
-	m_guitext_profiler->setVisible(m_profiler_current_page != 0);
-	if (m_profiler_current_page == 0)
+	m_guitext_profiler->setVisible(m_profiler_current_page != 0 || m_gpu_page);
+	if (m_profiler_current_page == 0 && !m_gpu_page)
 		return;
 
 	std::ostringstream oss(std::ios_base::binary);
-	oss << "Profiler page " << (int)m_profiler_current_page
-		<< "/" << (int)m_profiler_max_page
-		<< ", elapsed: " << g_profiler->getElapsedMs() << " ms" << std::endl;
-	g_profiler->print(oss, m_profiler_current_page, m_profiler_max_page);
+	if (m_gpu_page) {
+		// fx: GPU time per render step (timer queries; on only while shown)
+		oss << "GPU timing (F5: next page)" << std::endl << fx::gpu::report();
+	} else {
+		oss << "Profiler page " << (int)m_profiler_current_page
+			<< "/" << (int)m_profiler_max_page
+			<< ", elapsed: " << g_profiler->getElapsedMs() << " ms" << std::endl;
+		g_profiler->print(oss, m_profiler_current_page, m_profiler_max_page);
+	}
 
 	EnrichedString str(utf8_to_wide(oss.str()));
 	str.setBackground(video::SColor(120, 0, 0, 0));
@@ -247,7 +253,7 @@ void GameUI::updateProfiler()
 
 	// Really dumb heuristic (we have a fixed number of pages, not a fixed page size)
 	const v2u32 window_size = RenderingEngine::getWindowSize();
-	if (upper_left.Y + m_guitext_profiler->getTextHeight()
+	if (!m_gpu_page && upper_left.Y + m_guitext_profiler->getTextHeight()
 		> window_size.Y * 0.7f) {
 		if (m_profiler_max_page < 5) {
 			m_profiler_max_page++;
@@ -281,12 +287,23 @@ void GameUI::toggleHud()
 
 void GameUI::toggleProfiler()
 {
-	m_profiler_current_page = (m_profiler_current_page + 1) % (m_profiler_max_page + 1);
+	// fx: off -> GPU timing -> profiler pages -> off
+	if (m_gpu_page) {
+		m_gpu_page = false;
+		m_profiler_current_page = 1;
+	} else if (m_profiler_current_page == 0) {
+		m_gpu_page = true;
+	} else {
+		m_profiler_current_page = (m_profiler_current_page + 1) % (m_profiler_max_page + 1);
+	}
+	fx::gpu::setEnabled(m_gpu_page);
 
 	// FIXME: This updates the profiler with incomplete values
 	updateProfiler();
 
-	if (m_profiler_current_page != 0) {
+	if (m_gpu_page) {
+		showTranslatedStatusText("GPU timing shown");
+	} else if (m_profiler_current_page != 0) {
 		std::wstring msg = fwgettext("Profiler shown (page %d of %d)",
 				m_profiler_current_page, m_profiler_max_page);
 		showStatusText(msg);

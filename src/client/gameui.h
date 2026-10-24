@@ -73,7 +73,7 @@ public:
 
 	bool isChatVisible()
 	{
-		return m_flags.show_chat && m_recent_chat_count != 0 && m_profiler_current_page == 0;
+		return m_flags.show_chat && m_recent_chat_count != 0 && m_profiler_current_page == 0 && !m_gpu_page;
 	}
 	void setChatText(const EnrichedString &chat_text, u32 recent_chat_count);
 	void updateChatSize();
@@ -106,4 +106,5 @@ private:
 	gui::IGUIStaticText *m_guitext_profiler = nullptr; // Profiler text
 	u8 m_profiler_current_page = 0;
 	u8 m_profiler_max_page = 1;
+	bool m_gpu_page = false; // fx: the GPU timing page, first in the F5 cycle
 };
