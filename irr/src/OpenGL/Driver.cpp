@@ -177,6 +177,8 @@ COpenGL3DriverBase::~COpenGL3DriverBase()
 {
 	QuadIndexVBO.destroy();
 	JointTransformsUBO.destroy();
+	for (auto &it : UniformBuffers)
+		it.second.destroy();
 
 	deleteMaterialRenders();
 
@@ -492,6 +494,19 @@ void COpenGL3DriverBase::setJointTransforms(const std::vector<core::matrix4> &jo
 	assert(jointMatrices.size() <= getMaxJointTransforms());
 	JointTransformsUBO.upload(jointMatrices.data(), jointMatrices.size() * sizeof(core::matrix4), 0, GL_DYNAMIC_DRAW);
 	GL.BindBufferBase(GL_UNIFORM_BUFFER, 0, JointTransformsUBO.getName());
+	TEST_GL_ERROR(this);
+}
+
+void COpenGL3DriverBase::setUniformBlockBinding(const std::string &name, u32 binding)
+{
+	UniformBlockBindings[name] = binding;
+}
+
+void COpenGL3DriverBase::setUniformBufferData(u32 binding, const void *data, size_t size)
+{
+	auto it = UniformBuffers.try_emplace(binding, OGLBufferObject::TARGET_UBO).first;
+	it->second.upload(data, size, 0, GL_DYNAMIC_DRAW);
+	GL.BindBufferBase(GL_UNIFORM_BUFFER, binding, it->second.getName());
 	TEST_GL_ERROR(this);
 }
 

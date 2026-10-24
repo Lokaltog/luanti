@@ -248,6 +248,11 @@ bool COpenGL3MaterialRenderer::linkProgram()
 			GL.UniformBlockBinding(Program, blockIndex, 0);
 			Skinning = true;
 		}
+		for (const auto &it : Driver->getUniformBlockBindings()) {
+			GLuint index = GL.GetUniformBlockIndex(Program, it.first.c_str());
+			if (index != GL_INVALID_INDEX)
+				GL.UniformBlockBinding(Program, index, it.second);
+		}
 
 		GLint num = 0;
 

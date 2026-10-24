@@ -152,6 +152,14 @@ public:
 	//! Sets joint transformation matrices for skinned meshes.
 	virtual void setJointTransforms(const std::vector<core::matrix4> &jointMatrices) = 0;
 
+	//! Binds the uniform block `name` of every shader program linked from now
+	//! on to binding point `binding` (0 is taken by the joint matrices).
+	//! Drivers without uniform buffers ignore it.
+	virtual void setUniformBlockBinding(const std::string &name, u32 binding) {}
+
+	//! Uploads `size` bytes to the uniform buffer at binding point `binding`.
+	virtual void setUniformBufferData(u32 binding, const void *data, size_t size) {}
+
 	//! Returns the transformation set by setTransform
 	/** \param state Transformation type to query
 	\return Matrix describing the transformation. */

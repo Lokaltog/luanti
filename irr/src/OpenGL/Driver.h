@@ -15,6 +15,7 @@
 #include "EDriverFeatures.h"
 #include "ExtensionHandler.h"
 #include "IContextManager.h"
+#include <map>
 
 namespace video
 {
@@ -299,6 +300,13 @@ protected:
 	}
 	virtual void setJointTransforms(const std::vector<core::matrix4> &jointMatrices) override;
 
+public:
+	void setUniformBlockBinding(const std::string &name, u32 binding) override;
+	void setUniformBufferData(u32 binding, const void *data, size_t size) override;
+	//! Uniform block bindings applied when a program links (MaterialRenderer)
+	const std::map<std::string, u32> &getUniformBlockBindings() const { return UniformBlockBindings; }
+protected:
+
 	void drawQuad(const VertexType &vertexType, const S3DVertex (&vertices)[4]);
 	void drawArrays(GLenum primitiveType, const VertexType &vertexType, const void *vertices, int vertexCount);
 	void drawElements(GLenum primitiveType, const VertexType &vertexType, const void *vertices, int vertexCount, const u16 *indices, int indexCount);
@@ -363,6 +371,8 @@ private:
 	u16 MaxJointTransforms = 0;
 	void initMaxJointTransforms();
 	OGLBufferObject JointTransformsUBO = OGLBufferObject(OGLBufferObject::TARGET_UBO);
+	std::map<std::string, u32> UniformBlockBindings;
+	std::map<u32, OGLBufferObject> UniformBuffers;
 
 	void debugCb(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message);
 	static void APIENTRY debugCb(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam);
