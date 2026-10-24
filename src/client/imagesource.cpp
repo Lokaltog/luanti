@@ -16,6 +16,7 @@
 #include "util/base64.h"
 #include "util/numeric.h"
 #include "util/strfnd.h"
+#include "fx/fx.h"
 
 
 ////////////////////////////////
@@ -1333,6 +1334,17 @@ bool ImageSource::generateImagePart(std::string_view part_of_name,
 			A Screen blend has the opposite effect to a Multiply blend.
 			color = color as ColorString
 		*/
+		/*
+			[fx_autoemissive:threshold
+			fx fork: keep only the bright pixels (glow mask for light sources)
+		*/
+		else if (str_starts_with(part_of_name, "[fx_autoemissive:")) {
+			Strfnd sf(part_of_name);
+			sf.next(":");
+			float threshold = mystof(sf.next(":"));
+			CHECK_BASEIMG();
+			fx::applyAutoEmissive(baseimg, threshold);
+		}
 		else if (str_starts_with(part_of_name, "[multiply:") ||
 		         str_starts_with(part_of_name, "[screen:")) {
 			Strfnd sf(part_of_name);

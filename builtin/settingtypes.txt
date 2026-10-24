@@ -843,6 +843,69 @@ enable_bloom (Enable Bloom) bool false
 #    Requires: enable_post_processing, enable_bloom
 enable_volumetric_lighting (Volumetric Lighting) bool false
 
+[**Mood Renderer (fx fork)]
+
+#    Master switch for the fx fork (emissive maps, colored light, HDR composite).
+#    Changing it requires a restart.
+fx_enable (Enable mood renderer) bool true
+
+#    Tonemap in HDR before clamping, threshold bloom, additive bloom.
+#    Requires: enable_post_processing. Changing it requires a restart.
+fx_hdr_composite (HDR composite) bool true
+
+#    0 = upstream Hable, 1 = AgX, 2 = ACES (fitted).
+fx_tonemapper (Tonemapper) int 1 0 2
+
+#    Exposure multiplier applied before tonemapping.
+fx_exposure (Exposure) float 1.5 0.1 8.0
+
+#    Saturation of the AgX look. Above 1 keeps bright lights colorful
+#    instead of fading to white.
+fx_grade_saturation (Grade saturation) float 1.3 0.0 2.0
+
+#    Contrast (power) of the AgX look.
+fx_grade_contrast (Grade contrast) float 1.2 0.5 2.0
+
+#    Linear luminance above which pixels bloom.
+fx_bloom_threshold (Bloom threshold) float 1.0 0.0 8.0
+
+#    Soft knee width around the bloom threshold.
+fx_bloom_knee (Bloom knee) float 0.5 0.0 1.0
+
+#    Strength of the bloom added on top of the image.
+fx_bloom_intensity (Bloom intensity) float 0.6 0.0 4.0
+
+#    HDR multiplier for emissive maps (_e textures and auto-emissive).
+fx_emissive_strength (Emissive strength) float 4.0 0.0 32.0
+
+#    Brightness above which a light-source texture glows when it has no _e map.
+#    Changing it requires a restart.
+fx_auto_emissive_threshold (Auto-emissive threshold) float 0.55 0.0 0.99
+
+#    Tint artificial light by the color of nearby light sources.
+#    Changing it requires a restart.
+fx_colored_light (Colored light) bool true
+
+#    How strongly artificial light takes the color of its source (0 = white).
+fx_light_saturation (Light saturation) float 0.85 0.0 1.5
+
+#    Radius in nodes around the camera to gather light sources from.
+fx_light_gather_radius (Light gather radius) float 48.0 16.0 128.0
+
+#    Flicker amplitude for torches, fire and lava.
+fx_flicker (Flicker) float 0.12 0.0 0.5
+
+#    A light-emitting item in hand lights its surroundings.
+fx_held_light (Held item light) bool true
+
+#    0 = off, 1 = light chroma, 2 = emissive, 3 = HDR luminance (false color),
+#    4 = bloom input. Changing it requires a restart (or hot reload).
+fx_debug_view (Debug view) int 0 0 4
+
+#    Recompile shaders when files in shader_path or the built-in shader
+#    directory change. For shader development.
+fx_shader_hot_reload (Shader hot reload) bool false
+
 [**Other Effects]
 
 #   Simulate translucency when looking at foliage in the sunlight.

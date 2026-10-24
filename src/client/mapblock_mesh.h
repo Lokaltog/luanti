@@ -11,6 +11,7 @@
 
 #include "util/numeric.h"
 #include "client/tile.h"
+#include "client/fx/fx.h"
 #include "voxel.h"
 #include <map>
 
@@ -239,6 +240,9 @@ public:
 	/// Radius of the bounding-sphere, in BS-space.
 	f32 getBoundingRadius() const { return m_bounding_radius; }
 
+	/// fx: light-emitting nodes inside this mesh's area (immutable after construction)
+	const std::vector<fx::Light> &getFxLights() const { return m_fx_lights; }
+
 	/// Center of the bounding-sphere, in BS-space, relative to block pos.
 	v3f getBoundingSphereCenter() const { return m_bounding_sphere_center; }
 
@@ -287,6 +291,8 @@ private:
 
 	f32 m_bounding_radius;
 	v3f m_bounding_sphere_center;
+
+	std::vector<fx::Light> m_fx_lights;
 
 	// Must animate() be called before rendering?
 	bool m_has_animation;

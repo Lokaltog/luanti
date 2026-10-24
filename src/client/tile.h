@@ -61,6 +61,8 @@ struct FrameSpec
 
 	u32 texture_id = 0;
 	video::ITexture *texture = nullptr;
+	/// fx: emissive companion of this frame (may be null)
+	video::ITexture *fx_texture = nullptr;
 };
 
 /**
@@ -86,6 +88,7 @@ struct TileLayer
 			material_flags == other.material_flags &&
 			has_color == other.has_color &&
 			color == other.color &&
+			fx_texture == other.fx_texture &&
 			need_polygon_offset == other.need_polygon_offset;
 		// texture_layer_idx and scale are notably part of the vertex data
 	}
@@ -130,6 +133,9 @@ struct TileLayer
 	// Ordered for size, please do not reorder
 
 	video::ITexture *texture = nullptr;
+
+	/// fx: emissive companion (2D or array, same type as `texture`)
+	video::ITexture *fx_texture = nullptr;
 
 	u32 shader_id = 0;
 

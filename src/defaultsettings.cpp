@@ -337,6 +337,26 @@ void set_default_settings()
 	settings->setDefault("antialiasing", "none");
 	settings->setDefault("fxaa", "false");
 	settings->setDefault("enable_bloom", "false");
+
+	// fx fork (mood renderer)
+	settings->setDefault("fx_enable", "true");
+	settings->setDefault("fx_hdr_composite", "true");
+	settings->setDefault("fx_tonemapper", "1");
+	settings->setDefault("fx_exposure", "1.5");
+	settings->setDefault("fx_grade_saturation", "1.3");
+	settings->setDefault("fx_grade_contrast", "1.2");
+	settings->setDefault("fx_bloom_threshold", "1.0");
+	settings->setDefault("fx_bloom_knee", "0.5");
+	settings->setDefault("fx_bloom_intensity", "0.6");
+	settings->setDefault("fx_emissive_strength", "4.0");
+	settings->setDefault("fx_auto_emissive_threshold", "0.55");
+	settings->setDefault("fx_colored_light", "true");
+	settings->setDefault("fx_light_saturation", "0.85");
+	settings->setDefault("fx_light_gather_radius", "48.0");
+	settings->setDefault("fx_flicker", "0.12");
+	settings->setDefault("fx_held_light", "true");
+	settings->setDefault("fx_debug_view", "0");
+	settings->setDefault("fx_shader_hot_reload", "false");
 	settings->setDefault("enable_bloom_debug", "false");
 	settings->setDefault("enable_volumetric_lighting", "false");
 	settings->setDefault("enable_water_reflections", "false");

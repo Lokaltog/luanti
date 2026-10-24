@@ -20,15 +20,22 @@ video::ITexture *AnimationInfo::getTexture(float animation_time) const
 
 void AnimationInfo::updateTexture(video::SMaterial &material, float animation_time)
 {
-	video::ITexture *texture = getTexture(animation_time);
-	if (texture) {
-		material.setTexture(0, texture);
-	}
+	if (getFrameCount() == 0)
+		return;
+	u16 frame = (u32)(animation_time * 1000.0f / std::max<u16>(1, m_frame_length_ms))
+			% m_frame_count;
+	const FrameSpec &spec = (*m_frames)[frame];
+	if (spec.texture)
+		material.setTexture(0, spec.texture);
+	if (spec.fx_texture)
+		material.setTexture(2 /* fx::TEXTURE_LAYER_FX */, spec.fx_texture);
 }
 
 void TileLayer::applyMaterialOptions(video::SMaterial &material, int layer) const
 {
 	material.setTexture(0, texture);
+	if (fx_texture)
+		material.setTexture(2 /* fx::TEXTURE_LAYER_FX */, fx_texture);
 
 	material.BackfaceCulling = (material_flags & MATERIAL_FLAG_BACKFACE_CULLING) != 0;
 	if (!(material_flags & MATERIAL_FLAG_TILEABLE_HORIZONTAL)) {

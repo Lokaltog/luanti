@@ -495,6 +495,9 @@ MapBlockMesh::MapBlockMesh(Client *client, MeshMakeData *data):
 		MapblockMeshGenerator(data, &collector).generate();
 	}
 
+	if (fx::params().enabled)
+		fx::collectBlockLights(data, m_fx_lights);
+
 	/*
 		Convert MeshCollector to SMesh
 	*/

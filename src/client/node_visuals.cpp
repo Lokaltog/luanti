@@ -20,6 +20,7 @@ struct TileAttribContext {
 	PreLoadedTextures *texture_pool;
 	video::SColor base_color;
 	const TextureSettings &tsettings;
+	bool fx_auto_emissive = false; // node is a light source
 };
 
 using GetShaderCallback = std::function<u32 /* shader id */ (bool /* array_texture */)>;
@@ -30,6 +31,7 @@ using GetShaderCallback = std::function<u32 /* shader id */ (bool /* array_textu
 
 struct PreLoadedTexture {
 	video::ITexture *texture = nullptr;
+	video::ITexture *fx_texture = nullptr; // emissive companion array
 	u32 texture_id = 0;
 	u16 texture_layer_idx = 0;
 	bool used = false; // For debugging
@@ -136,6 +138,19 @@ static void fillTileAttribs(TileLayer *layer, TileAttribContext context,
 		std::vector<FrameSpec> frames = createAnimationFrames(
 				tsrc, tiledef.name, tiledef.animation, frame_length_ms);
 		if (frames.size() > 1) {
+			if (fx::params().enabled) {
+				// fx: emissive companion per frame, chopped the same way
+				auto tsize = tsrc->getTextureDimensions(tiledef.name);
+				std::string companion = fx::companionName(tsrc, tiledef.name,
+						context.fx_auto_emissive);
+				std::ostringstream os(std::ios::binary);
+				for (size_t i = 0; i < frames.size(); i++) {
+					os.str("");
+					os << "(" << companion << ")";
+					tiledef.animation.getTextureModifer(os, tsize, i);
+					frames[i].fx_texture = tsrc->getTextureForMesh(os.str());
+				}
+			}
 			layer->frames = new std::vector<FrameSpec>(frames);
 			layer->animation_frame_count = layer->frames->size();
 			layer->animation_frame_length_ms = frame_length_ms;
@@ -154,8 +169,12 @@ static void fillTileAttribs(TileLayer *layer, TileAttribContext context,
 		if (!tex.texture) {
 			// wasn't pre-loaded: create standard texture on the fly
 			layer->texture = tsrc->getTexture(texture_image, &layer->texture_id);
+			if (fx::params().enabled && layer->texture)
+				layer->fx_texture = tsrc->getTexture(fx::companionName(tsrc,
+						texture_image, context.fx_auto_emissive, texture_size));
 		} else {
 			layer->texture = tex.texture;
+			layer->fx_texture = tex.fx_texture;
 			layer->texture_id = tex.texture_id;
 			layer->texture_layer_idx = tex.texture_layer_idx;
 		}
@@ -391,7 +410,7 @@ void NodeVisuals::updateTextures(ContentFeatures &f, ITextureSource *tsrc,
 
 	// Tiles (fill in f->tiles[])
 	bool any_polygon_offset = false;
-	TileAttribContext tac{tsrc, texture_pool, color, tsettings};
+	TileAttribContext tac{tsrc, texture_pool, color, tsettings, f.light_source > 0};
 
 	for (u16 j = 0; j < 6; j++) {
 		tiles[j].world_aligned = isWorldAligned(tdef[j].align_style,
@@ -530,9 +549,12 @@ void NodeVisuals::fillNodeVisuals(NodeDefManager *ndef, Client *client, void *pr
 
 	/* collect all textures we might use */
 	std::unordered_set<std::string> pool;
+	std::unordered_set<std::string> fx_emissive_pool; // images of light sources
 	ndef->applyFunction([&](ContentFeatures &f) {
 		f.visuals = std::make_unique<NodeVisuals>();
 		f.visuals->preUpdateTextures(f, tsrc, pool, tsettings);
+		if (f.light_source > 0)
+			f.visuals->preUpdateTextures(f, tsrc, fx_emissive_pool, tsettings);
 	});
 
 	/* texture pre-loading stage */
@@ -563,6 +585,16 @@ void NodeVisuals::fillNodeVisuals(NodeDefManager *ndef, Client *client, void *pr
 	const auto &doBunch = [&] (const std::vector<std::string> &bunch) {
 		PreLoadedTexture t;
 		t.texture = tsrc->addArrayTexture(bunch, &t.texture_id);
+		if (t.texture && fx::params().enabled) {
+			// fx: emissive companion array with identical layer order
+			auto size = tsrc->getTextureDimensions(bunch[0]);
+			std::vector<std::string> companions;
+			companions.reserve(bunch.size());
+			for (auto &name : bunch)
+				companions.push_back(fx::companionName(tsrc, name,
+						fx_emissive_pool.count(name) > 0, size));
+			t.fx_texture = tsrc->addArrayTexture(companions);
+		}
 		preload_progress += bunch.size();
 		client->showUpdateProgressTexture(progress_callback_args,
 			0.33333f + 0.33333f * preload_progress / num_preloadable);
@@ -595,6 +627,8 @@ void NodeVisuals::fillNodeVisuals(NodeDefManager *ndef, Client *client, void *pr
 	ndef->applyFunction([&](ContentFeatures &f) {
 		auto &v = f.visuals;
 		v->updateTextures(f, tsrc, shdsrc, client, &plt, tsettings);
+		if (f.light_source > 0)
+			v->fx_light = fx::resolveLightStyle(tsrc, f);
 
 		if (f.drawtype == NDT_MESH)
 			v->updateMesh(f.mesh, f.visual_scale, client, tsettings);

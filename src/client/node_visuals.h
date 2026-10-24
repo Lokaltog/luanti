@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include "nodedef.h"
 #include "tile.h"
+#include "fx/fx.h"
 
 class Client;
 struct PreLoadedTextures;
@@ -51,6 +52,8 @@ struct NodeVisuals
 	scene::SMesh *mesh_ptr = nullptr; // mesh in case of mesh node
 	video::SColor minimap_color;
 	std::vector<video::SColor> *palette = nullptr;
+	/// fx: color and flicker of the light this node emits (if any)
+	fx::LightStyle fx_light;
 
 	// alpha stays in ContentFeatures due to compatibility code that is necessary,
 	// because it was part of the node definition table in the past.

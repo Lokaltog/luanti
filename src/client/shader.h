@@ -316,6 +316,10 @@ public:
 		const std::string &filename, const std::string &program)=0;
 	virtual void rebuildShaders()=0;
 
+	/// fx: re-read shader sources from disk and recompile in place, keeping
+	/// material IDs stable. A shader that fails to compile keeps its old program.
+	virtual void hotReloadShaders()=0;
+
 	/// @note Takes ownership of @p setter.
 	virtual void addShaderConstantSetter(std::unique_ptr<IShaderConstantSetter> setter) = 0;
 

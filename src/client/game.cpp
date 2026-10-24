@@ -7,6 +7,7 @@
 #include <cmath>
 #include <csignal>
 #include "client/gameui.h"
+#include "client/fx/fx.h"
 #include "client/inputhandler.h"
 #include "client/texturepaths.h"
 #include "client/keys.h"
@@ -389,6 +390,7 @@ Game::Game() :
 		g_settings->registerChangedCallback(s, &settingChangedCallback, this);
 
 	readSettings();
+	fx::init();
 }
 
 
@@ -413,6 +415,7 @@ Game::~Game()
 	clearTextureNameCache();
 
 	g_settings->deregisterAllChangedCallbacks(this);
+	fx::deinit();
 
 	if (m_rendering_engine)
 		m_rendering_engine->finalize();
@@ -864,6 +867,8 @@ bool Game::createClient(const GameStartData &start_data)
 
 	shader_src->addShaderConstantSetter(
 		std::make_unique<NodeShaderConstantSetter>());
+	shader_src->addShaderConstantSetter(fx::createConstantSetter());
+	shader_src->addShaderUniformSetterFactory(fx::createUniformSetterFactory());
 
 	auto scsf_up = std::make_unique<GameGlobalShaderUniformSetterFactory>(this);
 	auto* scsf = scsf_up.get();
@@ -3414,6 +3419,12 @@ void Game::updateFrame(ProfilerGraph *graph, RunStats *stats, f32 dtime,
 	*/
 
 	client->getEnv().updateFrameTime(m_is_paused);
+
+	/*
+		fx: per-frame light list and shader hot reload
+	*/
+	fx::updateFrame(client, camera, dtime);
+	fx::pollShaderHotReload(shader_src, dtime);
 
 	/*
 		Fog range

@@ -98,6 +98,8 @@ public:
 		m_programs[combined] = program;
 	}
 
+	void clear() { m_programs.clear(); }
+
 	std::string get(const std::string &name_of_shader,
 		const std::string &filename)
 	{
@@ -385,6 +387,7 @@ public:
 	// Rebuild shaders from the current set of source shaders
 	// Shall be called from the main thread.
 	void rebuildShaders() override;
+	void hotReloadShaders() override;
 
 	void addShaderConstantSetter(std::unique_ptr<IShaderConstantSetter> setter) override
 	{
@@ -649,6 +652,42 @@ void ShaderSource::rebuildShaders()
 	}
 }
 
+void ShaderSource::hotReloadShaders()
+{
+	MutexAutoLock lock(m_shaderinfo_cache_mutex);
+
+	auto *driver = RenderingEngine::get_video_driver();
+	auto *gpu = driver->getGPUProgrammingServices();
+	if (!gpu || driver->getDriverType() == video::EDT_NULL)
+		return;
+
+	m_sourcecache.clear();
+	size_t ok = 0, failed = 0;
+	for (ShaderInfo &i : m_shaderinfo_cache) {
+		if (i.name.empty())
+			continue;
+		const video::E_MATERIAL_TYPE old_mat = i.material;
+		try {
+			generateShader(i); // appends a new material renderer
+		} catch (const ShaderException &e) {
+			errorstream << "fx hot reload: " << e.what() << std::endl;
+			i.material = old_mat;
+			failed++;
+			continue;
+		}
+		const video::E_MATERIAL_TYPE new_mat = i.material;
+		if (new_mat != old_mat) {
+			// Move the new renderer into the old slot so every mesh keeps
+			// pointing at a valid ID, then drop the (now old) tail renderer.
+			driver->swapMaterialRenderers(old_mat, new_mat, true);
+			gpu->deleteShaderMaterial(new_mat);
+			i.material = old_mat;
+		}
+		ok++;
+	}
+	infostream << "fx hot reload: " << ok << " shaders reloaded, " << failed
+		<< " kept old program" << std::endl;
+}
 
 void ShaderSource::generateShader(ShaderInfo &shaderinfo)
 {
