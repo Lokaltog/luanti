@@ -252,6 +252,34 @@ function BUILD.steps(b)
 	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
 end
 
+function BUILD.corner(b)
+	b.fill(v(MIN.x, -12, MIN.z), v(MAX.x, 20, MAX.z), "basenodes:stone")
+	b.fill(v(-20, 0, -1), v(4, 2, 1), "air")       -- east-west gallery
+	b.fill(v(2, 0, 2), v(4, 2, 18), "air")         -- turning north at its end
+end
+
+function BUILD.nextdoor(b)
+	b.fill(v(MIN.x, -20, MIN.z), v(MAX.x, 30, MAX.z), "basenodes:stone")
+	b.fill(v(-14, -8, 2), v(14, 10, 28), "air")    -- a big cavern to the north
+	b.fill(v(-4, -1, -8), v(4, 4, 1), "afxscene:planks")
+	b.fill(v(-3, 0, -7), v(3, 3, 0), "air")        -- a hut dug into the rock
+	b.fill(v(0, 0, 1), v(0, 1, 1), "air")          -- its door to the cavern
+end
+
+function BUILD.bridge(b)
+	b.fill(v(MIN.x, -20, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:stone")
+	b.fill(v(-30, -1, -1), v(-30, -1, 1), "basenodes:stone")
+	b.fill(v(-6, -20, -10), v(6, -1, 10), "air")   -- a ravine
+	b.fill(v(-6, -1, -1), v(6, -1, 1), "afxscene:planks") -- the bridge
+end
+
+function BUILD.draft(b)
+	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	b.fill(v(-4, 0, -4), v(4, 4, 4), "afxscene:planks")
+	b.fill(v(-3, 0, -3), v(3, 3, 3), "air")
+	b.fill(v(4, 2, 0), v(4, 2, 0), "air")          -- a one-block gap in the east wall
+end
+
 function BUILD.cliff(b)
 	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:stone")
 	b.fill(v(MIN.x, 0, 20), v(MAX.x, 30, 30), "basenodes:stone")
@@ -490,7 +518,54 @@ TIMELINE.steps = {
 	{fn = tap, wait = 0.7}, {fn = tap, wait = 0.7}, {fn = tap, wait = 2},
 }
 
+local function miner(pos, n, every)
+	for i = 0, n - 1 do
+		core.after(i * every, function()
+			core.sound_play("default_dig_cracky", {pos = pos, to_player = player_name,
+				gain = 1.0, max_hear_distance = 48}, true)
+		end)
+	end
+end
+
+TIMELINE.corner = {
+	{fn = function() miner(v(3, 1, 14), 60, 0.8) end, wait = 8, log = "miner around the corner"},
+	{walk = v(-2, 0, 0), speed = 2, steps = "default_hard_footstep", log = "toward the bend"},
+	{walk = v(3, 0, 4), speed = 2, steps = "default_hard_footstep", log = "around it"},
+	{wait = 6},
+	{walk = v(-16, 0, 0), speed = 3, steps = "default_hard_footstep", log = "back away"},
+	{wait = 6},
+}
+
+TIMELINE.nextdoor = {
+	{fn = tap, wait = 1.2, log = "in the hut, door open"}, {fn = tap, wait = 1.2},
+	{fn = tap, wait = 3},
+	{fn = function()
+		for y = 0, 1 do core.set_node(v(0, y, 1), {name = "afxscene:door", param2 = 0}) end
+	end, wait = 2, log = "door shut"},
+	{fn = tap, wait = 1.2}, {fn = tap, wait = 1.2}, {fn = tap, wait = 3},
+	{fn = function()
+		for y = 0, 1 do core.set_node(v(0, y, 1), {name = "air"}) end
+	end, wait = 2, log = "door open"},
+	{fn = tap, wait = 1.2}, {fn = tap, wait = 3},
+}
+
+TIMELINE.bridge = {
+	{walk = v(-8, 0, 0), speed = 2, steps = "default_hard_footstep", log = "on rock"},
+	{walk = v(6, 0, 0), speed = 2, steps = "default_wood_footstep", log = "on the bridge"},
+	{walk = v(14, 0, 0), speed = 2, steps = "default_hard_footstep", log = "rock again"},
+	{wait = 2},
+}
+
+TIMELINE.draft = {
+	{fn = function() bed("afx_out_wind", 0.8); afx_ambience.gust_now(1.5) end, wait = 16,
+		log = "inside, a storm outside"},
+	{fn = function() afx_ambience.gust_now(1.6) end, wait = 14, log = "another gust"},
+	{fn = function() core.set_node(v(4, 2, 0), {name = "afxscene:planks"}) end, wait = 10,
+		log = "gap boarded up"},
+}
+
 local START = {
+	corner = v(-16, 0, 0), nextdoor = v(0, 0, -4), bridge = v(-16, 0, 0), draft = v(0, 0, 0),
 	steps = v(0, 0, 0),
 	storm = v(-14, 0, -2), shore = v(0, 0, -6), home = v(-2, 0, 2), mineshaft = v(-20, -20, 0),
 	descent = v(0, 0, 1), meadow = v(0, 0, 0), beach = v(4, 0, -2), sky_island = v(0, 80, -2),

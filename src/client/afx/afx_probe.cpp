@@ -391,7 +391,18 @@ static EchoCluster findEcho(const std::vector<RayHit> &rays, v3f around = v3f(),
 	The analysis
 */
 
+static void analyzeNeighbor(const VoxelSnapshot &snap, v3f ear, const Params &params,
+		Acoustics &out);
+static float floorHollowness(const VoxelSnapshot &snap, v3s16 ear_cell);
+
+static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &params, bool full);
+
 Acoustics analyze(const VoxelSnapshot &snap, v3f ear, const Params &params)
+{
+	return analyzeCore(snap, ear, params, true);
+}
+
+static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &params, bool full)
 {
 	Acoustics out;
 	if (snap.size <= 0)
@@ -509,6 +520,9 @@ Acoustics analyze(const VoxelSnapshot &snap, v3f ear, const Params &params)
 		out.reflections_pan = p * std::min(1.f, 1.f - out.enclosure * 0.5f);
 	}
 
+	if (!full)
+		return out; // a neighbour's room: the reverb is all we need
+
 	// Echo
 	EchoCluster echo = findEcho(rays);
 	if (echo.weight > 0) {
@@ -573,6 +587,11 @@ Acoustics analyze(const VoxelSnapshot &snap, v3f ear, const Params &params)
 			if (!open.found)
 				out.outdoor_dir = wall.dir;
 		}
+	}
+
+	if (!out.submerged) {
+		analyzeNeighbor(snap, ear, params, out);
+		out.hollow = floorHollowness(snap, ear_cell);
 	}
 	return out;
 }
@@ -640,6 +659,309 @@ Occlusion occlusion(const VoxelSnapshot &snap, v3f from, v3f to)
 	// What's transmitted through the blocker on the direct line
 	o.wall = std::exp(-costs[0] / PATH_LAMBDA);
 	return o;
+}
+
+/*
+	Paths through open air
+*/
+
+static constexpr s16 FIELD_RADIUS = 20;
+static constexpr int FIELD_LIMIT = 48 * COST_SCALE; // quarter nodes
+
+/// Cost (quarter nodes) of stepping into `cell` along `axis`, or -1 if sound
+/// can't travel through it as air.
+static int airCost(u8 cell, int axis)
+{
+	if (cell & CELL_UNLOADED)
+		return COST_SCALE;
+	const Material m = cellMaterial(cell);
+	const int thin = cellThinAxis(cell);
+	if (m != Material::Air && thin >= 0 && thin != axis)
+		return COST_SCALE; // an open door, edge-on
+	switch (m) {
+	case Material::Air: return COST_SCALE;
+	case Material::Leaky: return 2 * COST_SCALE;
+	case Material::Foliage: return 10;
+	case Material::Water: return 3 * COST_SCALE;
+	default: return -1;
+	}
+}
+
+namespace {
+thread_local std::vector<u32> t_field_order; // pop order, for one-pass labelling
+}
+
+void buildAirField(const VoxelSnapshot &snap, v3f ear, s16 radius, AirField &f)
+{
+	f.size = radius * 2 + 1;
+	f.ear = floorNode(ear);
+	f.origin = f.ear - v3s16(radius, radius, radius);
+	const size_t n = (size_t)f.size * f.size * f.size;
+	f.dist.assign(n, 0xffff);
+	f.parent.assign(n, 0);
+	t_field_order.clear();
+
+	const int nb = 3 * COST_SCALE + 1;
+	thread_local std::vector<std::vector<u32>> buckets;
+	buckets.resize(nb);
+	for (auto &b : buckets)
+		b.clear();
+
+	auto pos_of = [&](u32 i) {
+		s16 x = i % f.size, y = (i / f.size) % f.size, z = i / (f.size * f.size);
+		return f.origin + v3s16(x, y, z);
+	};
+	const u32 e = f.index(f.ear);
+	f.dist[e] = 0;
+	buckets[0].push_back(e);
+	size_t pending = 1;
+	for (int cost = 0; pending > 0 && cost <= FIELD_LIMIT; cost++) {
+		auto &bucket = buckets[cost % nb];
+		while (!bucket.empty()) {
+			u32 i = bucket.back();
+			bucket.pop_back();
+			pending--;
+			if (f.dist[i] != cost)
+				continue;
+			t_field_order.push_back(i);
+			const v3s16 p = pos_of(i);
+			for (int k = 0; k < 6; k++) {
+				const v3s16 q = p + NEIGHBORS[k];
+				if (!f.contains(q))
+					continue;
+				const int c = airCost(snap.at(q), k / 2);
+				if (c < 0)
+					continue;
+				const u32 qi = f.index(q);
+				const int nc = cost + c;
+				if (nc > FIELD_LIMIT || nc >= f.dist[qi])
+					continue;
+				f.dist[qi] = (u16)nc;
+				f.parent[qi] = (u8)((k ^ 1) + 1); // the step back toward the ear
+				buckets[nc % nb].push_back(qi);
+				pending++;
+			}
+		}
+	}
+}
+
+static bool visibleFrom(const VoxelSnapshot &snap, v3f from, v3f to)
+{
+	float hf;
+	return blockedCost(snap, from, to, hf) <= 0.f;
+}
+
+void routeAround(const VoxelSnapshot &snap, const AirField &f, v3f ear, v3f src,
+		Occlusion &occ)
+{
+	occ.path = 0.f;
+	v3s16 s = floorNode(src);
+	float L = f.pathLength(s);
+	if (L < 0.f) {
+		// the emitter sits in a block (a furnace, a mob's feet): start from
+		// its best open neighbour
+		for (const auto &d : NEIGHBORS) {
+			float l = f.pathLength(s + d);
+			if (l >= 0.f && (L < 0.f || l < L)) {
+				L = l + 1.f;
+				s = s + d;
+			}
+		}
+		if (L < 0.f)
+			return;
+	}
+
+	// Walk back toward the ear; the first cell the ear can see is where the
+	// sound turns the corner (the doorway, the tunnel bend).
+	v3s16 c = s, turn = f.ear;
+	bool found = false;
+	for (int steps = 0; steps < 256 && c != f.ear; steps++) {
+		if (visibleFrom(snap, ear, intToFloat(c, 1.f))) {
+			turn = c;
+			found = true;
+			break;
+		}
+		const u8 par = f.parent[f.index(c)];
+		if (!par)
+			break;
+		c = c + NEIGHBORS[par - 1];
+	}
+	if (!found || turn == floorNode(src))
+		return; // in plain sight after all
+
+	const v3f tp = intToFloat(turn, 1.f);
+	v3f dir = tp - ear;
+	const float d_turn = dir.getLength();
+	if (d_turn < 1e-3f)
+		return;
+	dir /= d_turn;
+	v3f onward = src - tp;
+	const float d_on = onward.getLength();
+	float bend = 0.f;
+	if (d_on > 0.5f) {
+		onward /= d_on;
+		bend = clampf((1.f - dir.dotProduct(onward)) / 1.5f, 0.f, 1.f);
+	}
+	occ.virt_pos = ear + dir * std::max(L, d_turn);
+	occ.path_gain = std::exp(-1.2f * bend);
+	occ.path_hf = std::exp(-2.2f * bend);
+	// Use the bent path when it carries more than the wall does
+	occ.path = occ.path_gain >= occ.wall * 0.5f ? 1.f : 0.f;
+}
+
+/*
+	The space next door
+*/
+
+static void analyzeNeighbor(const VoxelSnapshot &snap, v3f ear, const Params &params,
+		Acoustics &out)
+{
+	thread_local AirField f;
+	buildAirField(snap, ear, FIELD_RADIUS, f);
+	const v3f e = intToFloat(f.ear, 1.f);
+
+	// A cell is in "this room" when the way there is about as short as the
+	// straight line; otherwise it is around a corner, in a neighbouring
+	// space. Label each neighbour cell with the opening it came through, in
+	// one pass over the cells in the order they were reached.
+	const auto &order = t_field_order;
+	thread_local std::vector<u32> portal;
+	portal.assign(f.dist.size(), U32_MAX);
+	auto pos_of = [&](u32 i) {
+		s16 x = i % f.size, y = (i / f.size) % f.size, z = i / (f.size * f.size);
+		return f.origin + v3s16(x, y, z);
+	};
+	auto same_room = [&](u32 i) {
+		const float L = f.dist[i] / (float)COST_SCALE;
+		const float d = (intToFloat(pos_of(i), 1.f) - e).getLength();
+		return L <= d * 1.15f + 1.5f;
+	};
+	std::unordered_map<u32, u32> per_portal;
+	u32 room = 0, beyond = 0;
+	for (u32 i : order) {
+		if (same_room(i)) {
+			room++;
+			continue;
+		}
+		const u8 par = f.parent[i];
+		if (!par)
+			continue;
+		const u32 pi = f.index(pos_of(i) + NEIGHBORS[par - 1]);
+		portal[i] = portal[pi] != U32_MAX ? portal[pi] : pi;
+		beyond++;
+		// group openings on a coarse grid (a 1x2 door is one opening)
+		const v3s16 pp = pos_of(portal[i]);
+		const u32 key = ((u32)(pp.X >> 1) & 0x3ff) | (((u32)(pp.Y >> 1) & 0x3ff) << 10) |
+				(((u32)(pp.Z >> 1) & 0x3ff) << 20);
+		per_portal[key]++;
+	}
+	if (beyond < 40 || per_portal.empty())
+		return;
+
+	// The biggest space beyond one opening
+	u32 best_key = 0, best_n = 0;
+	for (const auto &[k, n] : per_portal)
+		if (n > best_n)
+			best_key = k, best_n = n;
+
+	v3f sum_portal, sum_cells;
+	u32 n_cells = 0;
+	std::unordered_map<u32, bool> portal_cells;
+	for (u32 i : order) {
+		if (portal[i] == U32_MAX)
+			continue;
+		const v3s16 pp = pos_of(portal[i]);
+		const u32 key = ((u32)(pp.X >> 1) & 0x3ff) | (((u32)(pp.Y >> 1) & 0x3ff) << 10) |
+				(((u32)(pp.Z >> 1) & 0x3ff) << 20);
+		if (key != best_key)
+			continue;
+		sum_cells += intToFloat(pos_of(i), 1.f);
+		n_cells++;
+		if (!portal_cells.count(portal[i])) {
+			portal_cells[portal[i]] = true;
+			sum_portal += intToFloat(pp, 1.f);
+		}
+	}
+	const v3f door = sum_portal / (float)portal_cells.size();
+	const v3f centroid = sum_cells / (float)n_cells;
+
+	// Listen from inside it: the cell of that space nearest its middle
+	v3f probe = centroid;
+	float best_d = 1e9f;
+	for (u32 i : order) {
+		if (portal[i] == U32_MAX)
+			continue;
+		const v3f p = intToFloat(pos_of(i), 1.f);
+		const float d = (p - centroid).getLengthSQ();
+		if (d < best_d)
+			best_d = d, probe = p;
+	}
+	Params sub = params;
+	sub.rays = std::max(16, params.rays / 2);
+	const Acoustics there = analyzeCore(snap, probe, sub, false);
+
+	const float aperture = std::min(1.f, std::sqrt(portal_cells.size() / 4.f));
+	const float size = clampf(best_n / 300.f, 0.f, 1.f);
+	const float near = clampf(1.f - ((door - e).getLength() - 2.f) / 14.f, 0.f, 1.f);
+	// A space like the one you're in adds little; a ringing cave next to a
+	// dead hut is what you notice
+	const float contrast = clampf((there.decay - out.decay) / std::max(0.3f, out.decay), 0.f, 1.f);
+	out.coupling = aperture * size * near * (0.3f + 0.7f * contrast);
+	out.neighbor_decay = there.decay;
+	out.neighbor_wet = there.wet;
+	out.neighbor_hf_ratio = there.decay_hf_ratio;
+	v3f dd = door - e;
+	if (dd.getLengthSQ() > 1e-4f)
+		out.neighbor_dir = dd.normalize();
+}
+
+/*
+	The floor under your feet
+*/
+
+static float floorHollowness(const VoxelSnapshot &snap, v3s16 ear_cell)
+{
+	// The floor: first blocking cell below the ear
+	v3s16 fl = ear_cell;
+	int k = 0;
+	for (; k < 4; k++) {
+		fl.Y -= 1;
+		if (cellBlocks(snap.at(fl), 1))
+			break;
+	}
+	if (k == 4)
+		return 0.f;
+	const Material m = cellMaterial(snap.at(fl));
+	float mat;
+	switch (m) {
+	case Material::Wood: case Material::Leaky: mat = 1.f; break;
+	case Material::Glass: mat = 0.7f; break;
+	case Material::Stone: mat = 0.45f; break;
+	case Material::Earth: mat = 0.3f; break;
+	default: mat = 0.2f;
+	}
+	if (cellThinAxis(snap.at(fl)) >= 0)
+		mat = std::max(mat, 0.9f); // a slab or a trapdoor
+
+	// Thickness, then how much empty space lies under it
+	int thick = 1;
+	v3s16 b = fl;
+	while (thick < 3 && cellBlocks(snap.at(b - v3s16(0, 1, 0)), 1)) {
+		b.Y -= 1;
+		thick++;
+	}
+	if (thick > 2)
+		return 0.f;
+	int air = 0, total = 0;
+	for (s16 dz = -1; dz <= 1; dz++)
+	for (s16 dx = -1; dx <= 1; dx++)
+	for (s16 dy = 1; dy <= 3; dy++) {
+		const u8 c = snap.at(b + v3s16(dx, (s16)-dy, dz));
+		total++;
+		if (!(c & CELL_UNLOADED) && cellMaterial(c) == Material::Air)
+			air++;
+	}
+	return clampf(mat * (air / (float)total) * (thick == 1 ? 1.f : 0.5f) * 1.4f, 0.f, 1.f);
 }
 
 } // namespace afx

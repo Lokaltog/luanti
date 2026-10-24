@@ -267,6 +267,10 @@ def main(assets, out):
         oneshot(f"afx_end_chime.{i + 1}", f"{am}/ambient_sounds_ethereal_crystal_2.ogg",
                 db=-28, rate_scale=r)
 
+    # Drafts: the whistling band of a howling wind, for gaps in walls
+    emitter("afx_draft", f"{md}/nature/howling-wind.mp3", 30, start=15, db=-26,
+            highpass=650, lowpass=1700)
+
     print(f"wrote {len(made)} sounds to {out}")
     for m in made:
         print("  " + m)

@@ -532,7 +532,12 @@ std::string debugLine(ISoundManager *sound)
 	const Mood &m = s_mood.smoother.current();
 	os << " | tension " << m.tension << " (" << s_mood.target.tension << ") cozy " << m.cozy
 		<< " home " << s_last_homey;
-	os << " | src " << r.sources << " occl " << r.occluded
+	if (a.coupling > 0.01f)
+		os << " | next " << a.coupling << " rt60 " << std::setprecision(1) << a.neighbor_decay
+			<< std::setprecision(2);
+	if (a.hollow > 0.01f)
+		os << " | hollow " << a.hollow;
+	os << " | src " << r.sources << " occl " << r.occluded << " routed " << r.routed
 		<< std::setprecision(1) << " | probe " << r.probe_ms << "ms snap " << s_build_ms << "ms";
 	return os.str();
 }

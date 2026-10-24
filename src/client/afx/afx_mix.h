@@ -33,6 +33,8 @@ struct Mix {
 	float reverb_hf = 1.f;
 	float echo_send = 0.f;
 	float muffle_send = 0.f;  // through the "behind a wall" EQ
+	float neighbor_send = 0.f;// into the next room's reverb
+	float hollow_send = 0.f;  // into the cavity under the floor (footsteps)
 	bool spatial_bed = false; // outdoor bed: pan toward the opening
 };
 
@@ -69,6 +71,8 @@ Variation vary(float u1, float u2, float u3, float u4, float amount);
 constexpr float VARY_MAX_SECONDS = 2.5f;
 
 /// The policy. `occ` is the source's smoothed occlusion (World only).
-Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &params);
+/// `footstep`: the player's own steps (hollow floors boom).
+Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &params,
+		bool footstep = false);
 
 } // namespace afx

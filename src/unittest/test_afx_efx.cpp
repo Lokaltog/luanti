@@ -47,7 +47,7 @@ struct Loopback {
 			ALC_FORMAT_TYPE_SOFT, ALC_FLOAT_SOFT,
 			ALC_FREQUENCY, RATE,
 			ALC_HRTF_SOFT, ALC_FALSE,
-			ALC_MAX_AUXILIARY_SENDS, 4,
+			ALC_MAX_AUXILIARY_SENDS, 6,
 			0};
 		ctx = alcCreateContext(dev, attrs);
 		if (!ctx || !alcMakeContextCurrent(ctx))
@@ -146,6 +146,8 @@ public:
 	void testOutdoorMuffle(Loopback &lb);
 	void testEchoSide(Loopback &lb);
 	void testBedSteering(Loopback &lb);
+	void testNeighborTail(Loopback &lb);
+	void testHollowSteps(Loopback &lb);
 };
 
 static TestAfxEfx g_test_instance;
@@ -157,6 +159,7 @@ void TestAfxEfx::runTests(IGameDef *gamedef)
 		rawstream << "TestAfxEfx: no OpenAL Soft loopback device, skipping" << std::endl;
 		return;
 	}
+	rawstream << "TestAfxEfx: " << lb.sends << " aux sends" << std::endl;
 	EfxRig probe(lb.dev, lb.sends);
 	if (!probe.available()) {
 		rawstream << "TestAfxEfx: no EFX, skipping" << std::endl;
@@ -166,6 +169,8 @@ void TestAfxEfx::runTests(IGameDef *gamedef)
 	TEST(testOutdoorMuffle, lb);
 	TEST(testEchoSide, lb);
 	TEST(testBedSteering, lb);
+	TEST(testNeighborTail, lb);
+	TEST(testHollowSteps, lb);
 }
 
 // The same click, dry vs in a stone cave: the cave keeps ringing.
@@ -295,6 +300,72 @@ void TestAfxEfx::testBedSteering(Loopback &lb)
 		// Unfocused (standing outside) stays roughly centred
 		UASSERT(wide.r < wide.l * 1.6 && wide.l < wide.r * 1.6);
 	}
+}
+
+// A dead hut with a cave through the door on the right: a click's long tail
+// comes back from the right.
+void TestAfxEfx::testNeighborTail(Loopback &lb)
+{
+	ListenerFrame frame;
+	afx::Params params;
+	ALuint buf = makeBuffer(1, 0.05f, true);
+	auto run = [&](float coupling) {
+		EfxRig rig(lb.dev, lb.sends);
+		afx::Acoustics env;
+		env.wet = 0.3f;
+		env.decay = 0.4f;          // the hut: short
+		env.coupling = coupling;
+		env.neighbor_wet = 1.f;
+		env.neighbor_decay = 4.f;  // the cave: long
+		env.neighbor_dir = v3f(-1, 0, 0); // node -X = listener's right
+		rig.applyEnvironment(env, frame);
+		ALuint src = makeSource(buf, true);
+		rig.applySource(src, afx::mixFor(afx::Bus::Local, env, {}, params), false, false,
+				env, frame);
+		alSourcePlay(src);
+		auto out = lb.renderSeconds(2.f);
+		alDeleteSources(1, &src);
+		return measure(out, 0.6f, 1.8f);
+	};
+	Energy none = run(0.f), open = run(0.8f);
+	UASSERT(open.total() > none.total() * 20.0 + 1e-7);
+	UASSERT(open.r > open.l * 1.3);
+	alDeleteBuffers(1, &buf);
+}
+
+// Footsteps on boards over a void get body: more low end than on the ground.
+void TestAfxEfx::testHollowSteps(Loopback &lb)
+{
+	ListenerFrame frame;
+	afx::Params params;
+	ALuint buf = makeBuffer(1, 0.08f, true);
+	auto run = [&](float hollow) {
+		EfxRig rig(lb.dev, lb.sends);
+		afx::Acoustics env;
+		env.hollow = hollow;
+		rig.applyEnvironment(env, frame);
+		ALuint src = makeSource(buf, true);
+		rig.applySource(src, afx::mixFor(afx::Bus::Local, env, {}, params, true), false,
+				false, env, frame);
+		alSourcePlay(src);
+		auto out = lb.renderSeconds(0.4f);
+		alDeleteSources(1, &src);
+		return out;
+	};
+	auto low = [](const std::vector<float> &x) {
+		// energy below ~250 Hz (one-pole low-pass, both channels)
+		double e = 0, l = 0, r = 0;
+		const double k = 1.0 - std::exp(-2.0 * M_PI * 250.0 / RATE);
+		for (size_t i = 0; i + 1 < x.size(); i += 2) {
+			l += (x[i] - l) * k;
+			r += (x[i + 1] - r) * k;
+			e += l * l + r * r;
+		}
+		return e;
+	};
+	const double solid = low(run(0.f)), hollow = low(run(1.f));
+	UASSERT(hollow > solid * 2.0);
+	alDeleteBuffers(1, &buf);
 }
 
 #endif // USE_SOUND

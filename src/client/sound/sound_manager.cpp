@@ -141,7 +141,7 @@ std::string OpenALSoundManager::getOrLoadLoadedSoundNameFromGroup(const std::str
 std::shared_ptr<PlayingSound> OpenALSoundManager::createPlayingSound(
 		const std::string &sound_name, bool loop, f32 volume, f32 pitch,
 		f32 start_time, const std::optional<std::pair<v3f, v3f>> &pos_vel_opt,
-		afx::Bus bus)
+		afx::Bus bus, bool footstep)
 {
 	infostream << "OpenALSoundManager: Creating playing sound \"" << sound_name
 			<< "\"" << std::endl;
@@ -183,6 +183,7 @@ std::shared_ptr<PlayingSound> OpenALSoundManager::createPlayingSound(
 
 	auto sound = std::make_shared<PlayingSound>(source_id, std::move(lsnd), loop,
 			volume, pitch, start_time, pos_vel_opt, m_exts, bus);
+	sound->setFootstep(footstep);
 
 	prepareSound(*sound);
 	sound->play();
@@ -250,7 +251,8 @@ void OpenALSoundManager::playSoundGeneric(sound_handle_t id, const std::string &
 
 	// play it
 	std::shared_ptr<PlayingSound> sound = createPlayingSound(sound_name, loop,
-			volume, pitch, start_time, pos_vel_opt, bus);
+			volume, pitch, start_time, pos_vel_opt, bus,
+			group_name.find("footstep") != std::string::npos);
 	if (!sound) {
 		reportRemovedSound(id);
 		return;

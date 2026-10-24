@@ -35,7 +35,7 @@ static float lerpf(float a, float b, float t) { return a + (b - a) * t; }
 
 const ALCint *EfxRig::contextAttributes()
 {
-	static const ALCint attrs[] = {ALC_MAX_AUXILIARY_SENDS, 4, 0};
+	static const ALCint attrs[] = {ALC_MAX_AUXILIARY_SENDS, 6, 0};
 	return attrs;
 }
 
@@ -111,6 +111,35 @@ EfxRig::EfxRig(ALCdevice *device, int sends) : m_sends(sends)
 		alAuxiliaryEffectSlotf(m_muffle_slot, AL_EFFECTSLOT_GAIN, 1.f);
 	}
 
+	if (m_sends >= 5 && m_eax) {
+		const ALuint e = m_hollow_effect = [&] { ALuint id; alGenEffects(1, &id); return id; }();
+		alEffecti(e, AL_EFFECT_TYPE, AL_EFFECT_EAXREVERB);
+		alEffectf(e, AL_EAXREVERB_DENSITY, 1.f);
+		alEffectf(e, AL_EAXREVERB_DIFFUSION, 0.6f);
+		alEffectf(e, AL_EAXREVERB_GAIN, 0.9f);
+		alEffectf(e, AL_EAXREVERB_GAINHF, 0.08f);
+		alEffectf(e, AL_EAXREVERB_GAINLF, 1.f);
+		alEffectf(e, AL_EAXREVERB_DECAY_TIME, 0.35f);
+		alEffectf(e, AL_EAXREVERB_DECAY_HFRATIO, 0.1f);
+		alEffectf(e, AL_EAXREVERB_DECAY_LFRATIO, 2.0f);
+		alEffectf(e, AL_EAXREVERB_REFLECTIONS_GAIN, 3.0f);
+		alEffectf(e, AL_EAXREVERB_REFLECTIONS_DELAY, 0.004f);
+		alEffectf(e, AL_EAXREVERB_LATE_REVERB_GAIN, 3.0f);
+		alEffectf(e, AL_EAXREVERB_LATE_REVERB_DELAY, 0.006f);
+		alEffectf(e, AL_EAXREVERB_HFREFERENCE, 1500.f);
+		alEffectf(e, AL_EAXREVERB_LFREFERENCE, 180.f);
+		alGenAuxiliaryEffectSlots(1, &m_hollow_slot);
+		alAuxiliaryEffectSloti(m_hollow_slot, AL_EFFECTSLOT_EFFECT, e);
+		alAuxiliaryEffectSlotf(m_hollow_slot, AL_EFFECTSLOT_GAIN, 1.f);
+	}
+
+	if (m_sends >= 4 && m_eax) {
+		alGenEffects(1, &m_nb_effect);
+		alEffecti(m_nb_effect, AL_EFFECT_TYPE, AL_EFFECT_EAXREVERB);
+		alGenAuxiliaryEffectSlots(1, &m_nb_slot);
+		alAuxiliaryEffectSlotf(m_nb_slot, AL_EFFECTSLOT_GAIN, 0.f);
+	}
+
 	alGenFilters(1, &m_filter);
 	alFilteri(m_filter, AL_FILTER_TYPE, AL_FILTER_LOWPASS);
 
@@ -136,6 +165,14 @@ EfxRig::~EfxRig()
 		alDeleteAuxiliaryEffectSlots(1, &m_echo_slot);
 	if (m_muffle_slot)
 		alDeleteAuxiliaryEffectSlots(1, &m_muffle_slot);
+	if (m_nb_slot)
+		alDeleteAuxiliaryEffectSlots(1, &m_nb_slot);
+	if (m_hollow_slot)
+		alDeleteAuxiliaryEffectSlots(1, &m_hollow_slot);
+	if (m_hollow_effect)
+		alDeleteEffects(1, &m_hollow_effect);
+	if (m_nb_effect)
+		alDeleteEffects(1, &m_nb_effect);
 	if (m_muffle_effect)
 		alDeleteEffects(1, &m_muffle_effect);
 	if (m_reverb_effect)
@@ -252,6 +289,34 @@ void EfxRig::applyEnvironment(const afx::Acoustics &env, const ListenerFrame &fr
 		m_last.echo_damping = env.echo_damping;
 		m_last.echo_dir = echo_local;
 	}
+	if (m_nb_slot) {
+		alAuxiliaryEffectSlotf(m_nb_slot, AL_EFFECTSLOT_GAIN,
+				clampf(env.coupling * env.neighbor_wet * 1.4f, 0.f, 1.f));
+		const v3f pan = frame.toLocal(env.neighbor_dir) * 0.85f;
+		if (std::fabs(env.neighbor_decay - m_nb_last_decay) > 0.05f ||
+				std::fabs(env.neighbor_hf_ratio - m_nb_last_hf) > 0.05f ||
+				(pan - m_nb_last_pan).getLengthSQ() > 1e-3f) {
+			const ALuint e = m_nb_effect;
+			alEffectf(e, AL_EAXREVERB_DENSITY, 1.f);
+			alEffectf(e, AL_EAXREVERB_DIFFUSION, 1.f);
+			alEffectf(e, AL_EAXREVERB_GAIN, 0.32f);
+			alEffectf(e, AL_EAXREVERB_GAINHF, 0.7f);
+			alEffectf(e, AL_EAXREVERB_DECAY_TIME, clampf(env.neighbor_decay, 0.1f, 20.f));
+			alEffectf(e, AL_EAXREVERB_DECAY_HFRATIO, clampf(env.neighbor_hf_ratio, 0.1f, 2.f));
+			// No early reflections: we hear the far space's tail, arriving late
+			alEffectf(e, AL_EAXREVERB_REFLECTIONS_GAIN, 0.05f);
+			alEffectf(e, AL_EAXREVERB_LATE_REVERB_GAIN, 1.6f);
+			alEffectf(e, AL_EAXREVERB_LATE_REVERB_DELAY, 0.04f);
+			ALfloat lp[3] = {pan.X, pan.Y, pan.Z};
+			alEffectfv(e, AL_EAXREVERB_LATE_REVERB_PAN, lp);
+			alEffectfv(e, AL_EAXREVERB_REFLECTIONS_PAN, lp);
+			alEffecti(e, AL_EAXREVERB_DECAY_HFLIMIT, AL_TRUE);
+			alAuxiliaryEffectSloti(m_nb_slot, AL_EFFECTSLOT_EFFECT, e);
+			m_nb_last_decay = env.neighbor_decay;
+			m_nb_last_hf = env.neighbor_hf_ratio;
+			m_nb_last_pan = pan;
+		}
+	}
 	m_have_last = true;
 	warn_if_al_error("afx: applyEnvironment");
 }
@@ -283,6 +348,24 @@ void EfxRig::applySource(ALuint src, const afx::Mix &mix, bool positional, bool 
 			alSource3i(src, AL_AUXILIARY_SEND_FILTER, m_echo_slot, 1, m_filter);
 		} else {
 			alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 1, AL_FILTER_NULL);
+		}
+	}
+
+	if (m_hollow_slot) {
+		if (mix.hollow_send > 1e-3f) {
+			setLowpass(std::min(1.f, mix.hollow_send), 0.3f);
+			alSource3i(src, AL_AUXILIARY_SEND_FILTER, m_hollow_slot, 4, m_filter);
+		} else {
+			alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 4, AL_FILTER_NULL);
+		}
+	}
+
+	if (m_nb_slot) {
+		if (mix.neighbor_send > 1e-3f) {
+			setLowpass(mix.neighbor_send, 0.8f);
+			alSource3i(src, AL_AUXILIARY_SEND_FILTER, m_nb_slot, 3, m_filter);
+		} else {
+			alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 3, AL_FILTER_NULL);
 		}
 	}
 
@@ -334,6 +417,10 @@ void EfxRig::clearSource(ALuint src)
 		alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 1, AL_FILTER_NULL);
 	if (m_muffle_slot)
 		alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 2, AL_FILTER_NULL);
+	if (m_nb_slot)
+		alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 3, AL_FILTER_NULL);
+	if (m_hollow_slot)
+		alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 4, AL_FILTER_NULL);
 }
 
 #endif

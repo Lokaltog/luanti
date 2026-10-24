@@ -37,6 +37,9 @@ public:
 	void testSmoother();
 	void testMood();
 	void testVariation();
+	void testAroundCorner();
+	void testNeighborRoom();
+	void testHollowFloor();
 };
 
 static TestAfx g_test_instance;
@@ -54,6 +57,9 @@ void TestAfx::runTests(IGameDef *gamedef)
 	TEST(testSmoother);
 	TEST(testMood);
 	TEST(testVariation);
+	TEST(testAroundCorner);
+	TEST(testNeighborRoom);
+	TEST(testHollowFloor);
 }
 
 void TestAfx::testOpenField()
@@ -300,4 +306,70 @@ void TestAfx::testVariation()
 	}
 	UASSERT(hi > 1.05f && lo < 0.95f);  // audible spread at the extremes
 	UASSERT(sum_abs / n < 0.03f);       // but mostly subtle
+}
+
+// An L-shaped corridor in stone: the ear at one end, a source around the
+// corner. The sound should come from the corner, not through the rock.
+void TestAfx::testAroundCorner()
+{
+	World w;
+	w.fill({-32, -32, -32}, {31, 31, 31}, Material::Stone);
+	w.fill({-10, 0, -1}, {3, 2, 1}, Material::Air);   // east-west leg
+	w.fill({1, 0, 1}, {3, 2, 14}, Material::Air);     // north leg from x=1..3
+	w.markSky();
+	const v3f ear(-8, 1, 0), src(2, 1, 12);
+
+	Occlusion occ = occlusion(w.snap, ear, src);
+	UASSERT(occ.amount > 0.9f); // through the rock: blocked
+	AirField f;
+	buildAirField(w.snap, ear, 20, f);
+	routeAround(w.snap, f, ear, src, occ);
+	UASSERT(occ.path > 0.5f);
+	// heard from the corner's direction (east), at about the walked distance
+	v3f d = occ.virt_pos - ear;
+	UASSERT(d.normalize().X > 0.9f);
+	const float walked = (occ.virt_pos - ear).getLength();
+	UASSERT(walked > 19.f && walked < 26.f);
+	// a right-angle bend costs some level and most of the highs
+	UASSERT(occ.path_gain < 0.7f && occ.path_gain > 0.2f);
+	UASSERT(occ.path_hf < 0.4f);
+
+	// In plain sight: no routing
+	Occlusion clear = occlusion(w.snap, ear, v3f(0, 1, 0));
+	routeAround(w.snap, f, ear, v3f(0, 1, 0), clear);
+	UASSERT(clear.path == 0.f);
+}
+
+// A small wooden hut whose door opens into a big stone cavern: the cavern's
+// reverb comes in through the door.
+void TestAfx::testNeighborRoom()
+{
+	World w;
+	w.fill({-32, -32, -32}, {31, 31, 31}, Material::Stone);
+	w.fill({-12, -6, 2}, {12, 8, 26}, Material::Air);    // cavern to the north
+	w.fill({-3, -1, -6}, {3, 3, 1}, Material::Wood);     // the hut, inside the rock
+	w.fill({-2, 0, -5}, {2, 2, 0}, Material::Air);
+	w.fill({0, 0, 1}, {0, 1, 1}, Material::Air);         // its door, north
+	w.markSky();
+	Acoustics a = w.probe(v3f(0, 1, -3));
+	UASSERT(a.coupling > 0.15f);
+	UASSERT(a.neighbor_decay > a.decay * 1.5f);
+	UASSERT(a.neighbor_dir.Z > 0.6f);
+
+	// The same hut with the door closed: nothing next door
+	w.fill({0, 0, 1}, {0, 1, 1}, Material::Wood);
+	Acoustics shut = w.probe(v3f(0, 1, -3));
+	UASSERT(shut.coupling < 0.02f);
+}
+
+void TestAfx::testHollowFloor()
+{
+	// planks over a void
+	World w = openField();
+	w.fill({-6, -6, -6}, {6, -1, 6}, Material::Air);
+	w.fill({-6, -1, -6}, {6, -1, 6}, Material::Wood);
+	w.markSky();
+	UASSERT(w.probe(v3f(0, 1.6f, 0)).hollow > 0.6f);
+	// solid ground
+	UASSERT(openField().probe(v3f(0, 1.6f, 0)).hollow < 0.05f);
 }

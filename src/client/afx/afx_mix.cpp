@@ -109,7 +109,8 @@ Variation vary(float u1, float u2, float u3, float u4, float amount)
 	return v;
 }
 
-Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &params)
+Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &params,
+		bool footstep)
 {
 	Mix m;
 	if (!params.enabled || bus == Bus::Dry)
@@ -122,6 +123,15 @@ Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &pa
 		m.direct_hf = std::pow(std::clamp(occ.hf, 0.f, 1.f), params.occlusion);
 		// What makes it through the blocker, muffled like a neighbour's party
 		m.muffle_send = o * std::clamp(occ.wall, 0.f, 1.f);
+		// Around the corner: heard from the opening (the engine moves the
+		// source there), duller for the bend
+		const float p = std::clamp(occ.path, 0.f, 1.f);
+		if (p > 0.f) {
+			m.direct_gain = lerpf(m.direct_gain, occ.path_gain, p);
+			m.direct_hf = lerpf(m.direct_hf, occ.path_hf, p);
+			m.muffle_send *= 1.f - 0.6f * p;
+			o *= 1.f - p;
+		}
 		// A source behind a wall excites less of the listener's room.
 		m.reverb_send = 1.f - 0.6f * o;
 		m.reverb_hf = m.direct_hf;
@@ -131,6 +141,10 @@ Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &pa
 	case Bus::Local:
 		m.reverb_send = 1.f;
 		m.echo_send = 1.f;
+		if (footstep && env.hollow > 0.f) {
+			// boards over empty space: the cavity under them booms
+			m.hollow_send = env.hollow;
+		}
 		break;
 	case Bus::Outdoor:
 		m.direct_gain = env.outdoor_gain;
@@ -147,6 +161,11 @@ Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &pa
 	case Bus::Dry:
 		break;
 	}
+
+	// Sound made here leaks into the space next door and its reverb comes
+	// back through the opening
+	if (bus == Bus::World || bus == Bus::Local)
+		m.neighbor_send = std::clamp(env.coupling, 0.f, 1.f);
 
 	// Submerged: everything but the dry bus moves to the muffled path.
 	if (env.submerged > 0.f) {

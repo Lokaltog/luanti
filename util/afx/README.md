@@ -107,6 +107,16 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
 - **Extra takes** (`make_variants.py <game_dir> <out>`): for each footstep, dig, dug and place group in a game, it writes three new takes into free `.N` slots (from .9 downward). Each take is one of the game's own samples with pitch and speed shifted independently, a ±2 dB high-shelf tilt and ±1 dB of level. Luanti merges `name.N.ogg` across mods, so the game draws from 5–7 takes instead of 2–4. The shipped takes are made from VoxeLibre. Rerun the script against your Mineclonia install to match its samples exactly.
 - The home clock is quieter now.
 
+## Round 5: sound travel (engine)
+
+- **Around corners.** When a positional source is occluded, a distance field through open air (air, leaves, fences, edge-on doors; built on demand from the ear, 41³ window) gives its route. Walking that route back from the source, the first cell visible from the ear is where the sound turns the corner. The source is then rendered at a virtual position: in the direction of that turn, at the route's length, so distance attenuation follows the route. The bend costs up to about 10 dB and most of the highs. The position glides, and routing blends with the through-wall path.
+- **Neighbouring spaces.** The probe labels every reachable cell as "this room" (route ≈ straight line) or "beyond an opening", and in one pass finds which opening each beyond-cell came through. The biggest space behind one opening is analysed from its middle. Its reverb runs on a second EAX slot (send 3) whose late tail is panned toward the opening. Coupling = aperture × size × nearness × contrast, so a ringing cave beyond a dead hut's door is what you notice.
+- **Hollow floors.** Floor material, thickness and the empty space under it give `hollow`. Footsteps (any group named `*footstep*`) send into a short, low, boomy EAX "cavity" reverb (send 4).
+- **Drafts** (afx_ambience): air cells in walls with sky on one side and shelter on the other whistle when the gust level is high. A pinhole whistles higher than a window. The whistle is the band-passed whistle of a real howling-wind recording.
+- The context now asks for 6 aux sends: reverb, echo, wall EQ, next room, floor cavity, plus one spare.
+- Probe cost is now 2–7 ms per probe on the sound thread, at 2.5 Hz.
+- Scenarios `corner`, `nextdoor`, `bridge` and `draft`.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

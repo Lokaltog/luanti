@@ -201,7 +201,7 @@ local function reconcile(pname, st, wanted)
 			local handle = core.sound_play(w.sound, {
 				pos = w.pos, object = w.object, to_player = pname, loop = true, gain = 0.01,
 				max_hear_distance = positional and (w.range or 32) or nil,
-				pitch = positional and rand(0.95, 1.05) or 1,
+				pitch = w.pitch or (positional and rand(0.95, 1.05) or 1),
 				start_time = rand(0, 20),
 			})
 			if handle then

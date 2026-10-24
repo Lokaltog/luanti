@@ -168,6 +168,18 @@ struct Acoustics {
 	v3f outdoor_dir;           // node space, unit; zero when standing under the sky
 	float outdoor_focus = 0.f; // 0 wide/ambient .. 1 a single opening
 
+	// The space next door: the biggest region reachable through an opening
+	// that isn't the room you're in (a cave beyond the hut's door). Its
+	// reverb spills in through the opening, from that direction.
+	float coupling = 0.f;       // 0..1, how much of it you hear
+	float neighbor_decay = 0.5f;
+	float neighbor_wet = 0.f;
+	float neighbor_hf_ratio = 1.f;
+	v3f neighbor_dir;           // node space, unit; toward the opening
+
+	// Floor under your feet: 1 = planks over empty space (boomy footsteps)
+	float hollow = 0.f;
+
 	// Listener medium
 	bool underwater = false;
 	bool in_lava = false;
@@ -182,6 +194,7 @@ struct Report {
 	float probe_ms = 0.f;
 	u32 sources = 0;
 	u32 occluded = 0; // positional sources with occlusion > 0.1
+	u32 routed = 0;   // ...of which heard around a corner
 	bool efx = false; // EFX available and in use
 };
 
@@ -194,8 +207,45 @@ struct Occlusion {
 	float amount = 0.f;  // 0 clear .. 1 fully blocked
 	float hf = 1.f;      // 0..1 gainhf multiplier on the direct path
 	float wall = 0.f;    // 0..1 what gets through the blocker (muffled path)
+	// Around the corner: the sound travels through an opening instead.
+	float path = 0.f;    // 0..1, how much the bent path is used
+	float path_gain = 0.f; // diffraction loss of the bend (distance is in virt_pos)
+	float path_hf = 1.f;
+	v3f virt_pos;        // node space: heard from here (direction of the opening,
+	                     // at the path's length from the ear)
 };
 Occlusion occlusion(const VoxelSnapshot &snap, v3f from, v3f to);
+
+/// Shortest routes through open air (and leaves, fences, open doors) from
+/// the ear, within a window around it. Built per probe; read per source.
+struct AirField {
+	v3s16 origin;          // node position of index 0
+	s16 size = 0;          // window edge
+	v3s16 ear;
+	std::vector<u16> dist; // quarter nodes; 0xffff = unreachable
+	std::vector<u8> parent;// 1..6: index into NEIGHBORS of the step *toward* the ear
+	u32 index(v3s16 p) const {
+		return (u32)(p.X - origin.X) + (u32)size * ((u32)(p.Y - origin.Y) +
+				(u32)size * (u32)(p.Z - origin.Z));
+	}
+	bool contains(v3s16 p) const {
+		return p.X >= origin.X && p.Y >= origin.Y && p.Z >= origin.Z &&
+				p.X < origin.X + size && p.Y < origin.Y + size && p.Z < origin.Z + size;
+	}
+	float pathLength(v3s16 p) const {
+		if (!contains(p)) return -1.f;
+		u16 d = dist[index(p)];
+		return d == 0xffff ? -1.f : d / 4.f;
+	}
+};
+
+/// Build the field from the ear outward, `radius` nodes each way.
+void buildAirField(const VoxelSnapshot &snap, v3f ear, s16 radius, AirField &out);
+
+/// Fill the path fields of `occ` for a source at `src`: the route through
+/// open air, where it turns toward the ear, and how much it loses bending.
+void routeAround(const VoxelSnapshot &snap, const AirField &field, v3f ear, v3f src,
+		Occlusion &occ);
 
 /// Unit directions on a Fibonacci sphere. Cached per count.
 const std::vector<v3f> &sphereDirections(int count);

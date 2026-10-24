@@ -45,6 +45,7 @@ void OpenALSoundManager::setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> 
 	}
 
 	m_afx_snap = std::move(snap);
+	m_afx_field_valid = false;
 	if (!m_afx_snap)
 		return;
 
@@ -52,6 +53,9 @@ void OpenALSoundManager::setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> 
 	afx::Acoustics target = afx::analyze(*m_afx_snap, m_listener_pos_node, params);
 	auto t1 = std::chrono::steady_clock::now();
 	m_afx_probe_ms = std::chrono::duration<f32, std::milli>(t1 - t0).count();
+	if (params.debug)
+		infostream << "afx target: hollow " << target.hollow << " coupling " << target.coupling
+				<< " nb_decay " << target.neighbor_decay << std::endl;
 
 	const bool first = !m_afx_smoother.valid();
 	m_afx_smoother.setTarget(target);
@@ -83,17 +87,28 @@ void OpenALSoundManager::deactivateAcoustics()
 	m_afx_smoother = afx::Smoother();
 }
 
-afx::Occlusion OpenALSoundManager::computeOcclusion(const PlayingSound &snd) const
+afx::Occlusion OpenALSoundManager::computeOcclusion(const PlayingSound &snd)
 {
 	if (!m_afx_snap || !snd.isPositional())
 		return {};
-	return afx::occlusion(*m_afx_snap, m_listener_pos_node, snd.getPosNode());
+	afx::Occlusion o = afx::occlusion(*m_afx_snap, m_listener_pos_node, snd.getPosNode());
+	if (o.amount > 0.2f) {
+		// Hidden: find the way around. The field is built once per recast,
+		// on demand, from where the ear is now.
+		if (!m_afx_field_valid) {
+			afx::buildAirField(*m_afx_snap, m_listener_pos_node, 20, m_afx_field);
+			m_afx_field_valid = true;
+		}
+		afx::routeAround(*m_afx_snap, m_afx_field, m_listener_pos_node, snd.getPosNode(), o);
+	}
+	return o;
 }
 
 void OpenALSoundManager::applyMix(PlayingSound &snd)
 {
 	const afx::Acoustics &env = m_afx_smoother.current();
-	afx::Mix mix = afx::mixFor(snd.getBus(), env, snd.getOcclusion(), m_afx_params);
+	afx::Mix mix = afx::mixFor(snd.getBus(), env, snd.getOcclusion(), m_afx_params,
+			snd.isFootstep());
 	if (snd.getBus() == afx::Bus::Dry)
 		m_efx->clearSource(snd.getSourceId());
 	else
@@ -120,10 +135,12 @@ void OpenALSoundManager::stepAcoustics(f32 dtime)
 
 	m_afx_occlusion_timer -= dtime;
 	const bool recast = m_afx_occlusion_timer <= 0.0f;
-	if (recast)
+	if (recast) {
 		m_afx_occlusion_timer = AFX_OCCLUSION_INTERVAL;
+		m_afx_field_valid = false;
+	}
 
-	u32 occluded = 0;
+	u32 occluded = 0, routed = 0;
 	for (auto &[id, snd] : m_sounds_playing) {
 		if (snd->getBus() != afx::Bus::World)
 			continue;
@@ -132,6 +149,8 @@ void OpenALSoundManager::stepAcoustics(f32 dtime)
 		snd->stepOcclusion(dtime, AFX_OCCLUSION_TAU * m_afx_params.smoothing);
 		if (snd->getOcclusion().amount > 0.1f)
 			occluded++;
+		if (snd->getOcclusion().path > 0.5f)
+			routed++;
 	}
 
 	m_afx_apply_timer -= dtime;
@@ -151,6 +170,7 @@ void OpenALSoundManager::stepAcoustics(f32 dtime)
 		r.probe_ms = m_afx_probe_ms;
 		r.sources = (u32)m_sounds_playing.size();
 		r.occluded = occluded;
+		r.routed = routed;
 		r.efx = true;
 		send(sound_manager_messages_to_proxy::ReportAcoustics{r});
 	}

@@ -76,6 +76,8 @@ private:
 	v3f m_listener_pos_node;
 	bool m_afx_active = false; // sources are routed through EFX
 	bool m_afx_doppler_set = false;
+	afx::AirField m_afx_field; // routes around corners, rebuilt per recast
+	bool m_afx_field_valid = false;
 	// afx: last sample picked per group, so it isn't picked twice in a row
 	std::unordered_map<std::string, std::string> m_last_pick;
 	f32 m_afx_apply_timer = 0.0f;
@@ -135,7 +137,7 @@ private:
 	std::shared_ptr<PlayingSound> createPlayingSound(const std::string &sound_name,
 			bool loop, f32 volume, f32 pitch, f32 start_time,
 			const std::optional<std::pair<v3f, v3f>> &pos_vel_opt,
-			afx::Bus bus = afx::Bus::Dry);
+			afx::Bus bus = afx::Bus::Dry, bool footstep = false);
 
 	void playSoundGeneric(sound_handle_t id, const std::string &group_name, bool loop,
 			f32 volume, f32 fade, f32 pitch, bool use_local_fallback, f32 start_time,
@@ -145,7 +147,7 @@ private:
 
 	void setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> snap, const afx::Params &params);
 	void stepAcoustics(f32 dtime);
-	afx::Occlusion computeOcclusion(const PlayingSound &snd) const;
+	afx::Occlusion computeOcclusion(const PlayingSound &snd);
 	void applyMix(PlayingSound &snd);
 	/// Route a sound before it starts, so its first samples are already right.
 	void prepareSound(PlayingSound &snd);

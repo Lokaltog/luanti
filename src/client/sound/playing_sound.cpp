@@ -247,8 +247,26 @@ void PlayingSound::updatePosVel(const v3f &pos, const v3f &vel) noexcept
 void PlayingSound::stepOcclusion(f32 dtime, f32 tau)
 {
 	f32 k = 1.0f - std::exp(-dtime / std::max(tau, 1e-3f));
-	m_occ.amount += (m_occ_target.amount - m_occ.amount) * k;
-	m_occ.hf += (m_occ_target.hf - m_occ.hf) * k;
+	afx::Occlusion &c = m_occ;
+	const afx::Occlusion &t = m_occ_target;
+	c.amount += (t.amount - c.amount) * k;
+	c.hf += (t.hf - c.hf) * k;
+	c.wall += (t.wall - c.wall) * k;
+	// A new route starts where it is; an old one fades out in place
+	if (t.path > 0.f && c.path < 0.02f)
+		c.virt_pos = t.virt_pos;
+	c.path += (t.path - c.path) * k;
+	c.path_gain += (t.path_gain - c.path_gain) * k;
+	c.path_hf += (t.path_hf - c.path_hf) * k;
+	if (t.path > 0.f)
+		c.virt_pos += (t.virt_pos - c.virt_pos) * k;
+
+	// Where it's heard from: the source, or the opening it comes around
+	if (m_is_positional) {
+		v3f heard = m_pos_node + (c.virt_pos - m_pos_node) * std::clamp(c.path, 0.f, 1.f);
+		v3f s = swap_handedness(heard);
+		alSource3f(m_source_id, AL_POSITION, s.X, s.Y, s.Z);
+	}
 }
 
 void PlayingSound::setGain(f32 gain) noexcept

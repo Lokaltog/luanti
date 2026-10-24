@@ -90,6 +90,13 @@ public:
 		glide(c.outdoor_focus, t.outdoor_focus, 0.5f, 0.4f);
 		glide_dir(c.outdoor_dir, t.outdoor_dir, 0.4f);
 
+		glide(c.coupling, t.coupling, 0.6f, 0.5f);
+		glide(c.neighbor_decay, t.neighbor_decay, 0.8f, 0.8f);
+		glide(c.neighbor_wet, t.neighbor_wet, 0.6f, 0.6f);
+		glide(c.neighbor_hf_ratio, t.neighbor_hf_ratio, 0.8f, 0.8f);
+		glide_dir(c.neighbor_dir, t.neighbor_dir, 0.4f);
+		glide(c.hollow, t.hollow, 0.15f, 0.15f);
+
 		c.underwater = t.underwater;
 		c.in_lava = t.in_lava;
 		glide(c.submerged, t.submerged, 0.08f, 0.2f);

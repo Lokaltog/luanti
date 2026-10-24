@@ -186,3 +186,58 @@ A.thunder_at = on_strike
 function A.gust_now(peak)
 	gust.phase, gust.t, gust.peak = "rise", 0, peak or 1.2
 end
+
+--[[ Drafts: gaps in walls whistle when the wind is up ]]
+
+local AXES = {{x = 1, y = 0, z = 0}, {x = 0, y = 0, z = 1}, {x = 0, y = 1, z = 0}}
+
+local function walkable(p)
+	local n = core.get_node_or_nil(p)
+	local d = n and core.registered_nodes[n.name]
+	return d and d.walkable
+end
+
+-- An air cell in a wall: open sky on one side, a sheltered inside on the
+-- other, and wall around it (at most two of its four sides open).
+local function is_gap(p)
+	for _, a in ipairs(AXES) do
+		local front, back = vector.add(p, a), vector.subtract(p, a)
+		local fn, bn = core.get_node_or_nil(front), core.get_node_or_nil(back)
+		if fn and bn and fn.name == "air" and bn.name == "air" then
+			local fo, bo = L.sky_open(front), L.sky_open(back)
+			if fo ~= bo then
+				local walls = 0
+				for _, b in ipairs(AXES) do
+					if b ~= a then
+						if walkable(vector.add(p, b)) then walls = walls + 1 end
+						if walkable(vector.subtract(p, b)) then walls = walls + 1 end
+					end
+				end
+				if walls >= 3 then return walls end
+			end
+		end
+	end
+end
+
+A.register_layer(function(ctx, wanted)
+	if ctx.under_sky or ctx.underground or ctx.dimension ~= "overworld" then return end
+	local wind = ctx.wind or 0
+	if wind < 0.85 then return end
+	local airs = core.find_nodes_in_area(vector.offset(ctx.ear, -6, -2, -6),
+			vector.offset(ctx.ear, 6, 3, 6), {"air"})
+	local gaps = {}
+	for _, p in ipairs(airs) do
+		local w = is_gap(p)
+		if w then gaps[#gaps + 1] = {pos = p, narrow = w == 4} end
+	end
+	table.sort(gaps, function(a, b)
+		return vector.distance(a.pos, ctx.ear) < vector.distance(b.pos, ctx.ear)
+	end)
+	for i = 1, math.min(2, #gaps) do
+		local g = gaps[i]
+		-- a pinhole whistles higher and thinner than a window
+		wanted["draft" .. i] = {sound = "afx_draft", pos = g.pos,
+			gain = math.min(0.7, (wind - 0.85) * 1.2) * (g.narrow and 0.8 or 0.6),
+			fade = 0.4, range = 14, pitch = g.narrow and 1.3 or 1.0}
+	end
+end)

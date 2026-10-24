@@ -241,7 +241,7 @@ public:
 				alcGetProcAddress(dev, "alcRenderSamplesSOFT"));
 		const ALCint attrs[] = {ALC_FORMAT_CHANNELS_SOFT, ALC_STEREO_SOFT,
 			ALC_FORMAT_TYPE_SOFT, ALC_FLOAT_SOFT, ALC_FREQUENCY, RATE,
-			ALC_HRTF_SOFT, ALC_FALSE, ALC_MAX_AUXILIARY_SENDS, 4, 0};
+			ALC_HRTF_SOFT, ALC_FALSE, ALC_MAX_AUXILIARY_SENDS, 6, 0};
 		ctx = alcCreateContext(dev, attrs);
 		if (!ctx || !alcMakeContextCurrent(ctx))
 			return false;

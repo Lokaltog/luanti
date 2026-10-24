@@ -86,6 +86,13 @@ private:
 	ALuint m_reverb_effect = 0, m_echo_effect = 0;
 	ALuint m_muffle_effect = 0;
 	ALuint m_reverb_slot = 0, m_echo_slot = 0, m_muffle_slot = 0;
+	// the space next door (a cave beyond the doorway): its own reverb,
+	// panned toward the opening
+	ALuint m_nb_effect = 0, m_nb_slot = 0;
+	// the cavity under a hollow floor: a short, low, boomy ring
+	ALuint m_hollow_effect = 0, m_hollow_slot = 0;
+	float m_nb_last_decay = -1.f, m_nb_last_hf = -1.f;
+	v3f m_nb_last_pan;
 	ALuint m_filter = 0; // scratch: filter params are copied when attached
 
 	// Last values pushed to the effects, to skip redundant reloads
