@@ -363,6 +363,7 @@ bool COpenGL3MaterialRenderer::setPixelShaderConstant(s32 index, const f32 *floa
 		GL.UniformMatrix4fv(UniformInfo[index].location, count / 16, false, floats);
 		break;
 	case GL_SAMPLER_2D:
+	case 0x8DC1: // GL_SAMPLER_2D_ARRAY. fx fork: array samplers were never bound to their unit
 	case GL_SAMPLER_CUBE: {
 		if (floats) {
 			const GLint id = (GLint)(*floats);
@@ -403,6 +404,7 @@ bool COpenGL3MaterialRenderer::setPixelShaderConstant(s32 index, const s32 *ints
 		GL.Uniform4iv(UniformInfo[index].location, count / 4, ints);
 		break;
 	case GL_SAMPLER_2D:
+	case 0x8DC1: // GL_SAMPLER_2D_ARRAY. fx fork: array samplers were never bound to their unit
 	case GL_SAMPLER_CUBE:
 		GL.Uniform1iv(UniformInfo[index].location, 1, ints);
 		break;

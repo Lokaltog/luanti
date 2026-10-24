@@ -425,6 +425,7 @@ bool COpenGLSLMaterialRenderer::setPixelShaderConstant(s32 index, const f32 *flo
 		break;
 	case GL_SAMPLER_1D:
 	case GL_SAMPLER_2D:
+	case 0x8DC1: // GL_SAMPLER_2D_ARRAY. fx fork: array samplers were never bound to their unit
 	case GL_SAMPLER_3D:
 	case GL_SAMPLER_CUBE:
 	case GL_SAMPLER_1D_SHADOW:
@@ -468,6 +469,7 @@ bool COpenGLSLMaterialRenderer::setPixelShaderConstant(s32 index, const s32 *int
 		break;
 	case GL_SAMPLER_1D:
 	case GL_SAMPLER_2D:
+	case 0x8DC1: // GL_SAMPLER_2D_ARRAY. fx fork: array samplers were never bound to their unit
 	case GL_SAMPLER_3D:
 	case GL_SAMPLER_CUBE:
 	case GL_SAMPLER_1D_SHADOW:
