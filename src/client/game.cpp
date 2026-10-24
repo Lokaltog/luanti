@@ -8,6 +8,7 @@
 #include <csignal>
 #include "client/gameui.h"
 #include "client/fx/fx.h"
+#include "client/fx/fx_test.h"
 #include "client/inputhandler.h"
 #include "client/texturepaths.h"
 #include "client/keys.h"
@@ -397,7 +398,6 @@ Game::Game() :
 		g_settings->registerChangedCallback(s, &settingChangedCallback, this);
 
 	readSettings();
-	fx::init();
 }
 
 
@@ -422,7 +422,7 @@ Game::~Game()
 	clearTextureNameCache();
 
 	g_settings->deregisterAllChangedCallbacks(this);
-	fx::deinit();
+	fx::detach();
 
 	if (m_rendering_engine)
 		m_rendering_engine->finalize();
@@ -525,6 +525,7 @@ void Game::run()
 		//    m_rendering_engine->run() from this iteration
 		//  + Sleep time until the wanted FPS are reached
 		draw_times.limit(device, &dtime);
+		fx::test::beginFrame(dtime);
 
 		framemarker.start();
 
@@ -874,8 +875,7 @@ bool Game::createClient(const GameStartData &start_data)
 
 	shader_src->addShaderConstantSetter(
 		std::make_unique<NodeShaderConstantSetter>());
-	shader_src->addShaderConstantSetter(fx::createConstantSetter());
-	shader_src->addShaderUniformSetterFactory(fx::createUniformSetterFactory());
+	fx::attach(driver, shader_src); // fx: caps, renderer, shader constants
 
 	auto scsf_up = std::make_unique<GameGlobalShaderUniformSetterFactory>(this);
 	auto* scsf = scsf_up.get();
@@ -3430,8 +3430,7 @@ void Game::updateFrame(ProfilerGraph *graph, RunStats *stats, f32 dtime,
 	/*
 		fx: per-frame light list and shader hot reload
 	*/
-	fx::updateFrame(client, camera, dtime);
-	fx::pollShaderHotReload(shader_src, dtime);
+	fx::updateFrame(client, camera, sky.get(), dtime);
 
 	/*
 		Fog range
@@ -3744,32 +3743,9 @@ void Game::drawScene(ProfilerGraph *graph, RunStats *stats)
 	// Must be called immediately before endScene() to capture the rendered frame
 	this->client->takeScreenshotIfRequested();
 
-	/*
-		fx: fx_auto_screenshot = <path> saves one frame after
-		fx_auto_screenshot_delay seconds and quits. Used by util/fx/*.sh for
-		repeatable A/B shots on any display (no X/Wayland grabber needed).
-	*/
-	{
-		static const std::string auto_shot = g_settings->get("fx_auto_screenshot");
-		static const u64 start_ms = porting::getTimeMs();
-		static bool done = false;
-		if (!auto_shot.empty() && !done) {
-			this->m_game_ui->m_flags.show_hud = false;
-			this->m_game_ui->m_flags.show_chat = false;
-			const float delay = g_settings->getFloat("fx_auto_screenshot_delay");
-			if (porting::getTimeMs() - start_ms > (u64)(delay * 1000.f)) {
-				done = true;
-				if (video::IImage *img = this->driver->createScreenShot()) {
-					if (this->driver->writeImageToFile(img, auto_shot.c_str()))
-						actionstream << "fx: auto screenshot written to " << auto_shot << std::endl;
-					else
-						errorstream << "fx: could not write " << auto_shot << std::endl;
-					img->drop();
-				}
-				g_gamecallback->exitToOS();
-			}
-		}
-	}
+	// fx: test mode capture (util/fx/test), a no-op unless fx_test_capture is set
+	fx::test::endFrame(this->driver, this->m_game_ui->m_flags.show_hud,
+			this->m_game_ui->m_flags.show_chat);
 
 	this->driver->endScene();
 

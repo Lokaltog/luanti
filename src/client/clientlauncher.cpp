@@ -17,6 +17,7 @@
 #include "gui/guiEngine.h"
 #include "fontengine.h"
 #include "clientlauncher.h"
+#include "client/fx/fx_test.h"
 #include "version.h"
 #include "renderingengine.h"
 #include "settings.h"
@@ -213,7 +214,7 @@ bool ClientLauncher::run(const GameParams &game_params, const Settings &cmd_args
 			errordata.reconnect_requested = false;
 
 			// If skip_main_menu, we only want to startup once
-			if (skip_main_menu && !first_loop)
+			if (skip_main_menu && !first_loop && !fx::test::wantsRejoin())
 				break;
 			first_loop = false;
 
@@ -257,8 +258,8 @@ bool ClientLauncher::run(const GameParams &game_params, const Settings &cmd_args
 		if (!g_settings_path.empty())
 			g_settings->updateConfigFile(g_settings_path.c_str());
 
-		// If no main menu, show error and exit
-		if (skip_main_menu) {
+		// If no main menu, show error and exit (fx: unless a test rejoins)
+		if (skip_main_menu && !fx::test::wantsRejoin()) {
 			if (!errordata.message.empty())
 				retval = false;
 			break;

@@ -122,60 +122,7 @@ struct HardcodedPauseFormspecHandler : public TextDest
 	}
 };
 
-/*
-	fx: mood tuner. Sliders write fx_* settings live (the renderer re-reads
-	them through settings callbacks); labels refresh when a slider is released.
-*/
-static std::string buildFxTunerFormspec(const std::string &status)
-{
-	const auto &params = fx::tunableParams();
-	const auto moods = fx::listMoods();
-	const std::string current = g_settings->get("fx_mood");
-	const int per_col = (int)(params.size() + 1) / 2;
-	const float row = 0.72f;
-	const float h = 2.3f + per_col * row + 1.0f;
-
-	std::ostringstream os;
-	os << std::fixed;
-	os.precision(2);
-	os << "formspec_version[6]size[17," << h << "]"
-		<< "bgcolor[#00000080;neither]"
-		<< "label[0.4,0.5;" << strgettext("Mood tuner") << "]"
-		<< "label[0.4,1.15;" << strgettext("Mood:") << "]";
-	std::string list;
-	int index = 1;
-	for (size_t i = 0; i < moods.size(); i++) {
-		if (i)
-			list += ",";
-		std::string esc = moods[i];
-		str_formspec_escape(esc);
-		list += esc;
-		if (moods[i] == current)
-			index = (int)i + 1;
-	}
-	os << "dropdown[1.6,0.85;4,0.6;fx_mood_select;" << list << ";" << index << ";false]"
-		<< "label[6,1.15;" << strgettext("Cave, night and underwater targets blend in automatically.") << "]";
-
-	os << "scrollbaroptions[min=0;max=1000;smallstep=10;largestep=100;arrows=hide]";
-	for (size_t i = 0; i < params.size(); i++) {
-		const auto &p = params[i];
-		const int col = (int)i / per_col, r = (int)i % per_col;
-		const float x = 0.4f + col * 8.3f, y = 1.9f + r * row;
-		const float v = g_settings->getFloat(p.setting);
-		const int pos = core::round32(std::clamp((v - p.min) / (p.max - p.min), 0.f, 1.f) * 1000.f);
-		os << "label[" << x << "," << (y + 0.25f) << ";" << p.label << " (" << v << ")]"
-			<< "scrollbar[" << (x + 4.1f) << "," << y << ";3.8,0.45;horizontal;fx_"
-			<< i << ";" << pos << "]";
-	}
-	const float yb = h - 0.95f;
-	os << "field[0.4," << yb << ";4,0.65;fx_save_name;;" << current << "]"
-		<< "field_close_on_enter[fx_save_name;false]"
-		<< "button[4.5," << yb << ";3,0.65;fx_save;" << strgettext("Save as mood") << "]"
-		<< "label[7.8," << (yb + 0.33f) << ";" << status << "]"
-		<< "button_exit[13.6," << yb << ";3,0.65;fx_done;" << strgettext("Done") << "]";
-	return os.str();
-}
-
+// fx: the mood tuner (src/client/fx/tuner.cpp)
 struct FxTunerFormspecHandler : public TextDest
 {
 	FormspecFormSource *m_src; // owned by the menu, which outlives us
@@ -188,37 +135,8 @@ struct FxTunerFormspecHandler : public TextDest
 	void gotText(const StringMap &fields)
 	{
 		std::string status;
-		bool refresh = false;
-		const auto &params = fx::tunableParams();
-		for (size_t i = 0; i < params.size(); i++) {
-			auto it = fields.find("fx_" + std::to_string(i));
-			if (it == fields.end())
-				continue;
-			const std::string &val = it->second;
-			const bool released = str_starts_with(val, "VAL:");
-			if (!released && !str_starts_with(val, "CHG:"))
-				continue;
-			const float t = mystoi(val.substr(4)) / 1000.f;
-			const auto &p = params[i];
-			g_settings->setFloat(p.setting, p.min + t * (p.max - p.min));
-			refresh |= released;
-		}
-		if (auto it = fields.find("fx_mood_select"); it != fields.end() &&
-				it->second != g_settings->get("fx_mood")) {
-			g_settings->set("fx_mood", it->second);
-			status = strgettext("Mood applied");
-			refresh = true;
-		}
-		if (fields.count("fx_save")) {
-			auto it = fields.find("fx_save_name");
-			const std::string path = it == fields.end() ? "" : fx::saveMood(it->second);
-			status = path.empty() ? strgettext("Could not save (name must be letters, digits, _ or -)")
-				: strgettext("Saved to ") + path;
-			str_formspec_escape(status);
-			refresh = true;
-		}
-		if (refresh)
-			m_src->setForm(buildFxTunerFormspec(status));
+		if (fx::tunerFields(fields, status))
+			m_src->setForm(fx::tunerFormspec(status));
 	}
 };
 
@@ -489,7 +407,7 @@ void GameFormSpec::showPauseMenu()
 	std::ostringstream os;
 
 	// fx: one more button (Mood) needs one more row
-	os << "formspec_version[2]" << (fx::params().enabled ? "size[14.25,8.455,true]" : SIZE_TAG);
+	os << "formspec_version[2]" << (fx::caps().enabled ? "size[14.25,8.455,true]" : SIZE_TAG);
 
 	if (simple_singleplayer_mode) {
 		os << "style_type[label;halign=center;valign=center]";
@@ -511,7 +429,7 @@ void GameFormSpec::showPauseMenu()
 		// TRANSLATORS: Try to keep the translation short
 		<< strgettext("Settings") << "]";
 
-	if (fx::params().enabled)
+	if (fx::caps().enabled)
 		os << "button[0," << (ypos += button_height + spacing) << ";3.5," << button_height << ";btn_fx_mood;"
 			<< strgettext("Mood") << "]";
 
@@ -590,7 +508,7 @@ void GameFormSpec::showPauseMenu()
 
 void GameFormSpec::showFxTuner()
 {
-	FormspecFormSource *fs_src = new FormspecFormSource(buildFxTunerFormspec(""));
+	FormspecFormSource *fs_src = new FormspecFormSource(fx::tunerFormspec(""));
 	FxTunerFormspecHandler *txt_dst = new FxTunerFormspecHandler(fs_src);
 	GUIFormSpecMenu::create(m_formspec, m_client, m_rendering_engine->get_gui_env(),
 			fs_src, txt_dst, m_client->getFormspecPrepend(),

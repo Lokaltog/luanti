@@ -1,3 +1,5 @@
+#include "fx_common/uniforms.glsl"
+#include "fx_common/color.glsl"
 #ifdef USE_ARRAY_TEXTURE
 	uniform mediump sampler2DArray baseTexture;
 #else
@@ -54,8 +56,6 @@ VARYING_ float vIDiff;
 #ifdef FX_ENABLE
 // fx: rim light so mobs and players read against dark backgrounds
 uniform vec3 cameraPosition;
-uniform float fxRimLight;
-uniform float fxEmissiveStrength;
 #define fxEmissiveTex texture2
 uniform sampler2D fxEmissiveTex; // authored _e companion, unbound (black) if none
 #ifdef FX_COLORED_LIGHT
@@ -475,28 +475,28 @@ void main(void)
 	// fog color's brightest value. We then blend our base color with this to make the fog.
 #ifdef FX_ENABLE
 	{
-		vec3 fxE = texture2D(fxEmissiveTex, uv).rgb;
-		vec3 lin = pow(max(col.rgb, vec3(0.0)), vec3(2.2));
-		lin += pow(fxE, vec3(2.2)) * fxEmissiveStrength;
-		col.rgb = pow(lin, vec3(1.0 / 2.2));
-	}
-#endif
-	col = mix(fogColor * pow(fogColor / fogColorMax, vec4(2.0 * clarity)), col, clarity);
-#ifdef FX_ENABLE
-	if (fxRimLight > 0.0 && length(vNormal) > 0.0) {
-		vec3 V = normalize(cameraPosition - (worldPosition + cameraOffset));
-		float rim = pow(1.0 - clamp(dot(normalize(vNormal), V), 0.0, 1.0), 3.0);
+		// fx, in linear light and before the fog: emissive, then rim light
+		// (light from behind, so mobs read against dark backgrounds)
+		vec3 lin = fxToLinear(col.rgb);
+		lin += fxToLinear(texture2D(fxEmissiveTex, uv).rgb) * fxEmissiveStrength;
+		if (fxRimLight > 0.0 && dot(vNormal, vNormal) > 1e-12) {
+			vec3 V = fxSafeNormalize(cameraPosition - (worldPosition + cameraOffset));
+			float rim = pow(1.0 - clamp(dot(fxSafeNormalize(vNormal), V), 0.0, 1.0), 3.0);
 #ifdef FX_COLORED_LIGHT
-		vec3 rim_col = mix(dayLight, fxChroma * 0.8, nightRatio);
+			vec3 rim_col = mix(fxToLinear(dayLight), fxToLinear(fxChroma) * 0.6, nightRatio);
 #else
-		vec3 rim_col = mix(dayLight, vec3(0.8), nightRatio);
+			vec3 rim_col = mix(fxToLinear(dayLight), vec3(0.6), nightRatio);
 #endif
-		// rim light is light from behind: scale by how lit the entity is
-		float lit = clamp(dot(varColor.rgb, vec3(0.333)) * 2.0, 0.15, 1.0);
-		col.rgb += base.rgb * rim_col * rim * fxRimLight * lit;
+			// scaled by how lit the entity is
+			float lit = clamp(fxLuma(fxToLinear(varColor.rgb)) * 3.0, 0.1, 1.0);
+			lin += fxToLinear(base.rgb) * rim_col * rim * fxRimLight * lit;
+		}
+		lin = mix(fxFogLinear(fogColor.rgb, clarity), lin, clarity);
+		col.rgb = fxToDisplay(lin);
 	}
+#else
+	col = mix(fogColor * pow(fogColor / fogColorMax, vec4(2.0 * clarity)), col, clarity);
 #endif
-
 	col = vec4(col.rgb, base.a);
 
 	gl_FragColor = col;

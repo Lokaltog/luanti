@@ -54,6 +54,7 @@ set(unittest_client_SRCS
 	${CMAKE_CURRENT_SOURCE_DIR}/test_clientactiveobjectmgr.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/test_content_mapblock.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/test_eventmanager.cpp
+	${CMAKE_CURRENT_SOURCE_DIR}/test_fx.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/test_gameui.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/test_keycode.cpp
 	${CMAKE_CURRENT_SOURCE_DIR}/test_mesh_compare.cpp

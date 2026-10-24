@@ -30,7 +30,7 @@ static inline size_t vidx(s16 x, s16 y, s16 z)
 	return ((size_t)z * LightVolume::SY + y) * LightVolume::SX + x;
 }
 
-LightVolume::LightVolume()
+LightVolume::LightVolume(video::IVideoDriver *driver) : m_driver(driver)
 {
 	m_thread = std::thread([this] { workerLoop(); });
 }
@@ -44,16 +44,9 @@ LightVolume::~LightVolume()
 	m_cv.notify_all();
 	if (m_thread.joinable())
 		m_thread.join();
-	// the texture belongs to the driver's cache and is dropped with it
-}
-
-void LightVolume::reset()
-{
-	std::lock_guard lock(m_mutex);
-	m_tables_built = false;
-	m_have_result = false;
-	m_result_ready = false;
-	m_job_origin = v3s16(-32768, -32768, -32768);
+	// the driver outlives worlds: free the texture with its world
+	if (m_texture)
+		m_driver->removeTexture(m_texture);
 }
 
 void LightVolume::buildTables(Client *client)
@@ -137,21 +130,21 @@ void LightVolume::snapshot(Client *client, v3s16 origin, Job &job)
 	}
 }
 
-void LightVolume::compute(const Job &job, std::vector<u8> &out)
+void floodFillRGB(s16 sx, s16 sy, s16 sz, const u16 *content,
+		const std::vector<LightCell> &cells, std::vector<u8> &lvl)
 {
-	// Per-voxel RGB levels 0..15. Same rule as the engine's light: one level
-	// lost per step, opaque nodes stop it. Glass multiplies what enters it.
-	std::vector<u8> lvl(VOXELS * 3, 0);
+	const size_t voxels = (size_t)sx * sy * sz;
+	lvl.assign(voxels * 3, 0);
 	std::vector<u32> queue;
 	queue.reserve(8192);
-	const size_t ninfo = m_info.size();
-	auto info = [&] (u16 c) -> const ContentInfo & {
-		static const ContentInfo opaque_unknown;
-		return c < ninfo ? m_info[c] : opaque_unknown;
+	static const LightCell opaque_unknown;
+	auto info = [&] (u16 c) -> const LightCell & {
+		return c < cells.size() ? cells[c] : opaque_unknown;
 	};
+	auto idx = [&] (s16 x, s16 y, s16 z) { return ((size_t)z * sy + y) * sx + x; };
 
-	for (size_t i = 0; i < VOXELS; i++) {
-		const ContentInfo &ci = info(job.content[i]);
+	for (size_t i = 0; i < voxels; i++) {
+		const LightCell &ci = info(content[i]);
 		if (ci.src[0] | ci.src[1] | ci.src[2]) {
 			lvl[i * 3 + 0] = ci.src[0];
 			lvl[i * 3 + 1] = ci.src[1];
@@ -163,16 +156,16 @@ void LightVolume::compute(const Job &job, std::vector<u8> &out)
 	static const s16 dirs[6][3] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
 	for (size_t head = 0; head < queue.size(); head++) {
 		const u32 i = queue[head];
-		const s16 x = i % SX, y = (i / SX) % SY, z = i / (SX * SY);
-		const u8 *l = &lvl[i * 3];
+		const s16 x = i % sx, y = (i / sx) % sy, z = i / ((u32)sx * sy);
+		const u8 l[3] = {lvl[i * 3], lvl[i * 3 + 1], lvl[i * 3 + 2]};
 		if (l[0] <= 1 && l[1] <= 1 && l[2] <= 1)
 			continue;
 		for (const auto &d : dirs) {
 			const s16 nx = x + d[0], ny = y + d[1], nz = z + d[2];
-			if (nx < 0 || ny < 0 || nz < 0 || nx >= SX || ny >= SY || nz >= SZ)
+			if (nx < 0 || ny < 0 || nz < 0 || nx >= sx || ny >= sy || nz >= sz)
 				continue;
-			const size_t j = vidx(nx, ny, nz);
-			const ContentInfo &cj = info(job.content[j]);
+			const size_t j = idx(nx, ny, nz);
+			const LightCell &cj = info(content[j]);
 			if (cj.opaque)
 				continue;
 			bool improved = false;
@@ -191,6 +184,12 @@ void LightVolume::compute(const Job &job, std::vector<u8> &out)
 				queue.push_back((u32)j);
 		}
 	}
+}
+
+void LightVolume::compute(const Job &job, std::vector<u8> &out)
+{
+	std::vector<u8> lvl;
+	floodFillRGB(SX, SY, SZ, job.content.data(), m_info, lvl);
 
 	// Pack into the atlas: Y slices tiled ATLAS_COLS per row, ARGB8 texels.
 	out.assign((size_t)ATLAS_W * ATLAS_H * 4, 0);
@@ -267,7 +266,7 @@ void LightVolume::update(Client *client, v3s16 camera_node, float dtime)
 		std::lock_guard lock(m_mutex);
 		if (m_result_ready) {
 			m_result_ready = false;
-			upload(RenderingEngine::get_video_driver());
+			upload(m_driver);
 		}
 	}
 
@@ -299,20 +298,6 @@ void LightVolume::update(Client *client, v3s16 camera_node, float dtime)
 		m_pending = std::move(job);
 	}
 	m_cv.notify_one();
-}
-
-static std::unique_ptr<LightVolume> s_volume;
-
-LightVolume *lightVolume()
-{
-	if (!s_volume)
-		s_volume = std::make_unique<LightVolume>();
-	return s_volume.get();
-}
-
-void destroyLightVolume()
-{
-	s_volume.reset();
 }
 
 } // namespace fx

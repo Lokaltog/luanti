@@ -104,7 +104,7 @@ vec3 screen_space_dither(highp vec2 frag_coord) {
 void main(void)
 {
 	vec2 uv = varTexCoord.st;
-#if defined(FX_ENABLE) && defined(FX_HDR_COMPOSITE)
+#if defined(FX_ENABLE) && defined(FX_HDR_COMPOSITE) && defined(ENABLE_BLOOM)
 	uv = fxHeatHazeUV(uv, texelSize0);
 #endif
 #ifdef ENABLE_SSAA
@@ -118,6 +118,7 @@ void main(void)
 #endif
 
 #ifdef FX_ENABLE
+#ifdef FX_TAA
 	// fx: restore detail TAA softens (cross-shaped unsharp mask)
 	if (fxSharpen > 0.0) {
 		vec3 n = texture2D(rendered, uv + vec2(0.0, texelSize0.y)).rgb
@@ -126,18 +127,6 @@ void main(void)
 			+ texture2D(rendered, uv - vec2(texelSize0.x, 0.0)).rgb;
 		color.rgb = max(color.rgb + (color.rgb * 4.0 - n) * fxSharpen * 0.25, vec3(0.0));
 	}
-#if defined(FX_AO) && !defined(FX_TAA)
-	{
-		vec2 aocs = texture2D(fxAoTex, uv).rg;
-		float ao = aocs.r;
-		float lum = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
-		color.rgb *= mix(ao, 1.0, smoothstep(0.9, 3.0, lum));
-		color.rgb *= mix(1.0, aocs.g, smoothstep(0.1, 0.4, lum) * (1.0 - smoothstep(2.0, 4.0, lum)));
-#if defined(FX_DEBUG_VIEW) && FX_DEBUG_VIEW == 7
-		gl_FragColor = vec4(vec3(ao), 1.0);
-		return;
-#endif
-	}
 #endif
 #endif
 
@@ -145,19 +134,44 @@ void main(void)
 	color.rgb = pow(color.rgb, vec3(2.2));
 
 #ifdef FX_HDR_COMPOSITE
-	// fx: HDR path. Bloom is added (energy above threshold, see extract_bloom),
-	// tonemapping happens BEFORE any clamp, so highlights roll off instead of clipping.
+	/*
+		fx: HDR composite, linear: AO -> exposure -> underwater -> bloom ->
+		tonemap -> grade -> dither. Bloom (extract_bloom) is the energy above a
+		threshold, so it is added, and the tonemapper rolls highlights off
+		instead of clipping them.
+	*/
+#if defined(FX_AO) && !defined(FX_TAA)
+	color.rgb = fxApplyAO(color.rgb, uv);
+#if defined(FX_DEBUG_VIEW) && FX_DEBUG_VIEW == 7
+	gl_FragColor = vec4(vec3(fxSampleAO(uv).r), 1.0);
+	return;
+#endif
+#endif
 	color.rgb *= exposureParams.compensationFactor * fxExposure;
 #ifdef ENABLE_AUTO_EXPOSURE
 	color.rgb *= exposure;
 #endif
+	vec3 fxTrans = vec3(1.0);
 #ifdef FX_SURFACES
-	if (fxUnderwater > 0.5)
-		color.rgb = fxApplyUnderwater(color.rgb, uv);
+	color.rgb = fxApplyUnderwater(color.rgb, uv, fxTrans);
+#endif
+#ifdef FX_NAN_CHECK
+	// test mode: NaN/Inf from the scene or the bloom chain become countable
+	bool fxBad = any(isnan(color.rgb)) || any(isinf(color.rgb));
 #endif
 #ifdef ENABLE_BLOOM
-	vec3 fxBloom = texture2D(bloom, uv).rgb;
+	// bloom was extracted before the water: it is absorbed like the scene
+	vec3 fxBloom = texture2D(bloom, uv).rgb * fxTrans;
+#ifdef FX_NAN_CHECK
+	fxBad = fxBad || any(isnan(fxBloom)) || any(isinf(fxBloom));
+#endif
 	color.rgb += fxBloom * fxBloomIntensity;
+#endif
+#ifdef FX_NAN_CHECK
+	if (fxBad) {
+		gl_FragColor = vec4(1.0, 0.0, 1.0, 1.0);
+		return;
+	}
 #endif
 
 #if defined(FX_DEBUG_VIEW) && FX_DEBUG_VIEW == 3

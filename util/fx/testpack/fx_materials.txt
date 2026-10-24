@@ -1,2 +1,2 @@
-# <node> glass|water|none [pattern=fluted|frosted|rippled]
-fxscene:glass_clear glass pattern=rippled
+# <key> glass|water|none [pattern=fluted|frosted|rippled]
+fxscene:glass_c* glass pattern=rippled

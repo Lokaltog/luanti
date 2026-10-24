@@ -169,7 +169,20 @@ core.register_on_joinplayer(function(player)
 				core.set_node({x = x, y = 3, z = 5}, {name = "basenodes:leaves"})
 			end
 		end
-		if core.settings:get("fxscene_view") == "materials" then
+		local view = core.settings:get("fxscene_view")
+		if view == "hand" then
+			-- the wielded item against a wall 1.5 nodes away (R3: no AO halo)
+			player:hud_set_flags({wielditem = true})
+			player:get_inventory():set_stack("main", 1, "basenodes:cobble")
+			player:set_pos({x = -4.5, y = 0, z = 6})
+			player:set_look_horizontal(math.pi / 2)
+			player:set_look_vertical(0.1)
+		elseif view == "underwater_up" then
+			-- under water, looking up at the surface (R3: absorption stops there)
+			player:set_pos({x = 0.5, y = -5.4, z = 4.0})
+			player:set_look_horizontal(0)
+			player:set_look_vertical(-0.9)
+		elseif view == "materials" then
 			player:set_pos({x = 0, y = 0.6, z = -2.2})
 			player:set_look_horizontal(0)
 			player:set_look_vertical(0.12)
@@ -182,5 +195,8 @@ core.register_on_joinplayer(function(player)
 			player:set_look_horizontal(0)
 			player:set_look_vertical(0.25)
 		end
+		-- fx test mode: the scene is built (singleplayer shares settings with
+		-- the client, which waits for this before it starts counting frames)
+		core.settings:set_bool("fx_test_ready", true)
 	end)
 end)

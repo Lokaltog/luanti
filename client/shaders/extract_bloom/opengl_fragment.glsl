@@ -1,3 +1,4 @@
+#include "fx_common/uniforms.glsl"
 #define rendered texture0
 
 struct ExposureParams {
@@ -9,9 +10,6 @@ uniform mediump float bloomStrength;
 uniform ExposureParams exposureParams;
 
 #ifdef FX_HDR_COMPOSITE
-uniform float fxBloomThreshold;
-uniform float fxBloomKnee;
-uniform float fxExposure;
 #endif
 
 CENTROID_ VARYING_ mediump vec2 varTexCoord;

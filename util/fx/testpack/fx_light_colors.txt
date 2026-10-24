@@ -1,3 +1,3 @@
-# <node> <#rrggbb> flicker=<0..4>
-# blue lamp re-coloured purple by the table: its light must turn purple
-fxscene:blue #a040ff flicker=0
+# <key> <#rrggbb> [flicker=<0..4>]; key: node name, glob, or @texture
+# blue lamp re-coloured purple by a glob key: its light must turn purple
+fxscene:blu* #a040ff flicker=0

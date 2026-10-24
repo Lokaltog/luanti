@@ -1,3 +1,5 @@
+#include "fx_common/uniforms.glsl"
+#include "fx_common/color.glsl"
 #if defined(FX_ENABLE) && defined(FX_SURFACES) && defined(FX_SURFACE)
 // fx: this variant is a glass or water surface (see fxSurface below)
 #define FX_SURFACE_ACTIVE 1
@@ -21,7 +23,6 @@ uniform sampler2D crackTexture;
 #else
 	uniform sampler2D fxMaterial;
 #endif
-uniform float fxEmissiveStrength;
 #endif
 #if defined(FX_ENABLE) && defined(FX_COLORED_LIGHT)
 VARYING_ vec3 fxChroma;
@@ -467,7 +468,10 @@ void main(void)
 	uv = fxParallax(uv);
 #endif
 
-#ifdef USE_ARRAY_TEXTURE
+#if defined(FX_MAT_ACTIVE)
+	// parallax-shifted uv, mip level from the unshifted one
+	vec4 base = textureGrad(baseTexture, vec3(uv, float(varTexLayer)), fxUVdx, fxUVdy).rgba;
+#elif defined(USE_ARRAY_TEXTURE)
 	vec4 base = texture(baseTexture, vec3(uv, float(varTexLayer))).rgba;
 #else
 	vec4 base = texture2D(baseTexture, uv).rgba;
@@ -615,70 +619,72 @@ void main(void)
 	}
 #endif
 
-#ifdef FX_MAT_ACTIVE
-	col.rgb = fxShadeMaterial(col.rgb, base, uv);
-#endif
-
-#ifdef FX_SURFACE_ACTIVE
-	if (fxSceneValid > 0.5) {
-		col.rgb = fxSurface(col.rgb, base);
-		base.a = 1.0; // the surface already composited what is behind it
-	}
-#if defined(FX_DEBUG_VIEW) && FX_DEBUG_VIEW == 5
-	// raw scene copy (color), and red if the copy is marked invalid
-	col.rgb = fxSceneValid > 0.5 ? texture2D(fxSceneColor, gl_FragCoord.xy / vec2(textureSize(fxSceneColor, 0))).rgb : vec3(1.0, 0.0, 0.0);
-	base.a = 1.0;
-#elif defined(FX_DEBUG_VIEW) && FX_DEBUG_VIEW == 6
-	// scene copy depth, linearized over 40 nodes
-	col.rgb = vec3(fxLinearDepth(texture2D(fxSceneDepth, gl_FragCoord.xy / vec2(textureSize(fxSceneDepth, 0))).r) / (40.0 * FX_BS));
-	base.a = 1.0;
-#endif
-#endif
-
-	// Due to a bug in some (older ?) graphics stacks (possibly in the glsl compiler ?),
-	// the fog will only be rendered correctly if the last operation before the
-	// clamp() is an addition. Else, the clamp() seems to be ignored.
-	// E.g. the following won't work:
-	//      float clarity = clamp(fogShadingParameter
-	//		* (fogDistance - length(eyeVec)) / fogDistance), 0.0, 1.0);
-	// As additions usually come for free following a multiplication, the new formula
-	// should be more efficient as well.
 	// Note: clarity = (1 - fogginess)
 	float clarity = clamp(fogShadingParameter
 		- fogShadingParameter * length(eyeVec) / fogDistance, 0.0, 1.0);
+
+#ifdef FX_ENABLE
+	/*
+		fx: everything from here is linear light (fx_common/color.glsl). The
+		engine's lighting above is a product of texture and light, which the
+		decode carries over exactly; fx terms are then added in linear and the
+		result is encoded once for the scene buffer.
+	*/
+	vec3 lin = fxToLinear(col.rgb);
+#ifdef FX_MAT_ACTIVE
+	lin = fxShadeMaterial(lin, base, uv);
+#endif
+	// emissive: an HDR multiplier, values above 1 bloom
+#ifdef USE_ARRAY_TEXTURE
+	vec3 fxE = texture(fxMaterial, vec3(uv, float(varTexLayer))).rgb;
+#else
+	vec3 fxE = texture2D(fxMaterial, uv).rgb;
+#endif
+	vec3 emit = fxToLinear(fxE) * fxEmissiveStrength;
+#ifdef FX_MAT_ACTIVE
+	emit = max(emit, fxMatEmission * fxEmissiveStrength);
+#endif
+	lin += emit;
+
+	vec3 fog = fxFogLinear(fogColor.rgb, clarity);
+#ifdef FX_SURFACE_ACTIVE
+	if (fxSceneValid > 0.5) {
+		// the surface's own light is fogged; what shows through already is
+		vec3 through;
+		vec3 own = fxSurface(lin, base, through);
+		lin = mix(fog, own, clarity) + through;
+		base.a = 1.0; // the surface composited what is behind it
+	} else {
+		lin = mix(fog, lin, clarity);
+	}
+#else
+	lin = mix(fog, lin, clarity);
+#endif
+	col = vec4(fxToDisplay(lin), base.a);
+
+#ifdef FX_DEBUG_VIEW
+#if FX_DEBUG_VIEW == 1 && defined(FX_COLORED_LIGHT)
+	col = vec4(fxChroma, base.a); // light chroma
+#elif FX_DEBUG_VIEW == 2
+	col = vec4(fxToDisplay(emit), base.a); // emissive (HDR, encoded)
+#elif FX_DEBUG_VIEW == 5 && defined(FX_SURFACE_ACTIVE)
+	// raw scene copy, red if the copy is marked invalid
+	col = vec4(fxSceneValid > 0.5 ? texture2D(fxSceneColor, gl_FragCoord.xy / vec2(textureSize(fxSceneColor, 0))).rgb : vec3(1.0, 0.0, 0.0), 1.0);
+#elif FX_DEBUG_VIEW == 6 && defined(FX_SURFACE_ACTIVE)
+	// scene copy depth, linearized over 40 nodes
+	col = vec4(vec3(fxLinearDepth(texture2D(fxSceneDepth, gl_FragCoord.xy / vec2(textureSize(fxSceneDepth, 0))).r) / (40.0 * FX_BS)), 1.0);
+#endif
+#endif
+
+#else // upstream
 	float fogColorMax = max(max(fogColor.r, fogColor.g), fogColor.b);
 	// Prevent zero division.
 	if (fogColorMax < 0.0000001) fogColorMax = 1.0;
 	// For high clarity (light fog) we tint the fog color.
 	// For this to not make the fog color artificially dark we need to normalize using the
 	// fog color's brightest value. We then blend our base color with this to make the fog.
-#ifdef FX_ENABLE
-	// Emissive, added in linear light so fxEmissiveStrength is a true HDR
-	// multiplier; values above 1.0 survive into the float buffer and bloom.
-#ifdef USE_ARRAY_TEXTURE
-	vec3 fxE = texture(fxMaterial, vec3(uv, float(varTexLayer))).rgb;
-#else
-	vec3 fxE = texture2D(fxMaterial, uv).rgb;
-#endif
-#ifdef FX_MAT_ACTIVE
-	fxE = max(fxE, fxMatEmission);
-#endif
-	{
-		vec3 lin = pow(max(col.rgb, vec3(0.0)), vec3(2.2));
-		lin += pow(fxE, vec3(2.2)) * fxEmissiveStrength;
-		col.rgb = pow(lin, vec3(1.0 / 2.2));
-	}
-#endif
-
 	col = mix(fogColor * pow(fogColor / fogColorMax, vec4(2.0 * clarity)), col, clarity);
 	col = vec4(col.rgb, base.a);
-
-#ifdef FX_DEBUG_VIEW
-#if FX_DEBUG_VIEW == 1 && defined(FX_COLORED_LIGHT)
-	col = vec4(fxChroma, base.a); // light chroma
-#elif FX_DEBUG_VIEW == 2
-	col = vec4(fxE, base.a); // emissive companion
-#endif
 #endif
 
 	gl_FragColor = col;

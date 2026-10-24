@@ -1,3 +1,3 @@
-# Minimal pack exercising every pack-format v1 input (see PACK_FORMAT.md).
-format = 1
+# Minimal pack exercising every pack-format input (see util/fx/PACK_FORMAT.md).
+format = 2
 producer = hand-written test pack

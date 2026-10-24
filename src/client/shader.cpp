@@ -4,6 +4,7 @@
 // Copyright (C) 2013 Kahrl <kahrl@gmx.net>
 
 #include "shader.h"
+#include "client/fx/fx.h"
 #include "irr_ptr.h"
 #include "debug.h"
 #include "filesys.h"
@@ -404,6 +405,7 @@ public:
 	/// fx: replace `#include "dir/file.glsl"` lines with that file (from the
 	/// same lookup as shaders: shader_path, then the built-in dir), recursively.
 	std::string expandIncludes(const std::string &src, int depth = 0);
+	std::string expandIncludes(const std::string &src, int depth, std::vector<std::string> &files);
 
 	void addShaderConstantSetter(std::unique_ptr<IShaderConstantSetter> setter) override
 	{
@@ -670,12 +672,22 @@ void ShaderSource::rebuildShaders()
 
 std::string ShaderSource::expandIncludes(const std::string &src, int depth)
 {
+	std::vector<std::string> files;
+	return expandIncludes(src, depth, files);
+}
+
+// fx: `#include "dir/file.glsl"` from the shader dirs, or "fx_generated/..."
+// from the fx module. Each file is pasted once per shader (include guard).
+// Included code gets its own GLSL source-string number in #line, so a compile
+// error reads "<n>:<line>"; the numbers are logged at verbose level.
+std::string ShaderSource::expandIncludes(const std::string &src, int depth,
+		std::vector<std::string> &files)
+{
 	if (src.find("#include") == std::string::npos)
 		return src;
-	if (depth > 8) {
-		errorstream << "Shader #include nested too deeply" << std::endl;
-		return src;
-	}
+	if (depth > 8)
+		throw ShaderException("Shader #include nested more than 8 deep");
+	const int self = depth == 0 ? 0 : (int)files.size();
 	std::ostringstream out;
 	std::istringstream in(src);
 	std::string line;
@@ -687,14 +699,22 @@ std::string ShaderSource::expandIncludes(const std::string &src, int depth)
 			const size_t a = t.find('"'), b = t.rfind('"');
 			const std::string path = (a != std::string::npos && b > a) ? t.substr(a + 1, b - a - 1) : "";
 			const size_t slash = path.rfind('/');
-			if (slash == std::string::npos) {
+			if (slash == std::string::npos)
 				throw ShaderException("Shader #include needs \"dir/file.glsl\": " + t);
+			if (std::find(files.begin(), files.end(), path) != files.end()) {
+				out << "// " << path << " (already included)\n";
+				continue;
 			}
-			const std::string inc = m_sourcecache.getOrLoad(path.substr(0, slash), path.substr(slash + 1));
+			files.push_back(path);
+			const int id = (int)files.size();
+			std::string inc = str_starts_with(path, "fx_generated/") ?
+					fx::generatedShaderInclude(path) :
+					m_sourcecache.getOrLoad(path.substr(0, slash), path.substr(slash + 1));
 			if (inc.empty())
 				throw ShaderException("Shader #include not found: " + path);
-			// keep error line numbers meaningful in the including file
-			out << expandIncludes(inc, depth + 1) << "\n#line " << (lineno + 1) << "\n";
+			verbosestream << "Shader #include: source " << id << " = " << path << std::endl;
+			out << "#line 1 " << id << "\n" << expandIncludes(inc, depth + 1, files)
+				<< "\n#line " << (lineno + 1) << " " << self << "\n";
 			continue;
 		}
 		out << line << '\n';

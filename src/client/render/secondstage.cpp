@@ -200,9 +200,9 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 	static const u8 TEXTURE_FX_TAA_OUT = 30;
 	static const u8 TEXTURE_FX_TAA_HISTORY = 31;
 	static const u8 TEXTURE_FX_AO = 32;
-	const fx::Params &fxp = fx::params();
-	const bool fx_ao = fxp.enabled && fxp.ao && bloom_available;
-	const bool fx_taa = fxp.enabled && fxp.taa && bloom_available && !enable_msaa && !enable_ssaa;
+	static const u8 TEXTURE_FX_AO_BLUR = 33;
+	const bool fx_ao = fx::caps().ao;   // decided once per world (fx/caps.cpp)
+	const bool fx_taa = fx::caps().taa;
 	u8 scene_color = TEXTURE_COLOR;
 
 	if (fx_ao) {
@@ -211,6 +211,14 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 		auto ao = pipeline->addStep<PostProcessingStep>(shader_id, std::vector<u8> { TEXTURE_DEPTH });
 		ao->setRenderSource(buffer);
 		ao->setRenderTarget(pipeline->createOwned<TextureBufferOutput>(buffer, TEXTURE_FX_AO));
+		if (!fx_taa) {
+			// without TAA to average it, the AO is denoised spatially
+			buffer->setTexture(TEXTURE_FX_AO_BLUR, scale * 0.5f, "fx_ao_blur", video::ECF_A8R8G8B8);
+			shader_id = client->getShaderSource()->getShaderRaw("fx_ao_blur");
+			auto blur = pipeline->addStep<PostProcessingStep>(shader_id, std::vector<u8> { TEXTURE_FX_AO });
+			blur->setRenderSource(buffer);
+			blur->setRenderTarget(pipeline->createOwned<TextureBufferOutput>(buffer, TEXTURE_FX_AO_BLUR));
+		}
 	}
 	if (fx_taa) {
 		buffer->setTexture(TEXTURE_FX_TAA_OUT, scale, "fx_taa_out", bloom_format);
@@ -335,7 +343,7 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 	std::vector<u8> final_inputs { final_stage_source, TEXTURE_SCALE_UP, TEXTURE_EXPOSURE_2,
 			TEXTURE_DEPTH /* fx: underwater caustics and shafts */ };
 	if (fx_ao && !fx_taa)
-		final_inputs.push_back(TEXTURE_FX_AO); // texture4: AO applied in the final pass
+		final_inputs.push_back(TEXTURE_FX_AO_BLUR); // texture4: AO, upsampled in the final pass
 	PostProcessingStep *effect = pipeline->createOwned<PostProcessingStep>(shader_id, final_inputs);
 	pipeline->addStep(effect);
 	if (enable_ssaa)

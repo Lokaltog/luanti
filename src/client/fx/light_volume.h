@@ -30,6 +30,20 @@ namespace video { class ITexture; class IVideoDriver; }
 namespace fx
 {
 
+/// How one content type affects light in the flood fill.
+struct LightCell {
+	bool opaque = true;
+	u8 src[3] = {0, 0, 0};        // source level per channel, 0..15
+	u8 tint[3] = {255, 255, 255}; // transmission per channel (glass), /255
+};
+
+/// The engine's light rule per RGB channel: one level lost per step, opaque
+/// cells stop it, tinted cells multiply what enters them. `content` holds
+/// sx*sy*sz indices into `cells` (x fastest, then y, then z); unknown indices
+/// count as opaque. Writes sx*sy*sz*3 levels (0..15) to `out`.
+void floodFillRGB(s16 sx, s16 sy, s16 sz, const u16 *content,
+		const std::vector<LightCell> &cells, std::vector<u8> &out);
+
 class LightVolume
 {
 public:
@@ -40,7 +54,7 @@ public:
 	static constexpr u32 ATLAS_W = SX * ATLAS_COLS;
 	static constexpr u32 ATLAS_H = SZ * ((SY + ATLAS_COLS - 1) / ATLAS_COLS);
 
-	LightVolume();
+	explicit LightVolume(video::IVideoDriver *driver);
 	~LightVolume();
 
 	/// Main thread, once per frame: decide whether to recompute, snapshot,
@@ -53,15 +67,8 @@ public:
 	v3s16 origin() const { return m_uploaded_origin; }
 	bool valid() const { return m_texture != nullptr && m_have_result; }
 
-	/// Forget per-content tables and results (media reload, settings change).
-	void reset();
-
 private:
-	struct ContentInfo {
-		bool opaque = true;
-		u8 src[3] = {0, 0, 0};       // source level per channel, 0..15
-		u8 tint[3] = {255, 255, 255}; // transmission per channel (glass), /255
-	};
+	using ContentInfo = LightCell;
 
 	struct Job {
 		v3s16 origin;
@@ -90,6 +97,7 @@ private:
 	std::atomic<bool> m_busy{false};
 
 	// main-thread state
+	video::IVideoDriver *m_driver;
 	video::ITexture *m_texture = nullptr;
 	v3s16 m_uploaded_origin;
 	bool m_have_result = false;
@@ -97,9 +105,5 @@ private:
 	u64 m_job_signature = 0;
 	float m_timer = 0.f;
 };
-
-/// The process-wide volume (created on first use when fx_light_volume is on).
-LightVolume *lightVolume();
-void destroyLightVolume();
 
 } // namespace fx

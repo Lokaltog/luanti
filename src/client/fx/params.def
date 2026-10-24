@@ -1,0 +1,64 @@
+// Luanti "fx" fork: the settings registry. The ONE place a tunable is declared.
+// SPDX-License-Identifier: LGPL-2.1-or-later
+//
+// Every entry becomes, without further edits:
+//   - a member of fx::Params (fx::Params::<name>)
+//   - the default for setting fx_<name> (defaultsettings.cpp includes this file)
+//   - a change callback, with the apply policy below
+//   - for FX_FLOAT: a slot in the FxParams uniform block and a GLSL accessor
+//     fx<CamelName> (fx_generated/params.glsl), a tuner slider and a mood key
+//     when TUNE
+// builtin/settingtypes.txt documents them; TestFx checks the two agree.
+//
+// Apply policy, what a change at runtime does:
+//   LIVE     takes effect next frame
+//   SHADERS  recompiles the shaders (a shader define)
+//   RESTART  takes effect for the next world; frozen in fx::Caps meanwhile
+//
+// FX_BOOL (name, default, apply)
+// FX_INT  (name, default, min, max, apply)
+// FX_FLOAT(name, default, min, max, apply, tune, label)
+
+FX_BOOL (enable,                  true,               RESTART)
+FX_BOOL (hdr_composite,           true,               RESTART)
+FX_INT  (tonemapper,              1,     0, 2,        SHADERS)
+FX_FLOAT(exposure,                1.5f,  0.1f, 8.f,   LIVE, TUNE,    "Exposure")
+FX_FLOAT(grade_saturation,        1.0f,  0.f, 2.f,    LIVE, TUNE,    "Saturation")
+FX_FLOAT(grade_contrast,          1.0f,  0.5f, 2.f,   LIVE, TUNE,    "Contrast")
+FX_FLOAT(bloom_threshold,         1.0f,  0.f, 8.f,    LIVE, TUNE,    "Bloom threshold")
+FX_FLOAT(bloom_knee,              0.5f,  0.f, 1.f,    LIVE, TUNE,    "Bloom knee")
+FX_FLOAT(bloom_intensity,         0.35f,  0.f, 4.f,    LIVE, TUNE,    "Bloom intensity")
+FX_FLOAT(emissive_strength,       2.5f,  0.f, 32.f,   LIVE, TUNE,    "Emissive strength")
+FX_FLOAT(auto_emissive_threshold, 0.55f, 0.f, 0.99f,  RESTART, NOTUNE, "Auto-emissive threshold")
+FX_BOOL (colored_light,           true,               RESTART)
+FX_FLOAT(light_saturation,        0.85f, 0.f, 1.5f,   LIVE, TUNE,    "Light colour")
+FX_FLOAT(light_gather_radius,     48.f,  16.f, 128.f, LIVE, NOTUNE,  "Light gather radius")
+FX_FLOAT(flicker,                 0.12f, 0.f, 0.5f,   LIVE, TUNE,    "Flicker")
+FX_BOOL (held_light,              true,               LIVE)
+FX_INT  (debug_view,              0,     0, 7,        SHADERS)
+FX_BOOL (shader_hot_reload,       false,              LIVE)
+FX_BOOL (surfaces,                true,               RESTART)
+FX_FLOAT(refraction,              1.0f,  0.f, 4.f,    LIVE, TUNE,    "Refraction")
+FX_BOOL (ssr,                     true,               SHADERS)
+FX_FLOAT(reflection,              1.0f,  0.f, 2.f,    LIVE, TUNE,    "Reflection")
+FX_FLOAT(water_absorption,        0.18f, 0.f, 2.f,    LIVE, TUNE,    "Water absorption")
+FX_FLOAT(caustics,                0.8f,  0.f, 3.f,    LIVE, TUNE,    "Caustics")
+FX_FLOAT(underwater_shafts,       0.6f,  0.f, 3.f,    LIVE, TUNE,    "Underwater shafts")
+FX_BOOL (taa,                     false,              RESTART)
+FX_FLOAT(taa_blend,               0.9f,  0.5f, 0.97f, LIVE, NOTUNE,  "TAA history")
+FX_FLOAT(sharpen,                 0.5f,  0.f, 1.f,    LIVE, NOTUNE,  "Sharpen")
+FX_BOOL (ao,                      true,               RESTART)
+FX_FLOAT(ao_strength,             1.0f,  0.f, 2.f,    LIVE, TUNE,    "Ambient occlusion")
+FX_FLOAT(ao_radius,               1.5f,  0.25f, 4.f,  LIVE, TUNE,    "Ambient occlusion radius")
+FX_FLOAT(sky_tint,                0.6f,  0.f, 1.5f,   LIVE, TUNE,    "Sky light tint")
+FX_FLOAT(ambient_floor,           0.03f, 0.f, 0.15f,  LIVE, TUNE,    "Ambient floor")
+FX_FLOAT(rim_light,               0.25f, 0.f, 1.f,    LIVE, TUNE,    "Rim light (mobs)")
+FX_BOOL (light_volume,            true,               RESTART)
+FX_BOOL (materials,               true,               RESTART)
+FX_FLOAT(normal_strength,         1.0f,  0.f, 2.f,    LIVE, TUNE,    "Normal maps")
+FX_FLOAT(parallax_depth,          0.05f, 0.f, 0.2f,   LIVE, TUNE,    "Parallax depth")
+FX_FLOAT(specular,                1.0f,  0.f, 3.f,    LIVE, TUNE,    "Specular")
+FX_FLOAT(glints,                  1.0f,  0.f, 3.f,    LIVE, TUNE,    "Glints")
+FX_BOOL (particles,               true,               LIVE)
+FX_FLOAT(heat_haze,               1.0f,  0.f, 3.f,    LIVE, TUNE,    "Heat haze")
+FX_FLOAT(contact_shadows,         0.6f,  0.f, 1.5f,   LIVE, TUNE,    "Contact shadows")

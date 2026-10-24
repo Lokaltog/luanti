@@ -167,6 +167,8 @@ void populatePlainPipeline(RenderPipeline *pipeline, Client *client)
 video::ECOLOR_FORMAT selectColorFormat(video::IVideoDriver *driver)
 {
 	u32 bits = g_settings->getU32("post_processing_texture_bits");
+	if (fx::caps().hdr) // fx: the HDR composite needs a float scene buffer
+		bits = 16;
 	if (bits >= 16 && driver->queryTextureFormat(video::ECF_A16B16G16R16F) &&
 		driver->queryFeature(video::EVDF_RENDER_TO_FLOAT_TEXTURE))
 		return video::ECF_A16B16G16R16F;

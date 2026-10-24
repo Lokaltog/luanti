@@ -1,3 +1,5 @@
+#include "fx_common/uniforms.glsl"
+#include "fx_common/color.glsl"
 // fx: temporal anti-aliasing resolve.
 // Reprojects last frame's resolve through the depth buffer (the world is
 // static; moving objects are handled by neighbourhood clipping), clips it to
@@ -14,13 +16,6 @@ uniform sampler2D historyTex;
 #ifdef FX_AO
 uniform sampler2D aoTex;
 #endif
-
-uniform mat4 fxInvViewProj;   // current, jittered: clip -> scene space
-uniform mat4 fxPrevViewProj;  // previous frame, unjittered, its own scene space
-uniform vec3 fxOffsetDelta;   // camera offset change since last frame (scene units)
-uniform vec2 fxJitter;        // this frame's jitter in NDC
-uniform float fxTaaBlend;
-uniform float fxTaaReset;
 
 CENTROID_ VARYING_ mediump vec2 varTexCoord;
 
@@ -40,12 +35,13 @@ vec3 sampleCurrent(vec2 uv)
 {
 	vec3 c = texture2D(currentTex, uv).rgb;
 #ifdef FX_AO
+	// same as fxApplyAO (post.glsl), in linear light; the buffer is encoded
 	vec2 aocs = texture2D(aoTex, uv).rg;
-	// emissive and sunlit-bright pixels keep their light
-	float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
-	c *= mix(aocs.r, 1.0, smoothstep(0.9, 3.0, lum));
-	// contact shadows only matter where the sun lights the pixel
-	c *= mix(1.0, aocs.g, smoothstep(0.1, 0.4, lum) * (1.0 - smoothstep(2.0, 4.0, lum)));
+	vec3 lin = fxToLinear(c);
+	float lum = fxLuma(lin);
+	lin *= mix(aocs.r, 1.0, smoothstep(0.6, 3.0, lum));
+	lin *= mix(1.0, aocs.g, smoothstep(0.02, 0.15, lum) * (1.0 - smoothstep(1.5, 4.0, lum)));
+	c = fxToDisplay(lin);
 #endif
 	return c;
 }
@@ -114,6 +110,9 @@ void main(void)
 	// variance clipping: pull history into the neighbourhood's colour box
 	vec3 lo = m1 - sigma * 1.25, hi = m1 + sigma * 1.25;
 	vec3 center = (lo + hi) * 0.5, extent = max((hi - lo) * 0.5, vec3(1e-4));
+	// one NaN/Inf in the history would otherwise live forever
+	if (any(isnan(hist)) || any(isinf(hist)))
+		hist = center;
 	vec3 off = hist - center;
 	vec3 ratio = abs(off / extent);
 	float k = max(ratio.x, max(ratio.y, ratio.z));

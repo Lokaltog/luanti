@@ -2,37 +2,31 @@
 // Included by nodes_shader and object_shader opengl_vertex.glsl after the
 // declaration of `artificialLight`. Object shaders #undef FX_LIGHT_VOLUME
 // first: the volume is only bound to map materials.
-#ifdef FX_ENABLE
-uniform float fxAmbientFloor;
-#endif
+#include "fx_common/uniforms.glsl"
 
 #if defined(FX_ENABLE) && defined(FX_COLORED_LIGHT)
 // fx: nearest light sources this frame, positions relative to cameraOffset (BS units)
-uniform int fxLightCount;
-uniform vec4 fxLightPosRadius[FX_LIGHT_MAX]; // xyz = position, w = radius
-uniform vec4 fxLightColorSeed[FX_LIGHT_MAX]; // rgb = chroma, a = floor: flicker amp*100, fract: seed
-uniform float fxLightSaturation;
 VARYING_ vec3 fxChroma; // for debug view 1
 
 #ifdef FX_LIGHT_VOLUME
 // fx M4: leak-free RGB light volume, Y slices tiled 8 per row in a 2D atlas
 #define fxLightVolume texture6
 uniform sampler2D fxLightVolume;
-uniform vec3 fxVolumeOrigin;  // scene-space centre of voxel (0,0,0)
-uniform float fxVolumeValid;
-uniform int fxHeldLightIndex;
-const vec3 FX_VOL_SIZE = vec3(64.0, 48.0, 64.0);
-const vec2 FX_VOL_ATLAS = vec2(64.0 * 8.0, 64.0 * 6.0);
+// sizes come from src/client/fx/light_volume.h (FX_VOLUME_* constants)
+const vec3 FX_VOL_SIZE = vec3(float(FX_VOLUME_SX), float(FX_VOLUME_SY), float(FX_VOLUME_SZ));
+const float FX_VOL_COLS = float(FX_VOLUME_COLS);
+const vec2 FX_VOL_ATLAS = vec2(FX_VOL_SIZE.x * FX_VOL_COLS,
+	FX_VOL_SIZE.z * ceil(FX_VOL_SIZE.y / FX_VOL_COLS));
 
 vec2 fxVolumeTexel(float slice, vec2 xz)
 {
-	return (vec2(mod(slice, 8.0), floor(slice / 8.0)) * FX_VOL_SIZE.xz + xz) / FX_VOL_ATLAS;
+	return (vec2(mod(slice, FX_VOL_COLS), floor(slice / FX_VOL_COLS)) * FX_VOL_SIZE.xz + xz) / FX_VOL_ATLAS;
 }
 
 // rgb = light level per channel (0..1 = 0..15), a = 1 inside the volume
 vec4 fxVolumeSample(vec3 p)
 {
-	vec3 v = (p - fxVolumeOrigin) / 10.0;
+	vec3 v = (p - fxVolumeOrigin) / FX_BS;
 	if (any(lessThan(v, vec3(-0.5))) || any(greaterThan(v, FX_VOL_SIZE - 0.5)))
 		return vec4(0.0);
 	float y = clamp(v.y, 0.0, FX_VOL_SIZE.y - 1.0);

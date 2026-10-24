@@ -846,11 +846,11 @@ enable_volumetric_lighting (Volumetric Lighting) bool false
 [**Mood Renderer (fx fork)]
 
 #    Master switch for the fx fork (emissive maps, colored light, HDR composite).
-#    Changing it requires a restart.
+#    Changing it applies when you next join a world.
 fx_enable (Enable mood renderer) bool true
 
 #    Tonemap in HDR before clamping, threshold bloom, additive bloom.
-#    Requires: enable_post_processing. Changing it requires a restart.
+#    Requires: enable_post_processing. Changing it applies when you next join a world.
 fx_hdr_composite (HDR composite) bool true
 
 #    0 = upstream Hable, 1 = AgX, 2 = ACES (fitted).
@@ -861,10 +861,10 @@ fx_exposure (Exposure) float 1.5 0.1 8.0
 
 #    Saturation of the AgX look. Above 1 keeps bright lights colorful
 #    instead of fading to white.
-fx_grade_saturation (Grade saturation) float 1.3 0.0 2.0
+fx_grade_saturation (Grade saturation) float 1.0 0.0 2.0
 
 #    Contrast (power) of the AgX look.
-fx_grade_contrast (Grade contrast) float 1.2 0.5 2.0
+fx_grade_contrast (Grade contrast) float 1.0 0.5 2.0
 
 #    Linear luminance above which pixels bloom.
 fx_bloom_threshold (Bloom threshold) float 1.0 0.0 8.0
@@ -873,17 +873,17 @@ fx_bloom_threshold (Bloom threshold) float 1.0 0.0 8.0
 fx_bloom_knee (Bloom knee) float 0.5 0.0 1.0
 
 #    Strength of the bloom added on top of the image.
-fx_bloom_intensity (Bloom intensity) float 0.6 0.0 4.0
+fx_bloom_intensity (Bloom intensity) float 0.35 0.0 4.0
 
 #    HDR multiplier for emissive maps (_e textures and auto-emissive).
-fx_emissive_strength (Emissive strength) float 4.0 0.0 32.0
+fx_emissive_strength (Emissive strength) float 2.5 0.0 32.0
 
 #    Brightness above which a light-source texture glows when it has no _e map.
-#    Changing it requires a restart.
+#    Changing it applies when you next join a world.
 fx_auto_emissive_threshold (Auto-emissive threshold) float 0.55 0.0 0.99
 
 #    Tint artificial light by the color of nearby light sources.
-#    Changing it requires a restart.
+#    Changing it applies when you next join a world.
 fx_colored_light (Colored light) bool true
 
 #    How strongly artificial light takes the color of its source (0 = white).
@@ -899,8 +899,9 @@ fx_flicker (Flicker) float 0.12 0.0 0.5
 fx_held_light (Held item light) bool true
 
 #    0 = off, 1 = light chroma, 2 = emissive, 3 = HDR luminance (false color),
-#    4 = bloom input. Changing it requires a restart (or hot reload).
-fx_debug_view (Debug view) int 0 0 4
+#    4 = bloom input, 5 = scene copy, 6 = scene copy depth, 7 = ambient
+#    occlusion. Applies right away (the shaders are rebuilt).
+fx_debug_view (Debug view) int 0 0 7
 
 #    Recompile shaders when files in shader_path or the built-in shader
 #    directory change. For shader development.
@@ -908,14 +909,14 @@ fx_shader_hot_reload (Shader hot reload) bool false
 
 #    Glass refracts and reflects, water absorbs, reflects and casts caustics.
 #    Glass is detected by drawtype or name, water by translucent liquids;
-#    fx_materials.txt in a texture pack overrides. Changing it requires a restart.
+#    fx_materials.txt in a texture pack overrides. Changing it applies when you next join a world.
 fx_surfaces (Glass and water surfaces) bool true
 
 #    Strength of refraction through glass and water.
 fx_refraction (Refraction) float 1.0 0.0 4.0
 
 #    Screen-space reflections on glass and water (falls back to the sky).
-#    Changing it requires a restart.
+#    Applies right away (the shaders are rebuilt).
 fx_ssr (Screen-space reflections) bool true
 
 #    Strength of reflections on glass and water.
@@ -930,9 +931,10 @@ fx_caustics (Caustics) float 0.8 0.0 3.0
 #    Strength of light shafts seen from under water.
 fx_underwater_shafts (Underwater light shafts) float 0.6 0.0 3.0
 
-#    Temporal anti-aliasing: stable edges and foliage, less shimmer.
-#    Disabled with MSAA or SSAA. Changing it requires a restart.
-fx_taa (Temporal anti-aliasing) bool true
+#    Temporal anti-aliasing (experimental, off by default; no motion vectors,
+#    so moving things can ghost). Disabled with MSAA or SSAA. Changing it
+#    applies when you next join a world.
+fx_taa (Temporal anti-aliasing) bool false
 
 #    How much of the previous frames TAA keeps (higher is smoother, more ghosting).
 fx_taa_blend (TAA history) float 0.9 0.5 0.97
@@ -941,7 +943,7 @@ fx_taa_blend (TAA history) float 0.9 0.5 0.97
 fx_sharpen (Sharpen) float 0.5 0.0 1.0
 
 #    Ambient occlusion: contact shadows in corners and under objects.
-#    Changing it requires a restart.
+#    Changing it applies when you next join a world.
 fx_ao (Ambient occlusion) bool true
 
 #    Strength of ambient occlusion.
@@ -951,23 +953,23 @@ fx_ao_strength (Ambient occlusion strength) float 1.0 0.0 2.0
 fx_ao_radius (Ambient occlusion radius) float 1.5 0.25 4.0
 
 #    Golden hour and blue moonlight: grades the sun and moon light by time of day.
-fx_sky_tint (Sky light tint) float 0.8 0.0 1.5
+fx_sky_tint (Sky light tint) float 0.6 0.0 1.5
 
 #    A little light everywhere, so caves are dark but never pure black.
 fx_ambient_floor (Ambient floor) float 0.03 0.0 0.15
 
 #    Rim light on mobs, players and items, so they read against dark backgrounds.
-fx_rim_light (Rim light) float 0.35 0.0 1.0
+fx_rim_light (Rim light) float 0.25 0.0 1.0
 
 #    Leak-free coloured light: a client-side RGB flood fill around the camera,
 #    so colour only reaches where light can travel, and stained glass tints
 #    light passing through it. Requires: fx_colored_light. Changing it
-#    requires a restart.
+#    applies when you next join a world.
 fx_light_volume (RGB light volume) bool true
 
 #    Material maps: LabPBR-style <name>_n.png (normal, AO, height) and
 #    <name>_s.png (smoothness, F0/metal, emission) companions from the
-#    texture pack. Changing it requires a restart.
+#    texture pack. Changing it applies when you next join a world.
 fx_materials (Material maps) bool true
 
 #    Strength of normal-mapped relief and baked AO from _n maps.

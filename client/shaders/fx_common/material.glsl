@@ -1,51 +1,53 @@
-// fx M5: material maps (PACK_FORMAT v2 item 5, LabPBR layout).
-// Included by nodes_shader/opengl_fragment.glsl. Array-texture tiles only.
-//   _n: R,G normal (tangent space), B AO (255 = none), A height (255 = top)
-//   _s: R perceptual smoothness, G F0 (>= 230 = metal), B porosity, A emission (255 = none)
+// fx: LabPBR material maps. Included by nodes_shader/opengl_fragment.glsl.
+// Array-texture tiles only.
+//   _n: R,G normal (DirectX, Y down), B AO (255 = none), A height (255 = top)
+//   _s: R perceptual smoothness, G F0 (230+ = metal), B porosity, A emission (255 = none)
 // Layer 2i of texture7 is _n, 2i+1 is _s, for base layer i. Bunches without
 // authored maps bind a shared 2-layer neutral array; their clamped layer
-// index reads an all-zero "normal", which is treated as "no normal map".
+// index reads an all-zero "normal", treated as "no normal map".
+//
+// Everything here works in linear light (see color.glsl). Texture reads at
+// the parallax-shifted uv use the ORIGINAL uv derivatives (textureGrad), so
+// mip selection does not jump where neighbouring pixels march different
+// numbers of steps.
+#include "fx_common/uniforms.glsl"
+#include "fx_common/color.glsl"
 #if defined(FX_ENABLE) && defined(FX_MATERIALS) && defined(USE_ARRAY_TEXTURE) && !defined(FX_SURFACE_ACTIVE)
 #define FX_MAT_ACTIVE 1
 #define fxMatTex texture7
 uniform mediump sampler2DArray fxMatTex;
-uniform vec3 fxSunDir;
-uniform float fxSunStrength;
-uniform float fxNormalStrength;
-uniform float fxParallaxDepth;
-uniform float fxSpecular;
-uniform float fxGlints;
-
-const float FX_MAT_BS = 10.0;
 
 mat3 fxTBN;
 bool fxTBNok = false;
-vec3 fxMatEmission = vec3(0.0);
+vec2 fxUVdx, fxUVdy;            // derivatives of the unshifted uv
+vec3 fxMatEmission = vec3(0.0); // linear, from _s.a
 
 // Cotangent frame from screen-space derivatives (Schueler 2013): works for
-// rotated and world-aligned tiles without tangents in the mesh.
+// rotated and world-aligned tiles without tangents in the mesh. Call once at
+// the top of main(), in uniform control flow.
 void fxBuildTBN(vec2 uv)
 {
+	fxUVdx = dFdx(uv);
+	fxUVdy = dFdy(uv);
 	vec3 dp1 = dFdx(worldPosition), dp2 = dFdy(worldPosition);
-	vec2 duv1 = dFdx(uv), duv2 = dFdy(uv);
-	vec3 N = normalize(vNormal);
+	vec3 N = fxSafeNormalize(vNormal);
 	vec3 dp2perp = cross(dp2, N), dp1perp = cross(N, dp1);
-	vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-	vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+	vec3 T = dp2perp * fxUVdx.x + dp1perp * fxUVdy.x;
+	vec3 B = dp2perp * fxUVdx.y + dp1perp * fxUVdy.y;
 	float d = max(dot(T, T), dot(B, B));
-	fxTBNok = d > 1e-20 && dot(vNormal, vNormal) > 0.0;
+	fxTBNok = d > 1e-20 && dot(vNormal, vNormal) > 1e-12;
 	float inv = inversesqrt(max(d, 1e-20));
 	fxTBN = mat3(T * inv, B * inv, N);
 }
 
 vec4 fxMatN(vec2 uv)
 {
-	return texture(fxMatTex, vec3(uv, float(varTexLayer) * 2.0));
+	return textureGrad(fxMatTex, vec3(uv, float(varTexLayer) * 2.0), fxUVdx, fxUVdy);
 }
 
 vec4 fxMatS(vec2 uv)
 {
-	return texture(fxMatTex, vec3(uv, float(varTexLayer) * 2.0 + 1.0));
+	return textureGrad(fxMatTex, vec3(uv, float(varTexLayer) * 2.0 + 1.0), fxUVdx, fxUVdy);
 }
 
 bool fxHasNormal(vec4 n)
@@ -53,8 +55,7 @@ bool fxHasNormal(vec4 n)
 	return n.r + n.g > 0.002;
 }
 
-// Texel-stepped parallax occlusion: the height map is sampled with nearest
-// filtering, so 16-32 px pixel art shifts by whole texels instead of smearing.
+// Texel-stepped parallax occlusion on the _n height channel.
 vec2 fxParallax(vec2 uv)
 {
 	if (fxParallaxDepth <= 0.0 || !fxTBNok)
@@ -62,11 +63,11 @@ vec2 fxParallax(vec2 uv)
 	vec3 eye = cameraPosition - cameraOffset;
 	vec3 V = worldPosition - eye;
 	float dist = length(V);
-	if (dist > 16.0 * FX_MAT_BS)
+	if (dist > 16.0 * FX_BS)
 		return uv;
-	vec3 v = normalize(V) * fxTBN; // into tangent space (transpose)
+	vec3 v = (V / max(dist, 1e-4)) * fxTBN; // into tangent space (transpose)
 	if (v.z > -0.08)
-		return uv; // grazing or from behind: skip
+		return uv; // grazing or from behind
 	if (!fxHasNormal(fxMatN(uv)))
 		return uv;
 	vec2 dir = v.xy / -v.z * fxParallaxDepth;
@@ -82,41 +83,43 @@ vec2 fxParallax(vec2 uv)
 		p += dir * layer;
 		h = fxMatN(p).a;
 	}
-	return mix(p, uv, smoothstep(10.0 * FX_MAT_BS, 16.0 * FX_MAT_BS, dist));
+	return mix(p, uv, smoothstep(10.0 * FX_BS, 16.0 * FX_BS, dist));
 }
 
-// Normal-mapped relief, AO, GGX sun specular, glints, emission.
+// Normal-mapped relief, AO, GGX sun specular, glints, _s emission.
+// lin: the engine-lit colour, linear. base: the texel (display-encoded).
 // Relief is relative to the flat face, so average brightness stays put.
-vec3 fxShadeMaterial(vec3 col, vec4 base, vec2 uv)
+vec3 fxShadeMaterial(vec3 lin, vec4 base, vec2 uv)
 {
 	vec4 nm = fxMatN(uv);
 	vec4 sm = fxMatS(uv);
-	vec3 N = normalize(vNormal);
+	vec3 N = fxSafeNormalize(vNormal);
 	vec3 Nm = N;
 	float ao = 1.0;
 	if (fxTBNok && fxHasNormal(nm)) {
 		vec2 xy = (nm.rg * 2.0 - 1.0) * fxNormalStrength;
 		vec3 nts = vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0)));
-		Nm = normalize(fxTBN * nts);
+		Nm = fxSafeNormalize(fxTBN * nts);
 		ao = mix(1.0, nm.b, clamp(fxNormalStrength, 0.0, 1.0));
 	}
 	vec3 eye = cameraPosition - cameraOffset;
-	vec3 V = normalize(eye - worldPosition);
+	vec3 V = fxSafeNormalize(eye - worldPosition);
 	float day = clamp((1.0 - nightRatio) * fxSunStrength, 0.0, 1.0);
 	vec3 L = fxSunDir;
 
 	float rs = (0.55 + 0.45 * max(dot(Nm, L), 0.0)) / (0.55 + 0.45 * max(dot(N, L), 0.0));
-	// artificial light: no direction is known per pixel, so light from the
+	// artificial light: no direction per pixel yet, so light from the
 	// viewer's side (what a held torch does) reads best
 	float ra = (0.6 + 0.4 * max(dot(Nm, V), 0.0)) / (0.6 + 0.4 * max(dot(N, V), 0.0));
-	col *= mix(ra, rs, day) * ao;
+	lin *= mix(ra, rs, day) * ao;
 
+	vec3 albedo = fxToLinear(base.rgb);
 	float smoothness = sm.r;
-	if (smoothness > 0.0) {
+	if (smoothness > 0.0 && day > 0.0) {
 		float rough = max((1.0 - smoothness) * (1.0 - smoothness), 0.045);
 		bool metal = sm.g * 255.0 >= 229.5;
-		vec3 F0 = metal ? base.rgb : vec3(sm.g);
-		vec3 H = normalize(L + V);
+		vec3 F0 = metal ? albedo : vec3(sm.g);
+		vec3 H = fxSafeNormalize(L + V);
 		float NdH = max(dot(Nm, H), 0.0), NdL = max(dot(Nm, L), 0.0), NdV = max(dot(Nm, V), 1e-3);
 		float a2 = rough * rough;
 		float dd = NdH * NdH * (a2 - 1.0) + 1.0;
@@ -125,25 +128,27 @@ vec3 fxShadeMaterial(vec3 col, vec4 base, vec2 uv)
 		float k = rough * 0.5;
 		float G = NdL / (NdL * (1.0 - k) + k) * NdV / (NdV * (1.0 - k) + k);
 		vec3 spec = D * F * G / (4.0 * NdV * max(NdL, 1e-3)) * NdL;
-		// only where the sun actually reaches (vertex light as a proxy for shadow)
-		float lit = clamp(dot(varColor.rgb, vec3(0.333)) * 2.0, 0.0, 1.0);
-		// bounded: this is still added before the HDR encode, and an unbounded
-		// GGX peak overflows the fp16 bloom chain (see the review plan)
-		col += min(spec * dayLight * day * lit * fxSpecular, vec3(4.0));
+		// only where the sun reaches (vertex sky light as a shadow proxy)
+		float lit = clamp(fxLuma(fxToLinear(varColor.rgb)) * 3.0, 0.0, 1.0);
+		vec3 sun = fxToLinear(dayLight) * day * lit;
+		// bounded: an HDR highlight, not an fp16 overflow
+		lin += min(spec * sun * fxSpecular, vec3(16.0));
 
-		// glints: smooth or metal texels sparkle as the view direction changes
+		// glints: smooth or metal texels sparkle as the half vector moves,
+		// fading out once a texel is smaller than a pixel
 		if (fxGlints > 0.0 && (metal || smoothness > 0.6)) {
 			vec2 tsz = vec2(textureSize(fxMatTex, 0).xy);
+			float px = max(length(fxUVdx * tsz), length(fxUVdy * tsz));
+			float lod = 1.0 - smoothstep(0.6, 1.5, px);
 			vec2 texel = floor(uv * tsz);
-			vec3 R = reflect(-V, Nm);
-			float seed = dot(floor(R * 6.0), vec3(1.0, 7.0, 13.0));
+			float seed = dot(floor(H * 4.0), vec3(1.0, 7.0, 13.0));
 			float hsh = fract(sin(dot(vec3(texel, seed), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-			float g = smoothstep(0.985, 1.0, hsh) * smoothness;
-			col += g * fxGlints * 3.0 * (varColor.rgb + dayLight * day * 0.5) * (metal ? base.rgb : vec3(1.0));
+			float g = smoothstep(0.985, 1.0, hsh) * smoothness * lod;
+			lin += g * fxGlints * 4.0 * sun * (metal ? albedo : vec3(1.0));
 		}
 	}
 	if (sm.a < 0.999)
-		fxMatEmission = base.rgb * sm.a * 255.0 / 254.0;
-	return col;
+		fxMatEmission = albedo * sm.a * 255.0 / 254.0;
+	return lin;
 }
 #endif

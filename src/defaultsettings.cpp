@@ -338,54 +338,28 @@ void set_default_settings()
 	settings->setDefault("fxaa", "false");
 	settings->setDefault("enable_bloom", "false");
 
-	// fx fork (mood renderer)
-	settings->setDefault("fx_enable", "true");
-	settings->setDefault("fx_hdr_composite", "true");
-	settings->setDefault("fx_tonemapper", "1");
-	settings->setDefault("fx_exposure", "1.5");
-	settings->setDefault("fx_grade_saturation", "1.3");
-	settings->setDefault("fx_grade_contrast", "1.2");
-	settings->setDefault("fx_bloom_threshold", "1.0");
-	settings->setDefault("fx_bloom_knee", "0.5");
-	settings->setDefault("fx_bloom_intensity", "0.6");
-	settings->setDefault("fx_emissive_strength", "4.0");
-	settings->setDefault("fx_auto_emissive_threshold", "0.55");
-	settings->setDefault("fx_colored_light", "true");
-	settings->setDefault("fx_light_saturation", "0.85");
-	settings->setDefault("fx_light_gather_radius", "48.0");
-	settings->setDefault("fx_flicker", "0.12");
-	settings->setDefault("fx_held_light", "true");
-	settings->setDefault("fx_debug_view", "0");
-	settings->setDefault("fx_shader_hot_reload", "false");
-	settings->setDefault("fx_taa", "true");
-	settings->setDefault("fx_taa_blend", "0.9");
-	settings->setDefault("fx_sharpen", "0.5");
-	settings->setDefault("fx_ao", "true");
-	settings->setDefault("fx_ao_strength", "1.0");
-	settings->setDefault("fx_ao_radius", "1.5");
-	settings->setDefault("fx_sky_tint", "0.8");
-	settings->setDefault("fx_ambient_floor", "0.03");
-	settings->setDefault("fx_rim_light", "0.35");
+	// fx fork (mood renderer): every tunable comes from the registry
+#define FX_BOOL(name, def, apply) settings->setDefault("fx_" #name, (def) ? "true" : "false");
+#define FX_INT(name, def, lo, hi, apply) settings->setDefault("fx_" #name, std::to_string(def));
+#define FX_FLOAT(name, def, lo, hi, apply, tune, label) settings->setDefault("fx_" #name, ftos(def));
+#include "client/fx/params.def"
+#undef FX_BOOL
+#undef FX_INT
+#undef FX_FLOAT
 	settings->setDefault("fx_mood", "neutral");
-	settings->setDefault("fx_light_volume", "true");
-	settings->setDefault("fx_materials", "true");
-	settings->setDefault("fx_normal_strength", "1.0");
-	settings->setDefault("fx_parallax_depth", "0.05");
-	settings->setDefault("fx_specular", "1.0");
-	settings->setDefault("fx_glints", "1.0");
-	settings->setDefault("fx_particles", "true");
-	settings->setDefault("fx_heat_haze", "1.0");
-	settings->setDefault("fx_contact_shadows", "0.6");
+	settings->setDefault("fx_mood_applied", "");
 	settings->setDefault("fx_open_tuner_on_start", "false");
-	settings->setDefault("fx_auto_screenshot", "");
-	settings->setDefault("fx_auto_screenshot_delay", "20");
-	settings->setDefault("fx_surfaces", "true");
-	settings->setDefault("fx_refraction", "1.0");
-	settings->setDefault("fx_ssr", "true");
-	settings->setDefault("fx_reflection", "1.0");
-	settings->setDefault("fx_water_absorption", "0.18");
-	settings->setDefault("fx_caustics", "0.8");
-	settings->setDefault("fx_underwater_shafts", "0.6");
+	// test mode (util/fx/test, src/client/fx/fx_test.h)
+	settings->setDefault("fx_test_capture", "");
+	settings->setDefault("fx_test_fixed_dtime", "true");
+	settings->setDefault("fx_test_wait_ready", "true");
+	settings->setDefault("fx_test_ready", "false");
+	settings->setDefault("fx_test_settle_frames", "30");
+	settings->setDefault("fx_test_min_frames", "60");
+	settings->setDefault("fx_test_after_frames", "30");
+	settings->setDefault("fx_test_max_wait_frames", "240");
+	settings->setDefault("fx_test_set", "");
+	settings->setDefault("fx_test_rejoin", "0");
 	settings->setDefault("enable_bloom_debug", "false");
 	settings->setDefault("enable_volumetric_lighting", "false");
 	settings->setDefault("enable_water_reflections", "false");

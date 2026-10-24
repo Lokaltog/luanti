@@ -1,262 +1,186 @@
-// Luanti "fx" fork: mood renderer, milestone 1 (light & glow)
+// Luanti "fx" fork: the mood renderer's interface to the engine
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// Everything in this module is client-only. It never touches map
-// serialization, the network protocol or ContentFeatures serialization,
-// which keeps the fork a rebaseable patch queue.
+// Everything the upstream hooks call is declared here. All state lives in one
+// fx::Renderer per world (renderer.h), created by attach() when the client
+// has its media and destroyed by detach(). Outside a world every query
+// answers "fx off".
+//
+// Client-only: nothing here touches map serialization, the network protocol
+// or ContentFeatures serialization, which keeps the fork a rebaseable patch
+// queue.
 
 #pragma once
 
+#include "caps.h"
+#include "params.h"
 #include "irrlichttypes.h"
 #include "irr_v3d.h"
 #include <SColor.h>
 #include <dimension2d.h>
-#include <memory>
+#include <EMaterialTypes.h>
 #include <string>
+#include <unordered_set>
+#include <unordered_map>
 #include <vector>
 
 class ITextureSource;
 class IWritableShaderSource;
-class IShaderSource;
 class Client;
 class Camera;
+class Sky;
 struct ContentFeatures;
 struct MeshMakeData;
-class IShaderConstantSetter;
-class IShaderUniformSetterFactory;
 namespace video { class IImage; class IVideoDriver; class ITexture; class SMaterial; }
 namespace scene { class ICameraSceneNode; }
 
 namespace fx
 {
 
-/// Max lights uploaded to shaders per frame. Must match FX_LIGHT_MAX in GLSL
-/// (it is emitted as a shader constant, so only this value needs changing).
+/*
+	Texture slots. GLSL names them in fx_common/uniforms.glsl.
+*/
+constexpr int TEXTURE_LAYER_FX = 2;           // emissive companion (per tile)
+constexpr int TEXTURE_LAYER_SCENE_COLOR = 4;  // opaque scene copy (transparent pass)
+constexpr int TEXTURE_LAYER_SCENE_DEPTH = 5;
+constexpr int TEXTURE_LAYER_LIGHT_VOLUME = 6; // RGB light volume (all map materials)
+constexpr int TEXTURE_LAYER_MATERIAL = 7;     // LabPBR maps: layer 2i = _n, 2i+1 = _s
+
+/// Uniform block binding points (0 is upstream's joint matrices).
+constexpr u32 UBO_PARAMS = 1, UBO_FRAME = 2, UBO_LIGHTS = 3;
+
+/// Max lights per frame (FxLights block).
 constexpr int MAX_LIGHTS = 128;
 
-/// Texture slot for the per-tile FX material companion (emissive for now).
-/// Slot 1 is the crack texture, slot 3 the shadow map, slot 2 was free.
-constexpr int TEXTURE_LAYER_FX = 2;
+/*
+	Lifecycle (Game)
+*/
 
-/// Opaque scene copy for refraction and reflections (transparent pass only).
-constexpr int TEXTURE_LAYER_SCENE_COLOR = 4;
-constexpr int TEXTURE_LAYER_SCENE_DEPTH = 5;
-/// RGB light volume atlas (M4), all node materials.
-constexpr int TEXTURE_LAYER_LIGHT_VOLUME = 6;
+/// Media received, driver up: work out the caps, build the renderer, register
+/// the shader constants and uniform blocks. Before any map shader is built.
+void attach(video::IVideoDriver *driver, IWritableShaderSource *shsrc);
+/// Leaving the world (after the client and its mesh threads are gone).
+void detach();
 
-/// Settings, refreshed from g_settings whenever an fx_* setting changes.
-struct Params {
-	bool enabled = true;           // fx_enable
-	bool hdr_composite = true;     // fx_hdr_composite (needs restart: shader define)
-	int tonemapper = 1;            // fx_tonemapper: 0 = upstream Hable, 1 = AgX, 2 = ACES
-	float exposure = 1.5f;         // fx_exposure
-	float grade_saturation = 1.3f; // fx_grade_saturation (AgX look)
-	float grade_contrast = 1.2f;   // fx_grade_contrast (AgX look power)
-	float bloom_threshold = 1.0f;  // fx_bloom_threshold (linear luminance)
-	float bloom_knee = 0.5f;       // fx_bloom_knee
-	float bloom_intensity = 0.6f;  // fx_bloom_intensity (additive)
-	float emissive_strength = 4.0f;// fx_emissive_strength (HDR multiplier)
-	float auto_emissive_threshold = 0.55f; // fx_auto_emissive_threshold
-	bool colored_light = true;     // fx_colored_light
-	float light_saturation = 0.85f;// fx_light_saturation (0 = upstream white light)
-	float light_gather_radius = 48.f; // fx_light_gather_radius, in nodes
-	float flicker = 0.12f;         // fx_flicker (amplitude)
-	bool held_light = true;        // fx_held_light
-	int debug_view = 0;            // fx_debug_view, see FX_DEBUG_* in shaders
-	bool hot_reload = false;       // fx_shader_hot_reload
-	// M3: glass and water
-	bool surfaces = true;          // fx_surfaces (needs restart: shader variants)
-	float refraction = 1.0f;       // fx_refraction (strength multiplier)
-	bool ssr = true;               // fx_ssr (needs restart: shader define)
-	float reflection = 1.0f;       // fx_reflection (strength multiplier)
-	float water_absorption = 0.18f;// fx_water_absorption (per node)
-	float caustics = 0.8f;         // fx_caustics
-	float underwater_shafts = 0.6f;// fx_underwater_shafts
-	// M2: foundations
-	bool taa = true;               // fx_taa (needs restart: pipeline)
-	float taa_blend = 0.9f;        // fx_taa_blend (history weight)
-	float sharpen = 0.5f;          // fx_sharpen
-	bool ao = true;                // fx_ao (needs restart: pipeline)
-	float ao_strength = 1.0f;    // fx_ao_strength
-	float ao_radius = 1.5f;      // fx_ao_radius (nodes)
-	float sky_tint = 0.8f;         // fx_sky_tint (golden hour, blue moonlight)
-	float ambient_floor = 0.03f;   // fx_ambient_floor
-	float rim_light = 0.35f;       // fx_rim_light (entities)
-	// M4
-	bool light_volume = true;      // fx_light_volume (needs restart: shader define)
-	// M5
-	bool materials = true;         // fx_materials (needs restart: textures + define)
-	float normal_strength = 1.0f;  // fx_normal_strength
-	float parallax_depth = 0.05f;  // fx_parallax_depth (fraction of a tile)
-	float specular = 1.0f;         // fx_specular
-	float glints = 1.0f;           // fx_glints
-	bool particles = true;         // fx_particles (read by the fx_ambience mod)
-	float heat_haze = 1.0f;        // fx_heat_haze
-	float contact_shadows = 0.6f;  // fx_contact_shadows
-};
+/// The frozen per-world feature set; all off outside a world.
+const Caps &caps();
+/// Effective parameters this frame (settings + mood blend). Main thread.
+const Params &params();
+
+/// Once per frame before drawing: settings, moods, camera, lights, light
+/// volume, uniform buffers, shader hot reload.
+void updateFrame(Client *client, Camera *camera, Sky *sky, float dtime);
 
 /*
-	Moods: presets of fx_* settings (client/fx_moods/<name>.conf, or the user's
-	<user dir>/fx_moods/<name>.conf). Plain keys are applied to the settings
-	when the mood is selected (fx_mood). cave.* / night.* / underwater.* keys
-	are targets blended in at runtime while in a cave, at night or under water.
+	Moods and the tuner (game_formspec)
 */
 std::vector<std::string> listMoods();
-/// Save the current fx_* float settings (and the current mood's situational
-/// targets) as <user dir>/fx_moods/<name>.conf. Returns the path or "".
+/// Save the current tunables (and the mood's situational targets) as
+/// <user dir>/fx_moods/<name>.conf. Returns the path, or "" on failure.
 std::string saveMood(const std::string &name);
-/// Names and current values of the tunable float settings, for the tuner.
-struct TunableParam { const char *setting; const char *label; float min, max; };
-const std::vector<TunableParam> &tunableParams();
-
-/// The pause menu's Mood button asks for the tuner; the game opens it.
 void requestTuner();
 bool consumeTunerRequest();
+/// A one-line note for the tuner, e.g. settings that wait for a restart.
+std::string tunerNote();
+/// The tuner formspec, and its field handler (true: rebuild the form).
+std::string tunerFormspec(const std::string &status);
+bool tunerFields(const std::unordered_map<std::string, std::string> &fields, std::string &status);
 
 /// Time-of-day grading of the sun/moon light colour (fx_sky_tint).
 void gradeSunlight(float rgb[3], float time_of_day);
 
-const Params &params();
-/// Register settings callbacks; call once at client start.
-void init();
-void deinit();
-
 /*
-	Material companions (emissive maps)
+	Textures and materials (node_visuals, imagesource, content_cao)
 */
 
-/// Build the texture string of the emissive companion of `image`.
-/// Every `foo.png` atom is replaced by `foo_e.png` when that file exists,
-/// otherwise blackened while keeping its alpha, so overlays composite right.
-/// If no atom has an authored map and `auto_emissive` is set (the node is a
-/// light source), the base image is passed through `[fx_autoemissive`.
-/// `size` (if non-zero) forces the companion to the base texture's size.
+/// Texture string of the emissive companion of `image`: every top-level
+/// `foo.png` atom becomes `foo_e.png` when the pack has one, otherwise it is
+/// blackened (alpha kept). With nothing authored and `auto_emissive`, the base
+/// passes through `[fx_autoemissive`. `size` forces the companion's size.
 std::string companionName(ITextureSource *tsrc, const std::string &image,
 		bool auto_emissive, core::dimension2du size = {0, 0});
 
-/// Emissive companion for an entity (object) texture, or null when none of
-/// its atoms has an authored `_e.png` (entities never get auto-emissive).
+/// Emissive companion for an entity texture, or null without an authored map.
 video::ITexture *entityEmissive(ITextureSource *tsrc, const std::string &image);
 
-/// Material maps (M5, PACK_FORMAT v2 item 5, LabPBR layout) for the base atom
-/// of `image`: `<stem>_n.png` and `<stem>_s.png`, each resized to `size`,
-/// neutral fills where missing. Returns false if neither map is authored.
+/// LabPBR `<stem>_n.png` / `<stem>_s.png` for the base atom of `image`,
+/// resized to `size`, neutral fills where missing. False if neither exists.
 bool materialLayers(ITextureSource *tsrc, const std::string &image,
 		core::dimension2du size, std::string &normal, std::string &specular);
 
-/// Shared neutral material array (flat normal, rough, no emission) bound to
-/// tiles whose array bunch has no authored maps.
+/// Shared neutral material array for bunches without authored maps.
 video::ITexture *neutralMaterialTexture(ITextureSource *tsrc);
 
-/// Texture slot for the material array: layer 2i = _n, 2i+1 = _s.
-constexpr int TEXTURE_LAYER_MATERIAL = 7;
-
-/// Texture modifier implementation: `[fx_autoemissive:<threshold>`.
-/// Keeps pixels brighter than `threshold` (smoothstep), darkens the rest.
-/// Called from ImageSource; operates in place on an ARGB8 image.
+/// `[fx_autoemissive:<threshold>`: keep pixels brighter than the threshold.
 void applyAutoEmissive(video::IImage *image, float threshold);
-
-/*
-	Light colors
-*/
 
 struct LightStyle {
 	video::SColor color = video::SColor(255, 255, 255, 255);
-	float flicker = 0.f; // 0..1, multiplied with fx_flicker
+	float flicker = 0.f; // 0..1, scaled by fx_flicker
 };
 
-/// Resolve the light color of a light-emitting node: texture pack table
-/// (`fx_light_colors.txt`) first, then auto-derived from its texture.
-LightStyle resolveLightStyle(ITextureSource *tsrc, const ContentFeatures &f);
+/// Light colour of a light-emitting node: pack table, then its texture. The
+/// colour comes from its first tile in `glowing` (tiles unique to light
+/// sources), else its first non-empty tile; an authored `_e.png` wins over
+/// `[fx_autoemissive`.
+LightStyle resolveLightStyle(ITextureSource *tsrc, const ContentFeatures &f,
+		const std::unordered_set<std::string> &glowing);
 
-/// Forget the loaded tables (media reload).
-void resetLightTable();
-
-/*
-	Glass and water surfaces
-*/
+/// Warn about pack table keys that matched no node (after all nodes resolved).
+void reportUnusedPackKeys();
 
 enum class SurfaceKind : u8 { None = 0, Glass = 1, Water = 2 };
 enum class SurfacePattern : u8 { None = 0, Fluted = 1, Frosted = 2, Rippled = 3 };
-
 struct Surface {
 	SurfaceKind kind = SurfaceKind::None;
 	SurfacePattern pattern = SurfacePattern::None;
 };
 
-/// Surface type of a node: `fx_materials.txt` in texture dirs first
-/// (`<node> glass|water|none [pattern=fluted|frosted|rippled]`), then a
-/// heuristic (translucent non-glowing liquids are water, glasslike drawtypes
-/// and nodes named *glass* are glass).
+/// Glass/water surface of a node: pack table, then heuristics.
 Surface resolveSurface(const ContentFeatures &f);
 
-/// True when the fx post pass renders the camera being inside this node
-/// (water), so the flat upstream post_effect_color overlay should be skipped.
+/// The fx post pass draws being inside this node (water): skip upstream's
+/// flat post_effect_color overlay.
 bool handlesUnderwater(const ContentFeatures &f);
 
 /*
-	TAA: projection jitter around the 3D draw
+	Drawing (render pipeline, ClientMap)
 */
 void applyJitter(scene::ICameraSceneNode *camera, core::dimension2du target_size);
 void removeJitter(scene::ICameraSceneNode *camera);
-
-/// Copy the opaque scene (color + depth) from the current render target.
-/// Called by ClientMap at the start of its transparent pass.
+/// Start of ClientMap's transparent pass: copy the opaque colour + depth.
 void captureScene(video::IVideoDriver *driver);
-
-/// Bind the scene copy to a transparent material (slots 4 and 5).
+/// Transparent pass, per material: bind the scene copy; fx surfaces (see
+/// noteSurfaceShader) are drawn opaque with depth writes, since they
+/// composite what is behind themselves.
 void bindSceneCopy(video::SMaterial &material);
+/// node_visuals: this material type is a glass/water surface shader.
+void noteSurfaceShader(video::E_MATERIAL_TYPE type);
 void unbindSceneCopy(video::SMaterial &material);
-
-/// Bind the RGB light volume (slot 6) to a node material, both passes.
 void bindLightVolume(video::SMaterial &material);
 
 /*
-	Per-block light lists, built during meshgen (worker thread, read-only after)
+	Meshgen (worker threads)
 */
 
-/// A light or a cluster of same-colored emitters (lava lakes, torch walls).
-/// Clustering keeps one lake from crowding every other light out of the
-/// fixed-size per-frame list.
+/// A light or a cluster of same-coloured emitters near each other.
 struct Light {
-	v3f pos;                // centroid, node units, world space
-	u8 level;               // max light_source in the cluster, 1..14
-	u16 count;              // number of emitters merged
-	float extent;           // cluster radius in nodes (0 for a single node)
+	v3f pos;          // centroid, node units, world space
+	u8 level;         // max light_source in the cluster
+	u16 count;        // emitters merged
+	float extent;     // cluster radius in nodes
 	video::SColor color;
 	float flicker;
 };
-
-/// Cluster cell size in nodes.
 constexpr s16 LIGHT_CLUSTER_CELL = 4;
 
 void collectBlockLights(const MeshMakeData *data, std::vector<Light> &out);
 
 /*
-	Per-frame state shared with the shaders
+	Shaders (ShaderSource)
 */
 
-struct FrameLights {
-	int count = 0;
-	int held_index = -1;     // index of the held-item light, or -1
-	float pos_radius[MAX_LIGHTS * 4] = {}; // xyz in BS units relative to camera offset, w = radius (BS)
-	float color_seed[MAX_LIGHTS * 4] = {};  // rgb linear-ish color, a = flicker seed + amplitude packed
-};
-
-/// Gather the nearest lights around the camera from loaded block meshes,
-/// plus the held item. Call once per frame before drawing.
-void updateFrame(Client *client, Camera *camera, float dtime);
-
-const FrameLights &frameLights();
-
-std::unique_ptr<IShaderConstantSetter> createConstantSetter();
-std::unique_ptr<IShaderUniformSetterFactory> createUniformSetterFactory();
-
-/*
-	Shader hot reload
-*/
-
-/// Poll shader file modification times; call once per frame.
-void pollShaderHotReload(IWritableShaderSource *shsrc, float dtime);
+/// Source of `#include "fx_generated/<name>"`.
+std::string generatedShaderInclude(const std::string &path);
 
 } // namespace fx

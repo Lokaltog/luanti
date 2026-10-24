@@ -1,23 +1,21 @@
-// fx: ambient occlusion, half resolution, from the depth buffer.
+#include "fx_common/uniforms.glsl"
+#include "fx_common/color.glsl"
+// fx: ambient occlusion and contact shadows, half resolution, from depth.
 // Normal-weighted horizon sampling (HBAO-style): 4 directions x 4 steps,
-// rotated per pixel and per frame so TAA averages the noise away.
+// rotated per pixel (and per frame only with TAA, which averages it).
+// Output: R = AO, G = contact shadow, B/A = view distance / far, 16 bit,
+// for the bilateral blur (fx_ao_blur) and the depth-aware upsample.
+//
+// The wielded item is drawn after a depth clear with its own projection:
+// read with the world's matrices its pixels land closer than 0.75 node,
+// where the world never is except a wall you are pressed against. Those
+// pixels and samples are ignored, so the hand gets no AO and casts none.
 #define depthMap texture0
 
 uniform sampler2D depthMap;
-uniform mat4 fxInvViewProj;   // clip -> scene space (jittered, matches the depth buffer)
-uniform vec3 fxEyePos;        // camera in scene space
-uniform float fxProjScale;    // pixels per scene unit at view distance 1
-uniform float fxAoRadius;     // nodes
-uniform float fxAoStrength;
-uniform float fxFrame;
-uniform mat4 fxViewProj;      // scene space -> clip (jittered, matches the depth buffer)
-uniform vec3 fxSunDir;        // towards the sun
-uniform float fxSunStrength;
-uniform float fxContactShadows;
 
 CENTROID_ VARYING_ mediump vec2 varTexCoord;
 
-const float FX_BS = 10.0;
 
 vec3 scenePos(vec2 uv)
 {
@@ -26,12 +24,20 @@ vec3 scenePos(vec2 uv)
 	return p.xyz / p.w;
 }
 
+const float FX_HAND_DIST = 0.75 * FX_BS;
+
+vec2 fxPackDepth(float dist)
+{
+	float v = clamp(dist / fxNearFar.y, 0.0, 1.0) * 255.0;
+	return vec2(floor(v) / 255.0, fract(v));
+}
+
 void main(void)
 {
 	vec2 uv = varTexCoord.st;
 	float d = texture2D(depthMap, uv).r;
 	if (d >= 0.99999) { // sky
-		gl_FragColor = vec4(1.0);
+		gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
 		return;
 	}
 	vec2 px = 1.0 / vec2(textureSize(depthMap, 0));
@@ -51,21 +57,30 @@ void main(void)
 		: (length(ax) < length(bx) ? ax : bx);
 	vec3 dy = length(ay - by) < 0.5 * length(ay + by) ? ay + by
 		: (length(ay) < length(by) ? ay : by);
-	vec3 n = normalize(cross(dx, dy));
+	vec3 n = fxSafeNormalize(cross(dx, dy));
 	vec3 to_eye = fxEyePos - p;
 	if (dot(n, to_eye) < 0.0)
 		n = -n;
+	if (length(to_eye) < FX_HAND_DIST) { // the wielded item (or a wall in your face)
+		gl_FragColor = vec4(1.0, 1.0, fxPackDepth(length(to_eye)));
+		return;
+	}
 
 	float radius = fxAoRadius * FX_BS;
 	float dist = max(length(to_eye), 1.0);
 	float r_px = clamp(radius * fxProjScale / dist, 2.0, 96.0);
 
-	// interleaved gradient noise + golden-angle rotation per frame
-	float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+	// interleaved gradient noise; per-frame golden-angle rotation only with
+	// TAA (without it, a pattern that changes every frame just crawls)
+	float ign = fxIGN(gl_FragCoord.xy);
+#ifdef FX_TAA
 	float rot = ign * 6.2831853 + fxFrame * 2.3999632;
+#else
+	float rot = ign * 6.2831853;
+#endif
 
 	// grazing surfaces get more bias: their depth samples are the least precise
-	float grazing = 1.0 - abs(dot(n, normalize(to_eye)));
+	float grazing = 1.0 - abs(dot(n, fxSafeNormalize(to_eye)));
 	float bias = 0.2 + dist / (FX_BS * 400.0) + grazing * grazing * 0.3;
 
 	float occ = 0.0;
@@ -77,7 +92,7 @@ void main(void)
 			vec3 s = scenePos(uv + dir * r_px * t * px);
 			vec3 v = s - p;
 			float l = length(v);
-			if (l < 1e-3)
+			if (l < 1e-3 || length(s - fxEyePos) < FX_HAND_DIST)
 				continue;
 			float falloff = clamp(1.0 - (l * l) / (radius * radius), 0.0, 1.0);
 			// bias grows with distance: depth precision drops and grazing
@@ -113,6 +128,8 @@ void main(void)
 				break;
 			vec3 b = scenePos(suv);
 			float dq = length(q - fxEyePos), db = length(b - fxEyePos);
+			if (db < FX_HAND_DIST)
+				continue; // the hand does not cast contact shadows
 			// occluder in front of the ray point, but not by much (thickness)
 			float thick = 0.6 * FX_BS + dq * 0.01;
 			if (db < dq - 0.02 * FX_BS - dq * 0.0015 && db > dq - thick) {
@@ -122,5 +139,5 @@ void main(void)
 		}
 		cs = 1.0 - hit * fxContactShadows * sun * 0.6;
 	}
-	gl_FragColor = vec4(ao, cs, ao, 1.0);
+	gl_FragColor = vec4(ao, cs, fxPackDepth(length(to_eye)));
 }

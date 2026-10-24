@@ -20,7 +20,6 @@ struct TileAttribContext {
 	PreLoadedTextures *texture_pool;
 	video::SColor base_color;
 	const TextureSettings &tsettings;
-	bool fx_auto_emissive = false; // node is a light source
 };
 
 using GetShaderCallback = std::function<u32 /* shader id */ (bool /* array_texture */)>;
@@ -41,6 +40,16 @@ struct PreLoadedTexture {
 struct PreLoadedTextures {
 	std::unordered_map<std::string, PreLoadedTexture> pool;
 	std::unordered_set<std::string> missed; // For debugging
+	// fx: tile names (as in TileDef) used only by light sources: these get
+	// [fx_autoemissive; a texture also used by an unlit node never glows
+	std::unordered_set<std::string> fx_glowing;
+
+	bool fxGlows(const std::string &tile_name) const
+	{
+		return fx_glowing.count(tile_name) > 0;
+	}
+	// same, for a pool image name (tile name + leaves/mesh suffixes)
+	bool fxGlowsImage(std::string image) const;
 
 	PreLoadedTexture find(const std::string &name);
 	void add(const std::string &name, const PreLoadedTexture &t);
@@ -63,6 +72,16 @@ void PreLoadedTextures::add(const std::string &name, const PreLoadedTexture &t)
 {
 	assert(pool.find(name) == pool.end());
 	pool[name] = t;
+}
+
+bool PreLoadedTextures::fxGlowsImage(std::string image) const
+{
+	const std::string &filter = ITextureSource::FILTER_FOR_MESH;
+	if (!filter.empty() && str_ends_with(image, filter))
+		image.resize(image.size() - filter.size());
+	if (str_ends_with(image, "^[noalpha"))
+		image.resize(image.size() - 9);
+	return fxGlows(image);
 }
 
 void PreLoadedTextures::printStats(std::ostream &to) const
@@ -139,11 +158,11 @@ static void fillTileAttribs(TileLayer *layer, TileAttribContext context,
 		std::vector<FrameSpec> frames = createAnimationFrames(
 				tsrc, tiledef.name, tiledef.animation, frame_length_ms);
 		if (frames.size() > 1) {
-			if (fx::params().enabled) {
+			if (fx::caps().enabled) {
 				// fx: emissive companion per frame, chopped the same way
 				auto tsize = tsrc->getTextureDimensions(tiledef.name);
 				std::string companion = fx::companionName(tsrc, tiledef.name,
-						context.fx_auto_emissive);
+						context.texture_pool->fxGlowsImage(tiledef.name));
 				std::ostringstream os(std::ios::binary);
 				for (size_t i = 0; i < frames.size(); i++) {
 					os.str("");
@@ -170,9 +189,9 @@ static void fillTileAttribs(TileLayer *layer, TileAttribContext context,
 		if (!tex.texture) {
 			// wasn't pre-loaded: create standard texture on the fly
 			layer->texture = tsrc->getTexture(texture_image, &layer->texture_id);
-			if (fx::params().enabled && layer->texture)
+			if (fx::caps().enabled && layer->texture)
 				layer->fx_texture = tsrc->getTexture(fx::companionName(tsrc,
-						texture_image, context.fx_auto_emissive, texture_size));
+						texture_image, context.texture_pool->fxGlowsImage(tiledef.name), texture_size));
 		} else {
 			layer->texture = tex.texture;
 			layer->fx_texture = tex.fx_texture;
@@ -384,12 +403,11 @@ void NodeVisuals::updateTextures(ContentFeatures &f, ITextureSource *tsrc,
 		break;
 	}
 
-	// fx: glass and water get their own shader variant. Alpha-clipped glass
-	// becomes alpha-blended so its clear pixels still produce fragments to
-	// refract through (purely visual, client-side).
+	// fx: glass and water get their own shader variant, drawn in the
+	// transparent pass (after the opaque scene copy) but opaque, with depth
+	// writes: the shader composites what is behind from the copy (see
+	// fx::bindSceneCopy). Purely visual, client-side.
 	const fx::Surface fx_surface = fx::resolveSurface(f);
-	// Water on a non-liquid node (from fx_materials.txt) needs the same: the
-	// surface shaders only work in the transparent pass, where the copy is bound.
 	if (fx_surface.kind != fx::SurfaceKind::None &&
 			drawtype != NDT_LIQUID && drawtype != NDT_FLOWINGLIQUID)
 		material_type = TILE_MATERIAL_ALPHA;
@@ -399,7 +417,10 @@ void NodeVisuals::updateTextures(ContentFeatures &f, ITextureSource *tsrc,
 		features.array_texture = array_texture;
 		features.fx_surface = (u8)fx_surface.kind;
 		features.fx_pattern = (u8)fx_surface.pattern;
-		return shdsrc->getShader("nodes_shader", material_type, drawtype, features);
+		u32 id = shdsrc->getShader("nodes_shader", material_type, drawtype, features);
+		if (features.fx_surface)
+			fx::noteSurfaceShader(shdsrc->getShaderInfo(id).material);
+		return id;
 	};
 
 	MaterialType overlay_material = material_type_with_alpha(material_type);
@@ -424,7 +445,7 @@ void NodeVisuals::updateTextures(ContentFeatures &f, ITextureSource *tsrc,
 
 	// Tiles (fill in f->tiles[])
 	bool any_polygon_offset = false;
-	TileAttribContext tac{tsrc, texture_pool, color, tsettings, f.light_source > 0};
+	TileAttribContext tac{tsrc, texture_pool, color, tsettings};
 
 	for (u16 j = 0; j < 6; j++) {
 		tiles[j].world_aligned = isWorldAligned(tdef[j].align_style,
@@ -565,16 +586,38 @@ void NodeVisuals::fillNodeVisuals(NodeDefManager *ndef, Client *client, void *pr
 
 	/* collect all textures we might use */
 	std::unordered_set<std::string> pool;
-	std::unordered_set<std::string> fx_emissive_pool; // images of light sources
+	PreLoadedTextures plt;
 	ndef->applyFunction([&](ContentFeatures &f) {
 		f.visuals = std::make_unique<NodeVisuals>();
 		f.visuals->preUpdateTextures(f, tsrc, pool, tsettings);
-		if (f.light_source > 0)
-			f.visuals->preUpdateTextures(f, tsrc, fx_emissive_pool, tsettings);
 	});
+	if (fx::caps().enabled) {
+		// fx: tiles of light sources that no unlit node uses. A lit furnace
+		// shares its top with the unlit one, a jack o'lantern its sides with
+		// the pumpkin: only the faces unique to the light glow.
+		std::unordered_set<std::string> lit, unlit;
+		ndef->applyFunction([&](ContentFeatures &f) {
+			auto &into = f.light_source > 0 ? lit : unlit;
+			for (const auto *defs : {&f.tiledef, &f.tiledef_overlay})
+				for (const auto &t : *defs)
+					if (!t.name.empty())
+						into.insert(t.name);
+			for (const auto &t : f.tiledef_special)
+				if (!t.name.empty())
+					into.insert(t.name);
+		});
+		for (const auto &name : lit)
+			if (!unlit.count(name))
+				plt.fx_glowing.insert(name);
+		infostream << "fx: " << plt.fx_glowing.size() << " of " << lit.size()
+			<< " light source textures glow" << std::endl;
+	}
 
 	/* texture pre-loading stage */
-	const size_t arraymax = getArrayTextureMax(shdsrc);
+	size_t arraymax = getArrayTextureMax(shdsrc);
+	// fx: the material array holds two layers (_n, _s) per base layer
+	if (fx::caps().materials)
+		arraymax /= 2;
 	// Group by size
 	std::unordered_map<v2u32, std::vector<std::string_view>> sizes;
 	if (arraymax > 1) {
@@ -597,21 +640,20 @@ void NodeVisuals::fillNodeVisuals(NodeDefManager *ndef, Client *client, void *pr
 			continue;
 		num_preloadable += it.second.size();
 	}
-	PreLoadedTextures plt;
 	const auto &doBunch = [&] (const std::vector<std::string> &bunch) {
 		PreLoadedTexture t;
 		t.texture = tsrc->addArrayTexture(bunch, &t.texture_id);
-		if (t.texture && fx::params().enabled) {
+		if (t.texture && fx::caps().enabled) {
 			// fx: emissive companion array with identical layer order
 			auto size = tsrc->getTextureDimensions(bunch[0]);
 			std::vector<std::string> companions;
 			companions.reserve(bunch.size());
 			for (auto &name : bunch)
 				companions.push_back(fx::companionName(tsrc, name,
-						fx_emissive_pool.count(name) > 0, size));
+						plt.fxGlowsImage(name), size));
 			t.fx_texture = tsrc->addArrayTexture(companions);
 		}
-		if (t.texture && fx::params().enabled && fx::params().materials) {
+		if (t.texture && fx::caps().materials) {
 			// fx M5: _n/_s maps, interleaved; bunches without any share a neutral array
 			auto size = tsrc->getTextureDimensions(bunch[0]);
 			std::vector<std::string> layers;
@@ -659,7 +701,7 @@ void NodeVisuals::fillNodeVisuals(NodeDefManager *ndef, Client *client, void *pr
 		auto &v = f.visuals;
 		v->updateTextures(f, tsrc, shdsrc, client, &plt, tsettings);
 		if (f.light_source > 0)
-			v->fx_light = fx::resolveLightStyle(tsrc, f);
+			v->fx_light = fx::resolveLightStyle(tsrc, f, plt.fx_glowing);
 
 		if (f.drawtype == NDT_MESH)
 			v->updateMesh(f.mesh, f.visual_scale, client, tsettings);
@@ -671,6 +713,9 @@ void NodeVisuals::fillNodeVisuals(NodeDefManager *ndef, Client *client, void *pr
 				0.66666f + 0.33333f * progress / size);
 		progress++;
 	});
+
+	if (fx::caps().enabled)
+		fx::reportUnusedPackKeys();
 
 	SORT_AND_UNIQUE(ndef->m_leaves_materials);
 	verbosestream << "m_leaves_materials.size() = " << ndef->m_leaves_materials.size()

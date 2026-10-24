@@ -3,6 +3,7 @@
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "mapblock_mesh.h"
+#include "client/fx/fx_test.h"
 #include "CMeshBuffer.h"
 #include "client.h"
 #include "mapblock.h"
@@ -495,7 +496,8 @@ MapBlockMesh::MapBlockMesh(Client *client, MeshMakeData *data):
 		MapblockMeshGenerator(data, &collector).generate();
 	}
 
-	if (fx::params().enabled)
+	fx::test::noteMeshGenerated();
+	if (fx::caps().colored_light)
 		fx::collectBlockLights(data, m_fx_lights);
 
 	/*
