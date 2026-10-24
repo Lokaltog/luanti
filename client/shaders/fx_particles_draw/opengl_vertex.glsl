@@ -168,7 +168,7 @@ void main(void)
 		soft = rest >= 0.0 ? 0.0 : 0.2;
 	} else if (rain || drip) {
 		col = light * vec3(0.6, 0.68, 0.78) + fxToLinear(vec3(sky_level)) * fxpSky.rgb * 0.15;
-		alpha = rain ? 0.32 : 0.5;
+		alpha = rain ? 0.45 : 0.55;
 		occl = 0.5;
 		soft = 0.1;
 	} else if (splash) {

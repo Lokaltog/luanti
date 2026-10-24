@@ -36,7 +36,7 @@ const NetherAir NETHER_AIR[] = {
 	{"WarpedForest", video::SColor(255, 64, 224, 208), 0.6f, 14.f, 0.05f, 0.035f},
 	{"SoulsandValley", video::SColor(255, 159, 180, 200), 0.f, 18.f, -0.08f, 0.04f}, // ash
 	{"BasaltDelta", video::SColor(255, 232, 228, 224), 0.f, 26.f, -0.18f, 0.045f},
-	{"", video::SColor(255, 255, 128, 48), 1.0f, 6.f, 0.35f, 0.03f},               // wastes: cinders
+	{"", video::SColor(255, 255, 128, 48), 1.0f, 10.f, 0.35f, 0.03f},               // wastes: cinders
 };
 
 enum Acc { A_LAVA, A_FIRE, A_LEAF, A_RAIN, A_SNOW, A_DRIP, A_LIGHTDUST, A_DAYDUST,
@@ -189,7 +189,7 @@ void ParticleSystem::emit(Client *client, Camera *camera, float dtime)
 				s.pos = at;
 				s.vel = v3f(wind_x * 1.2f, -rnd(12.f, 15.f), wind_z * 1.2f);
 				s.life = 3.f;
-				s.size = rnd(0.014f, 0.022f);
+				s.size = rnd(0.018f, 0.028f);
 				push(s);
 			}
 		} else {
@@ -282,7 +282,7 @@ void ParticleSystem::emit(Client *client, Camera *camera, float dtime)
 				s.vel = v3f(rnd(-0.3f, 0.3f), air->rise + rnd(-0.1f, 0.1f), rnd(-0.3f, 0.3f));
 				s.life = rnd(5.f, 9.f);
 				s.param = air->rise;
-				s.size = air->size * rnd(0.7f, 1.3f);
+				s.size = air->size * rnd(1.0f, 1.8f);
 				s.tint = air->color;
 				s.glow = air->glow;
 				push(s);
