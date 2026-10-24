@@ -4,6 +4,7 @@
 #include "params.h"
 
 #include "settings.h"
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <sstream>
@@ -122,8 +123,16 @@ Params readParams(const Settings &s)
 	for (const auto &i : paramInfo()) {
 		switch (i.type) {
 		case ParamType::Bool: setFloat(p, i, s.getBool(i.setting) ? 1.f : 0.f); break;
-		case ParamType::Int: setFloat(p, i, (float)s.getS32(i.setting)); break;
-		case ParamType::Float: setFloat(p, i, s.getFloat(i.setting)); break;
+		case ParamType::Int:
+		case ParamType::Float: {
+			// settings files and mods can hold anything: clamp to the
+			// registry's range (a huge gather radius would stall every frame)
+			float v = i.type == ParamType::Int ? (float)s.getS32(i.setting) : s.getFloat(i.setting);
+			if (!std::isfinite(v))
+				v = i.def;
+			setFloat(p, i, std::clamp(v, i.min, i.max));
+			break;
+		}
 		}
 	}
 	return p;

@@ -505,6 +505,14 @@ Surface resolveSurface(const ContentFeatures &f)
 	Renderer *r = renderer();
 	if (!r || !r->caps.surfaces)
 		return {};
+	return detectSurface(f);
+}
+
+Surface detectSurface(const ContentFeatures &f)
+{
+	Renderer *r = renderer();
+	if (!r)
+		return {};
 	if (const auto *e = lookup(r->pack.surfaces, f))
 		return e->value;
 	Surface s;

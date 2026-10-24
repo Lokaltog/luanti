@@ -635,7 +635,10 @@ void main(void)
 	lin = fxShadeMaterial(lin, base, uv);
 #endif
 	// emissive: an HDR multiplier, values above 1 bloom
-#ifdef USE_ARRAY_TEXTURE
+#if defined(FX_MAT_ACTIVE)
+	// parallax-shifted uv, original derivatives (see material.glsl)
+	vec3 fxE = textureGrad(fxMaterial, vec3(uv, float(varTexLayer)), fxUVdx, fxUVdy).rgb;
+#elif defined(USE_ARRAY_TEXTURE)
 	vec3 fxE = texture(fxMaterial, vec3(uv, float(varTexLayer))).rgb;
 #else
 	vec3 fxE = texture2D(fxMaterial, uv).rgb;

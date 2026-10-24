@@ -140,8 +140,10 @@ only light sources; surface keys only when surfaces are on).
 - The normal is in texture space. The renderer builds the tangent frame per
   pixel from screen-space derivatives, so tile rotation and world alignment
   are handled; **producers must not pre-rotate normals**.
-- `_e.png` wins over `_s` emission when both exist. Emission from `_s` is
-  `albedo × A/254`.
+- Emission from `_s` is `albedo × A/254`. Where a tile has both an `_e.png`
+  and `_s` emission, the renderer takes the brighter of the two per texel
+  (it can't tell an authored black `_e` texel from "no map"), so a producer
+  that ships `_e.png` should leave `_s` alpha at 255.
 - Parallax is texel-stepped (whole texels of the base), on `_n` alpha, depth
   set by `fx_parallax_depth`.
 

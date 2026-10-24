@@ -17,6 +17,10 @@ uniform sampler2D fxSceneDepth;
 vec2 fxProject(vec3 p, out float depth)
 {
 	vec4 c = fxViewProj * vec4(p, 1.0);
+	if (c.w <= 1e-4) { // behind the camera: the projection would flip
+		depth = 2.0;   // callers treat depth > 1 as "off screen"
+		return vec2(-1.0);
+	}
 	vec3 ndc = c.xyz / c.w;
 	depth = ndc.z * 0.5 + 0.5;
 	return ndc.xy * 0.5 + 0.5;
@@ -138,7 +142,7 @@ vec3 fxSurface(vec3 lit, vec4 base, out vec3 transmitted)
 	float d0, d1;
 	vec2 p0 = fxProject(worldPosition, d0);
 	vec2 p1 = fxProject(worldPosition - dn * thickness * fxRefraction, d1);
-	vec2 ruv = suv + (p1 - p0) + tex_bend * fxRefraction;
+	vec2 ruv = suv + (d1 > 1.0 ? vec2(0.0) : p1 - p0) + tex_bend * fxRefraction;
 	// never refract in something that is in front of the surface
 	if (texture2D(fxSceneDepth, ruv).r < gl_FragCoord.z)
 		ruv = suv;

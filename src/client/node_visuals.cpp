@@ -407,7 +407,14 @@ void NodeVisuals::updateTextures(ContentFeatures &f, ITextureSource *tsrc,
 	// transparent pass (after the opaque scene copy) but opaque, with depth
 	// writes: the shader composites what is behind from the copy (see
 	// fx::bindSceneCopy). Purely visual, client-side.
-	const fx::Surface fx_surface = fx::resolveSurface(f);
+	fx::Surface fx_surface = fx::resolveSurface(f);
+	// a liquid drawn opaque (translucent_liquids off, a pack entry on an
+	// opaque liquid) is in the solid pass, before the scene copy exists
+	if ((drawtype == NDT_LIQUID || drawtype == NDT_FLOWINGLIQUID) &&
+			(material_type == TILE_MATERIAL_LIQUID_OPAQUE ||
+			 material_type == TILE_MATERIAL_WAVING_LIQUID_OPAQUE ||
+			 material_type == TILE_MATERIAL_WAVING_LIQUID_BASIC))
+		fx_surface = {};
 	if (fx_surface.kind != fx::SurfaceKind::None &&
 			drawtype != NDT_LIQUID && drawtype != NDT_FLOWINGLIQUID)
 		material_type = TILE_MATERIAL_ALPHA;

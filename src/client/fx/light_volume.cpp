@@ -3,6 +3,7 @@
 
 #include "light_volume.h"
 #include "fx.h"
+#include "renderer.h"
 
 #include "client/client.h"
 #include "client/clientenvironment.h"
@@ -68,7 +69,7 @@ void LightVolume::buildTables(Client *client)
 			ci.src[2] = (u8)((lvl * col.getBlue() + 127) / 255);
 		}
 		// Glass transmits its colour. Clear glass (low saturation) stays white.
-		if (!ci.opaque && resolveSurface(f).kind == SurfaceKind::Glass && !f.tiledef[0].name.empty()) {
+		if (!ci.opaque && detectSurface(f).kind == SurfaceKind::Glass && !f.tiledef[0].name.empty()) {
 			video::SColor avg = tsrc->getTextureAverageColor(f.tiledef[0].name);
 			float r = avg.getRed(), g = avg.getGreen(), b = avg.getBlue();
 			float mx = std::max({r, g, b, 1.f}), mn = std::min({r, g, b});

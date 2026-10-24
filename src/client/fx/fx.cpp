@@ -381,6 +381,8 @@ void updateFrame(Client *client, Camera *camera, Sky *sky, float dtime)
 	if (!r->caps.enabled)
 		return;
 
+	// the solid pass must not see last frame's scene copy as valid
+	r->copy.valid = false;
 	r->updateCamera(client, camera, sky, dtime);
 	if (r->volume)
 		r->volume->update(client, floatToInt(camera->getPosition(), BS), dtime);

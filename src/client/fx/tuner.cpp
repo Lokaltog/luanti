@@ -68,7 +68,9 @@ std::string tunerFormspec(const std::string &status)
 		const int col = (int)i / per_col, r = (int)i % per_col;
 		const float x = 0.4f + col * 8.3f, y = 1.9f + r * row;
 		const float v = g_settings->getFloat(p.setting);
-		os << "label[" << x << "," << (y + 0.25f) << ";" << p.label << " (" << v << ")]"
+		// no value in the label: the form is not rebuilt while dragging (that
+		// would drop the drag), so a number here would go stale
+		os << "label[" << x << "," << (y + 0.25f) << ";" << p.label << "]"
 			<< "scrollbar[" << (x + 4.1f) << "," << y << ";3.8,0.45;horizontal;"
 			<< p.setting << ";" << sliderPos(p, v) << "]";
 	}
@@ -86,27 +88,26 @@ std::string tunerFormspec(const std::string &status)
 bool tunerFields(const std::unordered_map<std::string, std::string> &fields, std::string &status)
 {
 	bool refresh = false;
-	for (const ParamInfo *p : sliders()) {
-		auto it = fields.find(p->setting);
-		if (it == fields.end())
-			continue;
-		const std::string &val = it->second;
-		const bool released = str_starts_with(val, "VAL:");
-		if (!released && !str_starts_with(val, "CHG:"))
-			continue;
-		const int pos = mystoi(val.substr(4));
-		// every event reports every scrollbar: only write the ones that moved,
-		// so values set elsewhere are not snapped to the slider's 1/1000 grid
-		if (pos == sliderPos(*p, g_settings->getFloat(p->setting)))
-			continue;
-		g_settings->setFloat(p->setting, p->min + pos / 1000.f * (p->max - p->min));
-		refresh |= released;
-	}
+	// A mood switch first, applied now, so the rebuilt form shows its values
+	// and no slider below writes the previous mood's value back.
 	if (auto it = fields.find("fx_mood_select"); it != fields.end() &&
 			it->second != g_settings->get("fx_mood")) {
 		g_settings->set("fx_mood", it->second);
+		if (Renderer *r = renderer())
+			r->applyMood(it->second);
 		status = strgettext("Mood applied");
-		refresh = true;
+		return true;
+	}
+	// Every event reports every scrollbar; the one being moved says "CHG:".
+	// The others ("VAL:") are left alone, so values set elsewhere are not
+	// snapped to the slider grid or reverted to a stale position.
+	for (const ParamInfo *p : sliders()) {
+		auto it = fields.find(p->setting);
+		if (it == fields.end() || !str_starts_with(it->second, "CHG:"))
+			continue;
+		const int pos = mystoi(it->second.substr(4));
+		if (pos != sliderPos(*p, g_settings->getFloat(p->setting)))
+			g_settings->setFloat(p->setting, p->min + pos / 1000.f * (p->max - p->min));
 	}
 	if (fields.count("fx_save")) {
 		auto it = fields.find("fx_save_name");

@@ -101,6 +101,10 @@ struct PackTable {
 	std::unordered_map<std::string, PackEntry<T>> textures;  // "foo.png"
 };
 
+/// Surface kind from the pack table and heuristics, whether or not surfaces
+/// are drawn (the light volume tints by glass either way).
+Surface detectSurface(const ContentFeatures &f);
+
 /// Pack-table glob: `*` any run, `?` one character, whole name (test_fx).
 bool packGlobMatch(const std::string &pattern, const std::string &name);
 
