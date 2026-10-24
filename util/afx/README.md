@@ -203,6 +203,35 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
   - All positional, so caves ring them.
 - **Scenarios:** `knock` (driven by xdotool: `AFX_XDO=...`), `music` (stairs, boxes, first-cavern chime, upwind/downwind voices).
 
+## Round 10: reviews, walls, creatures, diving, listening tests
+
+- **Two independent reviews (mod and engine) fixed:**
+  - roof rain muffled by the plank beside it;
+  - a bass-heavy muffle path, not attenuated by distance;
+  - hollow floors 20 dB too loud;
+  - grass rustle clipping;
+  - knocks on tree trunks;
+  - rain sounds inside rooms and walls;
+  - fake gutters;
+  - emitters stuck in place;
+  - jungle floors counted as indoors;
+  - stale per-world state;
+  - a settings race;
+  - an unclean afx off.
+- **Skybridges and short tunnels:**
+  - the open-land reverb tail now needs terrain beyond 3 nodes;
+  - the outdoors through a small opening is the smaller of path loss and the opening's share of rays.
+- **Walls you can hear** (EAX slot 1): see `applyWalls`.
+- **Creatures:**
+  - body-sized mob footsteps (`content_cao.cpp`);
+  - animals startling (`creatures.lua`).
+- **Diving:** `water.lua`, plus `water_depth` in the probe.
+- **Per-place mix:** `place_target()` in init.lua.
+- **Listening regression tests:** `python3 util/afx/listen_check.py [--only NAME] [--keep DIR]`.
+  - It records the scenarios in `listen_bands.json` in the real client, each on its own display and port, so they can run in parallel.
+  - It checks per-segment loudness bands, absolute or relative to another segment, and fails on Lua errors.
+  - Run it before committing mix changes.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.
