@@ -59,6 +59,12 @@ void floodFillRGB(s16 sx, s16 sy, s16 sz, const u16 *content,
 void floodFillRGB(s16 sx, s16 sy, s16 sz, const u16 *content, const u8 *engine,
 		const std::vector<LightCell> &cells, const u8 fallback[3], std::vector<u8> &out);
 
+/// Where daylight came from, traced back through the engine's own day
+/// light levels (`day`: 0..15 per cell): stained glass it passed through
+/// tints it. Writes sx*sy*sz*3 tints (0..255, white = untouched) to `out`.
+void skyTint(s16 sx, s16 sy, s16 sz, const u16 *content, const u8 *day,
+		const std::vector<LightCell> &cells, std::vector<u8> &out);
+
 class LightVolume
 {
 public:
@@ -68,6 +74,8 @@ public:
 	static constexpr s16 ATLAS_COLS = 8;
 	static constexpr u32 ATLAS_W = SX * ATLAS_COLS;
 	static constexpr u32 ATLAS_H = SZ * ((SY + ATLAS_COLS - 1) / ATLAS_COLS);
+	/// the texture: levels in the upper ATLAS_H rows, the sky tint below
+	static constexpr u32 ATLAS_TEX_H = ATLAS_H * 2;
 
 	explicit LightVolume(video::IVideoDriver *driver);
 	~LightVolume();
@@ -117,7 +125,7 @@ private:
 		v3s16 origin;
 		u32 generation = 0;
 		std::vector<u16> content;   // SX*SY*SZ content ids (CONTENT_IGNORE = unknown)
-		std::vector<u8> engine;     // SX*SY*SZ engine night light, 0..15
+		std::vector<u8> engine;     // SX*SY*SZ engine light: night | day << 4
 	};
 
 	void buildTables(Client *client);

@@ -281,7 +281,10 @@ void main(void)
 #if defined(FX_ENABLE) && defined(FX_COLORED_LIGHT)
 	vec3 fxN = dot(inVertexNormal, inVertexNormal) > 0.0 ? normalize(inVertexNormal) : vec3(0.0);
 	vec3 fxLight = fxArtificialLight(worldPosition, fxN, animationTimer * 100.0);
-	color.rgb = color.rgb * (color.a * dayLight.rgb +
+	// the sky light level here: rgb holds max(day, night)/2 when the sun
+	// share (alpha) is there
+	float fxSky = clamp(max(max(color.r, color.g), color.b) * 2.0, 0.0, 1.0) * step(0.001, color.a);
+	color.rgb = color.rgb * (color.a * fxDayLight(dayLight.rgb, worldPosition, fxN, fxSky) +
 		nightRatio * fxLight) * 2.0;
 #ifdef FX_LIGHT_VOLUME
 	color.rgb = max(color.rgb, fxHeldLight() * varFxTint);

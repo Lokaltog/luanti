@@ -30,7 +30,8 @@ flat VARYING_ vec3 vTint;   // linear tint (leaves: x texture), lit
 
 const vec3 VOL_SIZE = vec3(float(FX_VOLUME_SX), float(FX_VOLUME_SY), float(FX_VOLUME_SZ));
 const float VOL_COLS = float(FX_VOLUME_COLS);
-const vec2 VOL_ATLAS = vec2(VOL_SIZE.x * VOL_COLS, VOL_SIZE.z * ceil(VOL_SIZE.y / VOL_COLS));
+// the texture stacks two atlases (levels, then the sky tint): twice as tall
+const vec2 VOL_ATLAS = vec2(VOL_SIZE.x * VOL_COLS, 2.0 * VOL_SIZE.z * ceil(VOL_SIZE.y / VOL_COLS));
 
 // artificial light levels (0..1 = 0..15) at a scene-space position
 vec3 artificialAt(vec3 sp)

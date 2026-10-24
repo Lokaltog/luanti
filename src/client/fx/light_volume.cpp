@@ -117,7 +117,9 @@ bool LightVolume::readBox(Client *client, v3s16 lo, v3s16 hi)
 				}
 				const MapNode n = block->getNodeNoCheck(x - base.X, y - base.Y, z - base.Z);
 				m_content[i] = n.getContent();
-				m_engine[i] = n.getLight(LIGHTBANK_NIGHT, ndef->getLightingFlags(n));
+				// low nibble: night bank (artificial), high: day bank (sun)
+				const ContentLightingFlags lf = ndef->getLightingFlags(n);
+				m_engine[i] = n.getLight(LIGHTBANK_NIGHT, lf) | (n.getLight(LIGHTBANK_DAY, lf) << 4);
 			}
 		}
 	}
@@ -281,11 +283,19 @@ void LightVolume::compute(const Job &job, std::vector<u8> &out)
 		for (int i = 0; i < 3; i++)
 			fallback[i] = (u8)(acc[i] / am * 255.f + 0.5f);
 
+	std::vector<u8> night(VOXELS), day(VOXELS);
+	for (size_t i = 0; i < VOXELS; i++) {
+		night[i] = job.engine[i] & 15;
+		day[i] = job.engine[i] >> 4;
+	}
 	std::vector<u8> lvl;
-	floodFillRGB(SX, SY, SZ, job.content.data(), job.engine.data(), m_info, fallback, lvl);
+	floodFillRGB(SX, SY, SZ, job.content.data(), night.data(), m_info, fallback, lvl);
+	std::vector<u8> sky;
+	skyTint(SX, SY, SZ, job.content.data(), day.data(), m_info, sky);
 
 	// Pack into the atlas: Y slices tiled ATLAS_COLS per row, ARGB8 texels.
-	out.assign((size_t)ATLAS_W * ATLAS_H * 4, 0);
+	// The upper half holds the light levels, the lower half the sky tint.
+	out.assign((size_t)ATLAS_W * ATLAS_TEX_H * 4, 0);
 	u32 *px = reinterpret_cast<u32 *>(out.data());
 	for (s16 y = 0; y < SY; y++) {
 		const u32 tx = (y % ATLAS_COLS) * SX, ty = (y / ATLAS_COLS) * SZ;
@@ -295,6 +305,67 @@ void LightVolume::compute(const Job &job, std::vector<u8> &out)
 			const u32 r = l[0] * 17, g = l[1] * 17, b = l[2] * 17;
 			const u32 a = 0; // alpha: the held light (applyHeld)
 			px[(ty + z) * ATLAS_W + tx + x] = video::SColor(a, r, g, b).color;
+			const u8 *s = &sky[vidx(x, y, z) * 3];
+			px[(ATLAS_H + ty + z) * ATLAS_W + tx + x] = video::SColor(255, s[0], s[1], s[2]).color;
+		}
+	}
+}
+
+void skyTint(s16 sx, s16 sy, s16 sz, const u16 *content, const u8 *day,
+		const std::vector<LightCell> &cells, std::vector<u8> &out)
+{
+	// Follow the engine's own daylight back to where it came from: a node at
+	// level 15 got it straight from above (sunlight falls through anything
+	// that lets it), one at level L < 15 from neighbours at L + 1. Its tint
+	// is theirs, times what its own cell transmits. Light from outside the
+	// window, or with no traceable source, stays white.
+	const size_t n = (size_t)sx * sy * sz;
+	out.assign(n * 3, 255);
+	auto idx = [&] (s16 x, s16 y, s16 z) { return ((size_t)z * sy + y) * sx + x; };
+	auto cell_tint = [&] (size_t i) -> const u8 * {
+		static const u8 white[3] = {255, 255, 255};
+		const u16 c = content[i];
+		return c < cells.size() ? cells[c].tint : white;
+	};
+	// level 15: top down per column
+	for (s16 z = 0; z < sz; z++)
+	for (s16 x = 0; x < sx; x++)
+	for (s16 y = sy - 1; y >= 0; y--) {
+		const size_t i = idx(x, y, z);
+		if (day[i] != 15)
+			continue;
+		const u8 *t = cell_tint(i);
+		const u8 *up = (y + 1 < sy && day[idx(x, y + 1, z)] == 15) ? &out[idx(x, y + 1, z) * 3] : nullptr;
+		for (int ch = 0; ch < 3; ch++)
+			out[i * 3 + ch] = (u8)(((up ? up[ch] : 255) * t[ch] + 127) / 255);
+	}
+	// lower levels, brightest first, so every source is done before its
+	// receivers
+	std::vector<std::vector<u32>> by_level(15);
+	for (size_t i = 0; i < n; i++)
+		if (day[i] > 0 && day[i] < 15)
+			by_level[day[i]].push_back((u32)i);
+	static const int D[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+	for (int L = 14; L >= 1; L--) {
+		for (u32 i : by_level[L]) {
+			const s16 x = i % sx, y = (i / sx) % sy, z = i / ((size_t)sx * sy);
+			u32 acc[3] = {0, 0, 0}, cnt = 0;
+			for (const auto &d : D) {
+				const s16 nx = x + d[0], ny = y + d[1], nz = z + d[2];
+				if (nx < 0 || ny < 0 || nz < 0 || nx >= sx || ny >= sy || nz >= sz)
+					continue;
+				const size_t j = idx(nx, ny, nz);
+				if (day[j] < L + 1)
+					continue;
+				for (int ch = 0; ch < 3; ch++)
+					acc[ch] += out[j * 3 + ch];
+				cnt++;
+			}
+			if (!cnt)
+				continue; // from outside the window: white
+			const u8 *t = cell_tint(i);
+			for (int ch = 0; ch < 3; ch++)
+				out[i * 3 + ch] = (u8)((acc[ch] / cnt * t[ch] + 127) / 255);
 		}
 	}
 }
@@ -331,7 +402,7 @@ void LightVolume::upload(video::IVideoDriver *driver)
 	if (!m_texture) {
 		const bool mip = driver->getTextureCreationFlag(video::ETCF_CREATE_MIP_MAPS);
 		driver->setTextureCreationFlag(video::ETCF_CREATE_MIP_MAPS, false);
-		m_texture = driver->addTexture(core::dimension2du(ATLAS_W, ATLAS_H),
+		m_texture = driver->addTexture(core::dimension2du(ATLAS_W, ATLAS_TEX_H),
 				"fx_light_volume", video::ECF_A8R8G8B8);
 		driver->setTextureCreationFlag(video::ETCF_CREATE_MIP_MAPS, mip);
 		if (!m_texture) {
@@ -355,7 +426,7 @@ void LightVolume::writeTexture()
 	if (!dst)
 		return;
 	const u32 pitch = m_texture->getPitch();
-	for (u32 row = 0; row < ATLAS_H; row++)
+	for (u32 row = 0; row < ATLAS_TEX_H; row++)
 		std::memcpy((u8 *)dst + row * pitch, m_uploaded.data() + (size_t)row * ATLAS_W * 4, ATLAS_W * 4);
 	m_texture->unlock();
 }

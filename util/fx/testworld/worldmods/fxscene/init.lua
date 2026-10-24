@@ -32,6 +32,7 @@ glass("glass_clear", frame)
 glass("glass_fluted", frame)
 glass("glass_frosted", "[fill:16x16:#e0f0ff30^[fill:16x1:0,0:#c8d8e0")
 glass("glass_red", "[fill:16x16:#ff304070")
+glass("glass_blue", "[fill:16x16:#3050ff70")
 
 -- M5 material test blocks (maps in util/fx/testpack)
 for _, name in ipairs({"gold_ore", "gold_block"}) do
@@ -235,6 +236,18 @@ core.register_on_joinplayer(function(player)
 			core.bulk_set_node(dirt, {name = "basenodes:dirt"})
 			core.bulk_set_node(sand, {name = "basenodes:sand"})
 			core.bulk_set_node(water, {name = "basenodes:water_source"})
+			-- a canopy of red and blue stained glass on posts: tinted sunlight
+			for x = 14, 18 do
+				for z = 10, 14 do
+					core.set_node({x = x, y = 3, z = z},
+						{name = z < 12 and "fxscene:glass_red" or "fxscene:glass_blue"})
+				end
+			end
+			for _, c in ipairs({{14, 10}, {18, 10}, {14, 14}, {18, 14}}) do
+				for y = 0, 2 do
+					core.set_node({x = c[1], y = y, z = c[2]}, {name = "basenodes:cobble"})
+				end
+			end
 			-- a spring on the beach: flowing water spreads and runs into the lake
 			core.set_node({x = 18, y = 0, z = -3}, {name = "basenodes:water_source"})
 			player:set_pos({x = 22, y = 2, z = 4})
