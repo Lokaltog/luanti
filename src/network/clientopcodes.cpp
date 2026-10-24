@@ -112,6 +112,18 @@ const ToClientCommandHandler toClientCommandTable[TOCLIENT_NUM_MSG_TYPES] =
 	{ "TOCLIENT_MINIMAP_MODES",            TOCLIENT_STATE_CONNECTED, &Client::handleCommand_MinimapModes }, // 0x62,
 	{ "TOCLIENT_SET_LIGHTING",             TOCLIENT_STATE_CONNECTED, &Client::handleCommand_SetLighting }, // 0x63,
 	{ "TOCLIENT_SPAWN_PARTICLE_BATCH",     TOCLIENT_STATE_CONNECTED, &Client::handleCommand_SpawnParticleBatch }, // 0x64,
+	null_command_handler, // 0x65
+	null_command_handler, // 0x66
+	null_command_handler, // 0x67
+	null_command_handler, // 0x68
+	null_command_handler, // 0x69
+	null_command_handler, // 0x6a
+	null_command_handler, // 0x6b
+	null_command_handler, // 0x6c
+	null_command_handler, // 0x6d
+	null_command_handler, // 0x6e
+	null_command_handler, // 0x6f
+	{ "TOCLIENT_AFX_WORLD",                TOCLIENT_STATE_CONNECTED, &Client::handleCommand_AfxWorld }, // 0x70
 };
 
 const static ServerCommandFactory null_command_factory = { nullptr, 0, false };
@@ -212,4 +224,33 @@ const ServerCommandFactory serverCommandFactoryTable[TOSERVER_NUM_MSG_TYPES] =
 	{ "TOSERVER_SRP_BYTES_A",        1, true }, // 0x51
 	{ "TOSERVER_SRP_BYTES_M",        1, true }, // 0x52
 	{ "TOSERVER_UPDATE_CLIENT_INFO", 2, true }, // 0x53
+	null_command_factory, // 0x54
+	null_command_factory, // 0x55
+	null_command_factory, // 0x56
+	null_command_factory, // 0x57
+	null_command_factory, // 0x58
+	null_command_factory, // 0x59
+	null_command_factory, // 0x5a
+	null_command_factory, // 0x5b
+	null_command_factory, // 0x5c
+	null_command_factory, // 0x5d
+	null_command_factory, // 0x5e
+	null_command_factory, // 0x5f
+	null_command_factory, // 0x60
+	null_command_factory, // 0x61
+	null_command_factory, // 0x62
+	null_command_factory, // 0x63
+	null_command_factory, // 0x64
+	null_command_factory, // 0x65
+	null_command_factory, // 0x66
+	null_command_factory, // 0x67
+	null_command_factory, // 0x68
+	null_command_factory, // 0x69
+	null_command_factory, // 0x6a
+	null_command_factory, // 0x6b
+	null_command_factory, // 0x6c
+	null_command_factory, // 0x6d
+	null_command_factory, // 0x6e
+	null_command_factory, // 0x6f
+	{ "TOSERVER_AFX_STATE",          1, false }, // 0x70
 };

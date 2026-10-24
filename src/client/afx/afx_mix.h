@@ -36,6 +36,7 @@ struct Mix {
 	float neighbor_send = 0.f;// into the next room's reverb
 	float hollow_send = 0.f;  // into the cavity under the floor (footsteps)
 	float remote_send = 0.f;  // into the far space a source sits in (send 5)
+	float air_absorption = 3.f; // positional: AL_AIR_ABSORPTION_FACTOR (distance dulls)
 	bool spatial_bed = false; // outdoor bed: pan toward the opening
 };
 
@@ -93,6 +94,11 @@ void considerRemote(const SourceSpace &s, float reach, v3f dir, const Acoustics 
 /// top of mixFor.
 void carrySpace(Mix &m, const SourceSpace &s, const RemoteSpace &r, const Acoustics &env,
 		const Occlusion &occ, const Params &params);
+
+/// Weather on the way: upwind sounds fall into the wind's shadow (fainter,
+/// duller), downwind and on still nights they carry, rain dulls and masks
+/// the distance. `to_source` is from the listener to the source (nodes).
+void carryWeather(Mix &m, v3f to_source, const Params &params);
 
 /// The build's own voice: every enclosed space has a faint presence (air,
 /// distant settling, the room ringing with nothing), stronger in hard rooms

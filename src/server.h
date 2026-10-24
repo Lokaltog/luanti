@@ -242,6 +242,7 @@ public:
 	void handleCommand_SrpBytesM(NetworkPacket* pkt);
 	void handleCommand_HaveMedia(NetworkPacket *pkt);
 	void handleCommand_UpdateClientInfo(NetworkPacket *pkt);
+	void handleCommand_AfxState(NetworkPacket *pkt);
 
 	void ProcessData(NetworkPacket *pkt);
 
@@ -566,6 +567,10 @@ private:
 	void SendCloudParams(session_t peer_id, const CloudParams &params);
 	void SendOverrideDayNightRatio(session_t peer_id, bool do_override, float ratio);
 	void SendSetLighting(session_t peer_id, const Lighting &lighting);
+public:
+	// afx fork: weather for sound propagation (see TOCLIENT_AFX_WORLD)
+	void SendAfxWorld(session_t peer_id, const std::string &state);
+private:
 
 	void broadcastModChannelMessage(const std::string &channel,
 			const std::string &message, session_t from_peer);

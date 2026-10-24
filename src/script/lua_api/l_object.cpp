@@ -3,6 +3,8 @@
 // Copyright (C) 2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "lua_api/l_object.h"
+#include "porting.h"
+#include <sstream>
 #include <cmath>
 #include <lauxlib.h>
 #include <lua.h>
@@ -1852,6 +1854,49 @@ int ObjectRef::l_get_player_control(lua_State *L)
 }
 
 // get_player_control_bits(self)
+// get_acoustics(self): what the player's client hears where they stand, as
+// last reported (afx fork). nil if the client never reported (a vanilla
+// client, afx off) or the report is older than 5 s.
+int ObjectRef::l_get_acoustics(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	RemotePlayer *player = getplayer(ref);
+	if (!player || player->afx_state_time == 0 ||
+			porting::getTimeMs() - player->afx_state_time > 5000) {
+		lua_pushnil(L);
+		return 1;
+	}
+	lua_createtable(L, 0, player->afx_state.size() + 1);
+	for (const auto &[k, v] : player->afx_state) {
+		lua_pushnumber(L, v);
+		lua_setfield(L, -2, k.c_str());
+	}
+	lua_pushnumber(L, (porting::getTimeMs() - player->afx_state_time) / 1000.0);
+	lua_setfield(L, -2, "age");
+	return 1;
+}
+
+// set_afx_world(self, table): weather around the player for how sound
+// travels. Only sent to afx clients (ones that report their acoustics).
+int ObjectRef::l_set_afx_world(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
+	RemotePlayer *player = getplayer(ref);
+	if (!player || player->afx_state_time == 0 || !lua_istable(L, 2))
+		return 0;
+	std::ostringstream os;
+	lua_pushnil(L);
+	while (lua_next(L, 2) != 0) {
+		if (lua_type(L, -2) == LUA_TSTRING && lua_isnumber(L, -1))
+			os << lua_tostring(L, -2) << "=" << lua_tonumber(L, -1) << " ";
+		lua_pop(L, 1);
+	}
+	getServer(L)->SendAfxWorld(player->getPeerId(), os.str());
+	return 0;
+}
+
 int ObjectRef::l_get_player_control_bits(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
@@ -3152,6 +3197,8 @@ luaL_Reg ObjectRef::methods[] = {
 	luamethod(ObjectRef, get_formspec_prepend),
 	luamethod(ObjectRef, get_player_control),
 	luamethod(ObjectRef, get_player_control_bits),
+	luamethod(ObjectRef, get_acoustics),
+	luamethod(ObjectRef, set_afx_world),
 	luamethod(ObjectRef, set_physics_override),
 	luamethod(ObjectRef, get_physics_override),
 	luamethod(ObjectRef, hud_add),

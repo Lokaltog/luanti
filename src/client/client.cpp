@@ -1536,6 +1536,13 @@ void Client::sendHaveMedia(const std::vector<u32> &tokens)
 	Send(&pkt);
 }
 
+void Client::sendAfxState(const std::string &state)
+{
+	NetworkPacket pkt(TOSERVER_AFX_STATE, 2 + state.size());
+	pkt << state;
+	Send(&pkt);
+}
+
 void Client::sendUpdateClientInfo(const ClientDynamicInfo& info)
 {
 	NetworkPacket pkt(TOSERVER_UPDATE_CLIENT_INFO, 4*2 + 4 + 4 + 4*2);

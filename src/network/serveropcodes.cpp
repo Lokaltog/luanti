@@ -95,6 +95,35 @@ const ToServerCommandHandler toServerCommandTable[TOSERVER_NUM_MSG_TYPES] =
 	{ "TOSERVER_SRP_BYTES_A",              TOSERVER_STATE_NOT_CONNECTED, &Server::handleCommand_SrpBytesA }, // 0x51
 	{ "TOSERVER_SRP_BYTES_M",              TOSERVER_STATE_NOT_CONNECTED, &Server::handleCommand_SrpBytesM }, // 0x52
 	{ "TOSERVER_UPDATE_CLIENT_INFO",       TOSERVER_STATE_INGAME, &Server::handleCommand_UpdateClientInfo }, // 0x53
+	null_command_handler, // 0x54
+	null_command_handler, // 0x55
+	null_command_handler, // 0x56
+	null_command_handler, // 0x57
+	null_command_handler, // 0x58
+	null_command_handler, // 0x59
+	null_command_handler, // 0x5a
+	null_command_handler, // 0x5b
+	null_command_handler, // 0x5c
+	null_command_handler, // 0x5d
+	null_command_handler, // 0x5e
+	null_command_handler, // 0x5f
+	null_command_handler, // 0x60
+	null_command_handler, // 0x61
+	null_command_handler, // 0x62
+	null_command_handler, // 0x63
+	null_command_handler, // 0x64
+	null_command_handler, // 0x65
+	null_command_handler, // 0x66
+	null_command_handler, // 0x67
+	null_command_handler, // 0x68
+	null_command_handler, // 0x69
+	null_command_handler, // 0x6a
+	null_command_handler, // 0x6b
+	null_command_handler, // 0x6c
+	null_command_handler, // 0x6d
+	null_command_handler, // 0x6e
+	null_command_handler, // 0x6f
+	{ "TOSERVER_AFX_STATE",                TOSERVER_STATE_INGAME, &Server::handleCommand_AfxState }, // 0x70
 };
 
 const static ClientCommandFactory null_command_factory = { nullptr, 0, false };
@@ -213,4 +242,16 @@ const ClientCommandFactory clientCommandFactoryTable[TOCLIENT_NUM_MSG_TYPES] =
 	{ "TOCLIENT_MINIMAP_MODES",            0, true }, // 0x62
 	{ "TOCLIENT_SET_LIGHTING",             0, true }, // 0x63
 	{ "TOCLIENT_SPAWN_PARTICLE_BATCH",     0, true }, // 0x64
+	null_command_factory, // 0x65
+	null_command_factory, // 0x66
+	null_command_factory, // 0x67
+	null_command_factory, // 0x68
+	null_command_factory, // 0x69
+	null_command_factory, // 0x6a
+	null_command_factory, // 0x6b
+	null_command_factory, // 0x6c
+	null_command_factory, // 0x6d
+	null_command_factory, // 0x6e
+	null_command_factory, // 0x6f
+	{ "TOCLIENT_AFX_WORLD",                0, false }, // 0x70
 };

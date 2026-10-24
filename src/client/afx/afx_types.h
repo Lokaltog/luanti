@@ -124,6 +124,12 @@ struct Params {
 	bool score_replaces_music = true; // afx_score_replaces_music
 	float roomtone = 1.0f;       // afx_roomtone, the room's own faint presence
 	float source_space = 1.0f;   // afx_source_space, sounds carry their own surroundings
+	bool hrtf = false;           // afx_hrtf, 3D sound for headphones
+	// Weather, from the server mod (not settings)
+	v3f wind_dir;                // node space, horizontal unit (toward where it blows)
+	float wind = 0.f;            // 0 calm .. ~1.6 gale
+	float rain = 0.f;            // 0..1
+	float night = 0.f;           // 0..1 (from the client's time of day)
 	bool debug = false;          // afx_debug
 	// Bus routing by sound name, comma-separated globs (see afx_mix.h)
 	std::string dry_sounds =     // afx_dry_sounds
@@ -183,6 +189,10 @@ struct Acoustics {
 
 	// Floor under your feet: 1 = planks over empty space (boomy footsteps)
 	float hollow = 0.f;
+
+	// What the surfaces are: 1 = rock, earth, snow (a cave, a hillside),
+	// 0 = built (planks, glass, wool)
+	float natural = 0.f;
 
 	// Set by the sound thread at mix time, not by the probe
 	float duck = 0.f;    // 0..1, ambience dips under a loud event

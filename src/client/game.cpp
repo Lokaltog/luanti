@@ -2792,6 +2792,7 @@ void Game::processPlayerInteraction(f32 dtime, bool show_hud)
 	runData.punching = false;
 
 	soundmaker->m_player_leftpunch_sound = SoundSpec();
+	soundmaker->m_afx_knock = SoundSpec();
 	soundmaker->m_player_leftpunch_sound2 = pointed.type != POINTEDTHING_NOTHING ?
 		selected_def.sound_use : selected_def.sound_use_air;
 
@@ -3335,6 +3336,13 @@ void Game::handleDigging(const PointedThing &pointed, const v3s16 &nodepos,
 	}
 
 	const auto &sound_dig = features.sound_dig;
+
+	{
+		// afx: a wall with a cave behind it sounds hollow (diggable or not)
+		const v3s16 face = pointed.node_abovesurface - pointed.node_undersurface;
+		soundmaker->m_afx_knock = afx::knockSound(client, nodepos, face);
+		soundmaker->m_afx_knock_pos = intToFloat(nodepos, 1.0f) + intToFloat(face, 0.5f);
+	}
 
 	if (sound_dig.exists() && params.diggable) {
 		if (sound_dig.name == "__group") {

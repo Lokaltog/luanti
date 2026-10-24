@@ -71,6 +71,10 @@ if [ "${USE_XVFB:-0}" = 1 ]; then
 fi
 
 LOG=$OUT/$SCEN.log
+# AFX_XDO="sleep 20; xdotool mousedown 1; ...": drive the client's input (Xvfb)
+if [ -n "${AFX_XDO:-}" ]; then
+	(sh -c "$AFX_XDO") &
+fi
 ALSOFT_CONF="$WORK/alsoft.conf" timeout ${TOUR_TIMEOUT:-300} "$ROOT/bin/luanti" --config "$CONF" \
 	--go --info --world "$WORK/world" --name tester --password "" >"$LOG" 2>&1 || true
 

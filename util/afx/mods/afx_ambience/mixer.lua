@@ -39,8 +39,10 @@ local function formspec()
 	local rows = {}
 	local y = 1.2
 	rows[#rows + 1] = "label[0.4,0.6;" .. F("Engine (applies live)") .. "]"
-	rows[#rows + 1] = ("checkbox[8.2,0.45;afx_enable;%s;%s]"):format(F("Environmental audio on"),
+	rows[#rows + 1] = ("checkbox[5.2,0.45;afx_enable;%s;%s]"):format(F("Environmental audio on"),
 		tostring(core.settings:get_bool("afx_enable") ~= false))
+	rows[#rows + 1] = ("checkbox[8.9,0.45;afx_hrtf;%s;%s]"):format(F("Headphones (3D)"),
+		tostring(core.settings:get_bool("afx_hrtf") == true))
 	for _, e in ipairs(ENGINE) do
 		rows[#rows + 1] = slider(y, "e_" .. e[1], e[2], get(e[1], e[4]), e[3])
 		y = y + 0.6
@@ -86,7 +88,7 @@ core.register_on_player_receive_fields(function(player, formname, fields)
 			end
 		end
 	end
-	for _, key in ipairs({"afx_enable", "afx_ambience_follower", "afx_ambience_treasure"}) do
+	for _, key in ipairs({"afx_enable", "afx_hrtf", "afx_ambience_follower", "afx_ambience_treasure"}) do
 		if fields[key] then core.settings:set_bool(key, fields[key] == "true") end
 	end
 	if fields.quit or fields.close then
@@ -112,6 +114,22 @@ core.register_chatcommand("afx_report", {
 			add(("mod %-14s %s"):format(m, core.get_modpath(m) and "yes" or "-"))
 		end
 		if player then
+			local h = player.get_acoustics and player:get_acoustics()
+			if h then
+				local ks = {}
+				for k, val in pairs(h) do ks[#ks + 1] = ("%s=%.3g"):format(k, val) end
+				table.sort(ks)
+				add("engine hears: " .. table.concat(ks, " "))
+			else
+				add("engine hears: (no report: vanilla client or afx off)")
+			end
+			local ctx = {player = player, daylight = (core.get_natural_light or core.get_node_light)(
+					vector.round(vector.offset(player:get_pos(), 0, 1.6, 0)), 0.5) or 0,
+				under_sky = A.lib.sky_open(vector.round(vector.offset(player:get_pos(), 0, 1.6, 0)))}
+			A.where(ctx)
+			add(("so: under_sky=%s exposure=%.2f through=%.3f underground=%s indoors=%s"):format(
+				tostring(ctx.under_sky), ctx.exposure, ctx.through, tostring(ctx.underground),
+				tostring(ctx.indoors)))
 			local pos = player:get_pos()
 			local bd = core.get_biome_data(pos)
 			add("biome here: " .. (bd and core.get_biome_name(bd.biome) or "?"))

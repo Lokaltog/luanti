@@ -457,6 +457,7 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 	float sum_d = 0;
 	float sum_abs = 0, hit_abs = 0, hit_hf = 0, glass = 0;
 	float hit_d = 0;
+	float natural = 0;
 	std::vector<float> hit_dists;
 	v3f pan;
 	float pan_w = 0;
@@ -471,6 +472,9 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 			sum_abs += mp.absorption;
 			hit_abs += mp.absorption;
 			hit_hf += mp.hf;
+			if (r.mat == Material::Stone || r.mat == Material::Earth ||
+					r.mat == Material::Snow || r.mat == Material::Lava || r.mat == Material::Water)
+				natural += 1;
 			hit_d += d;
 			hit_dists.push_back(d);
 			if (r.mat == Material::Glass)
@@ -498,6 +502,7 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 	out.enclosure = clampf((enclosed_w / n - 0.5f) * 2.f, 0.f, 1.f);
 	out.mean_free_path = sum_d / n;
 	out.absorption = avg_abs;
+	out.natural = hits > 0 ? natural / hits : 0.f;
 	out.hf = hit_hf_avg;
 
 	// Sabine: RT60 = 0.161 V / (S a). Treating the rays as samples of a

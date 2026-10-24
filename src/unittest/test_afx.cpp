@@ -13,6 +13,7 @@
 #include <random>
 #include <cstring>
 #include "afx_worlds.h"
+#include "client/afx/afx_knock.h"
 
 #include <cmath>
 
@@ -48,6 +49,8 @@ public:
 	void testRoomTone();
 	void testSourceSpace();
 	void testBuriedSilent();
+	void testKnock();
+	void testWeather();
 };
 
 static TestAfx g_test_instance;
@@ -73,6 +76,8 @@ void TestAfx::runTests(IGameDef *gamedef)
 	TEST(testRoomTone);
 	TEST(testSourceSpace);
 	TEST(testBuriedSilent);
+	TEST(testKnock);
+	TEST(testWeather);
 }
 
 void TestAfx::testOpenField()
@@ -568,4 +573,69 @@ void TestAfx::testBuriedSilent()
 	const Mix mh = mixFor(Bus::World, hut.probe(in), occlusion(hut.snap, in, out), p);
 	UASSERT(mh.direct_gain < 0.05f);
 	UASSERT(mh.muffle_send > 0.005f && mh.muffle_send < 0.2f);
+}
+
+void TestAfx::testKnock()
+{
+	// The player in a tunnel along x, facing a stone wall to the north (+z).
+	// Behind it, two nodes in, a cave.
+	World w;
+	w.fill({-32, -32, -32}, {31, 31, 31}, Material::Stone);
+	w.fill({-6, 0, -1}, {6, 2, 1}, Material::Air);        // the tunnel
+	auto open = [&](v3s16 p) { return cellMaterial(w.snap.at(p)) == Material::Air &&
+			!(w.snap.at(p) & CELL_UNLOADED); };
+	const v3s16 wall(0, 1, 2), into(0, 0, 1);
+	Knock solid = knockProbe(open, wall, into);
+	UASSERT(solid.depth == 0 && solid.hollow == 0.f);
+
+	w.fill({-4, -2, 4}, {4, 4, 10}, Material::Air);       // a cave behind
+	Knock cave = knockProbe(open, wall, into);
+	UASSERT(cave.depth == 2);
+	UASSERT(cave.hollow > 0.6f);
+	UASSERT(cave.pitch < 1.f);
+
+	// Further in, fainter; five nodes of rock and it's lost
+	World deep = w;
+	deep.fill({-4, -2, 3}, {4, 4, 5}, Material::Stone);
+	Knock far = knockProbe([&](v3s16 p) { return cellMaterial(deep.snap.at(p)) == Material::Air &&
+			!(deep.snap.at(p) & CELL_UNLOADED); }, wall, into);
+	UASSERT(far.depth == 4);
+	UASSERT(far.hollow < cave.hollow * 0.6f);
+
+	// A pillar in the room: the air behind it is the room itself
+	World room;
+	room.fill({-32, -32, -32}, {31, 31, 31}, Material::Stone);
+	room.fill({-5, 0, -5}, {5, 3, 5}, Material::Air);
+	room.fill({0, 0, 0}, {0, 3, 0}, Material::Stone);
+	Knock pillar = knockProbe([&](v3s16 p) { return cellMaterial(room.snap.at(p)) == Material::Air &&
+			!(room.snap.at(p) & CELL_UNLOADED); }, v3s16(0, 1, 0), v3s16(0, 0, 1));
+	UASSERT(pillar.depth == 1);
+	UASSERT(pillar.hollow < 0.35f);
+}
+
+void TestAfx::testWeather()
+{
+	Params p;
+	p.wind = 1.4f;
+	p.wind_dir = v3f(1, 0, 0); // blowing east
+	Mix up, down, near, calm;
+	// a source 40 nodes east: its sound travels west, into the wind
+	carryWeather(up, v3f(40, 0, 0), p);
+	// a source 40 nodes west: the wind carries it to us
+	carryWeather(down, v3f(-40, 0, 0), p);
+	carryWeather(near, v3f(4, 0, 0), p);
+	UASSERT(up.direct_gain < 0.6f && up.direct_hf < 0.6f);
+	UASSERT(down.direct_gain == 1.f);
+	UASSERT(down.air_absorption < up.air_absorption);
+	UASSERT(near.direct_gain == 1.f); // close by, the wind doesn't matter
+	// still nights carry, rain dulls
+	Params night;
+	night.night = 1.f;
+	carryWeather(calm, v3f(30, 0, 0), night);
+	UASSERT(calm.air_absorption < 3.f);
+	Params rain;
+	rain.rain = 1.f;
+	Mix wet;
+	carryWeather(wet, v3f(30, 0, 0), rain);
+	UASSERT(wet.air_absorption > 3.f && wet.direct_gain < 1.f);
 }

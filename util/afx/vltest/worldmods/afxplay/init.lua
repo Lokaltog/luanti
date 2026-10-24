@@ -139,8 +139,21 @@ local function house(c)
 	end end end
 end
 
+local function where_log()
+	local pl = P()
+	local ear = vector.round(vector.offset(pl:get_pos(), 0, 1.6, 0))
+	local ctx = {player = pl, daylight = core.get_natural_light(ear, 0.5) or 0,
+		under_sky = afx_ambience.lib.sky_open(ear)}
+	afx_ambience.where(ctx)
+	local h = ctx.hearing
+	say(("where: hearing=%s sky=%s exposure=%.2f through=%.3f underground=%s indoors=%s encl=%s"):format(
+		tostring(h ~= nil), tostring(ctx.under_sky), ctx.exposure, ctx.through,
+		tostring(ctx.underground), tostring(ctx.indoors), h and ("%.2f"):format(h.enclosure) or "-"))
+end
+
 local function muffle_tour()
 	say("start")
+	for i = 1, 6 do core.after(12 + 20 * (i - 1), where_log) end
 	local f = SPOTS.forest
 	run({
 		{log = "forest floor, outdoors", wait = 20, fn = function()

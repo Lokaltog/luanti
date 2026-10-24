@@ -13,6 +13,11 @@
 #include "util/tracy_wrapper.h"
 
 #include <chrono>
+#if __has_include(<AL/alext.h>)
+	#include <AL/alext.h>
+#elif __has_include(<alext.h>)
+	#include <alext.h>
+#endif
 
 namespace sound {
 
@@ -31,6 +36,8 @@ void OpenALSoundManager::setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> 
 		alDopplerFactor(std::max(0.0f, params.doppler));
 		m_afx_doppler_set = true;
 	}
+	if (params.hrtf != (m_hrtf_set == 1) && (params.hrtf || m_hrtf_set == 1))
+		applyHrtf(params.hrtf);
 	m_afx_params = params;
 	if (rules_changed)
 		m_bus_rules = afx::BusRules::fromParams(params);
@@ -72,6 +79,33 @@ void OpenALSoundManager::setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> 
 		}
 		m_efx->applyEnvironment(m_afx_smoother.current(), m_listener_frame);
 	}
+}
+
+void OpenALSoundManager::applyHrtf(bool on)
+{
+	m_hrtf_set = on ? 1 : 0;
+#if defined(ALC_HRTF_SOFT)
+	if (!alcIsExtensionPresent(m_device, "ALC_SOFT_HRTF")) {
+		warningstream << "afx: no HRTF support in this OpenAL" << std::endl;
+		return;
+	}
+	auto reset = reinterpret_cast<LPALCRESETDEVICESOFT>(
+			alcGetProcAddress(m_device, "alcResetDeviceSOFT"));
+	if (!reset)
+		return;
+	// Keep the aux sends the context was made with
+	const ALCint attrs[] = {ALC_MAX_AUXILIARY_SENDS, 6, ALC_HRTF_SOFT, on ? ALC_TRUE : ALC_FALSE, 0};
+	if (!reset(m_device, attrs)) {
+		warningstream << "afx: resetting the device for HRTF failed" << std::endl;
+		return;
+	}
+	ALCint status = 0;
+	alcGetIntegerv(m_device, ALC_HRTF_STATUS_SOFT, 1, &status);
+	infostream << "afx: HRTF " << (on ? "requested" : "off") << ", status " << status
+			<< (status == ALC_HRTF_ENABLED_SOFT ? " (enabled)" :
+				status == ALC_HRTF_UNSUPPORTED_FORMAT_SOFT ? " (needs stereo output)" : "")
+			<< std::endl;
+#endif
 }
 
 void OpenALSoundManager::deactivateAcoustics()
@@ -175,8 +209,15 @@ void OpenALSoundManager::applyMix(PlayingSound &snd)
 	env.deafen = m_deafen;
 	afx::Mix mix = afx::mixFor(snd.getBus(), env, snd.getOcclusion(), m_afx_params,
 			snd.isFootstep());
-	if (snd.getBus() == afx::Bus::World)
+	if (snd.getBus() == afx::Bus::World) {
 		afx::carrySpace(mix, snd.getSpace(), m_remote, env, snd.getOcclusion(), m_afx_params);
+		if (snd.isPositional()) {
+			// heard from where the sound comes in (around a corner: the opening)
+			const afx::Occlusion &o = snd.getOcclusion();
+			const v3f from = o.path > 0.5f ? o.virt_pos : snd.getPosNode();
+			afx::carryWeather(mix, from - m_listener_pos_node, m_afx_params);
+		}
+	}
 	if (snd.getBus() == afx::Bus::Dry)
 		m_efx->clearSource(snd.getSourceId());
 	else
@@ -348,14 +389,20 @@ void OpenALSoundManager::stepAcoustics(f32 dtime)
 					continue;
 				afx::Mix mix = afx::mixFor(snd->getBus(), env, snd->getOcclusion(), m_afx_params,
 						snd->isFootstep());
-				if (snd->getBus() == afx::Bus::World)
+				if (snd->getBus() == afx::Bus::World) {
 					afx::carrySpace(mix, snd->getSpace(), m_remote, env, snd->getOcclusion(),
 							m_afx_params);
+					if (snd->isPositional())
+						afx::carryWeather(mix, snd->getPosNode() - m_listener_pos_node, m_afx_params);
+				}
 				infostream << "afx mix " << snd->getLoggingName() << " " << afx::busName(snd->getBus())
 						<< " gain " << g << " direct " << mix.direct_gain << " hf " << mix.direct_hf
 						<< " muffle " << mix.muffle_send << " rev " << mix.reverb_send
-						<< " remote " << mix.remote_send << std::endl;
+						<< " remote " << mix.remote_send << " air " << mix.air_absorption << std::endl;
 			}
+			infostream << "afx weather wind " << m_afx_params.wind << " dir " << m_afx_params.wind_dir.X
+					<< "," << m_afx_params.wind_dir.Z << " rain " << m_afx_params.rain
+					<< " night " << m_afx_params.night << std::endl;
 			infostream << "afx remote level " << m_remote.level << " decay " << m_remote.decay
 					<< " | roomtone " << (m_roomtone ? m_roomtone->getGain() : 0.0f) << std::endl;
 		}

@@ -48,6 +48,8 @@ void SoundMaker::cameraPunchLeft(MtEvent *e, void *data)
 	SoundMaker *sm = static_cast<SoundMaker*>(data);
 	sm->m_sound->playSound(0, sm->m_player_leftpunch_sound);
 	sm->m_sound->playSound(0, sm->m_player_leftpunch_sound2);
+	if (sm->m_afx_knock.exists())
+		sm->m_sound->playSoundAt(0, sm->m_afx_knock, sm->m_afx_knock_pos, v3f(0.0f));
 }
 
 void SoundMaker::cameraPunchRight(MtEvent *e, void *data)

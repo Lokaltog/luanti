@@ -302,7 +302,7 @@ cools in the evening and when the wind leans on it. (The engine gives every
 room its own faint tone; this is the timber talking.) ]]
 
 A.register_layer(function(ctx, wanted)
-	if ctx.under_sky or ctx.underground or ctx.dimension ~= "overworld" then return end
+	if not ctx.indoors or ctx.dimension ~= "overworld" then return end
 	local st = ctx.st
 	if ctx.now < (st.next_timber or ctx.now) then return end
 	if not st.next_timber then

@@ -214,6 +214,7 @@ public:
 	void handleCommand_MediaPush(NetworkPacket *pkt);
 	void handleCommand_MinimapModes(NetworkPacket *pkt);
 	void handleCommand_SetLighting(NetworkPacket *pkt);
+	void handleCommand_AfxWorld(NetworkPacket *pkt);
 	void handleCommand_Camera(NetworkPacket* pkt);
 
 	void ProcessData(NetworkPacket *pkt);
@@ -236,6 +237,8 @@ public:
 	void sendReady();
 	void sendHaveMedia(const std::vector<u32> &tokens);
 	void sendUpdateClientInfo(const ClientDynamicInfo &info);
+	/// afx fork: what the player hears where they stand, for server mods
+	void sendAfxState(const std::string &state);
 
 	ClientEnvironment& getEnv() { return m_env; }
 	ITextureSource *tsrc() { return getTextureSource(); }

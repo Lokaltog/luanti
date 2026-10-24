@@ -96,6 +96,7 @@ public:
 		glide(c.neighbor_hf_ratio, t.neighbor_hf_ratio, 0.8f, 0.8f);
 		glide_dir(c.neighbor_dir, t.neighbor_dir, 0.4f);
 		glide(c.hollow, t.hollow, 0.15f, 0.15f);
+		glide(c.natural, t.natural, 0.8f, 0.8f);
 
 		c.underwater = t.underwater;
 		c.in_lava = t.in_lava;

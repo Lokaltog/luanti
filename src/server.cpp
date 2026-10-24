@@ -2037,6 +2037,13 @@ void Server::SendOverrideDayNightRatio(session_t peer_id, bool do_override,
 	Send(&pkt);
 }
 
+void Server::SendAfxWorld(session_t peer_id, const std::string &state)
+{
+	NetworkPacket pkt(TOCLIENT_AFX_WORLD, 2 + state.size(), peer_id);
+	pkt << state;
+	Send(&pkt);
+}
+
 void Server::SendSetLighting(session_t peer_id, const Lighting &lighting)
 {
 	NetworkPacket pkt(TOCLIENT_SET_LIGHTING, 70, peer_id);

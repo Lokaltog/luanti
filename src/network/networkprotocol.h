@@ -713,7 +713,16 @@ enum ToClientCommand : u16
 			u8[len] serialized ParticleParameters
 	*/
 
-	TOCLIENT_NUM_MSG_TYPES = 0x65,
+	TOCLIENT_AFX_WORLD = 0x70,
+	/*
+		afx fork: what the server knows of the weather around the player, for
+		how sound travels (wind carries it, rain dulls it). Sent only to
+		clients that reported TOSERVER_AFX_STATE.
+
+		std::string state   "key=value ..." (floats): wind_x wind_z wind rain
+	*/
+
+	TOCLIENT_NUM_MSG_TYPES = 0x71,
 };
 
 enum ToServerCommand : u16
@@ -923,7 +932,17 @@ enum ToServerCommand : u16
 		v2f32 max_fs_info
 	*/
 
-	TOSERVER_NUM_MSG_TYPES = 0x54,
+	TOSERVER_AFX_STATE = 0x70,
+	/*
+		afx fork: the client's acoustic picture of where the player stands,
+		so server mods agree with what the player hears (indoors, a cave,
+		under water...). Far from upstream's numbers; vanilla servers ignore
+		unknown commands.
+
+		std::string state   "key=value key=value ..." (floats)
+	*/
+
+	TOSERVER_NUM_MSG_TYPES = 0x71,
 };
 
 enum AuthMechanism

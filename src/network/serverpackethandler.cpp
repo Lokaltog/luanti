@@ -4,6 +4,8 @@
 
 #include "chatmessage.h"
 #include "server.h"
+#include <sstream>
+#include <cmath>
 #include "serverenvironment.h"
 #include "log.h"
 #include "emerge.h"
@@ -1772,6 +1774,29 @@ void Server::handleCommand_HaveMedia(NetworkPacket *pkt)
 				getScriptIface()->on_dynamic_media_added(token, player->getName());
 		}
 	}
+}
+
+void Server::handleCommand_AfxState(NetworkPacket *pkt)
+{
+	std::string state;
+	*pkt >> state;
+	RemotePlayer *player = m_env->getPlayer(pkt->getPeerId());
+	if (!player)
+		return;
+	// "key=value key=value": tolerant of keys it doesn't know, either way
+	std::unordered_map<std::string, float> values;
+	std::istringstream is(state);
+	std::string kv;
+	while (is >> kv && values.size() < 64) {
+		const size_t eq = kv.find('=');
+		if (eq == std::string::npos || eq == 0 || eq > 32)
+			continue;
+		const float v = (float)std::atof(kv.c_str() + eq + 1);
+		if (std::isfinite(v))
+			values[kv.substr(0, eq)] = v;
+	}
+	player->afx_state = std::move(values);
+	player->afx_state_time = porting::getTimeMs();
 }
 
 void Server::handleCommand_UpdateClientInfo(NetworkPacket *pkt)

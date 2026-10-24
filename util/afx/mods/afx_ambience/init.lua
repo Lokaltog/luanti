@@ -49,6 +49,7 @@ local LAYERS = {
 	{"chimes", "Wind chimes, bells"},
 	{"heart", "Heartbeat"},
 	{"drafts", "Drafts"},
+	{"music", "Note stones, music boxes, discovery chimes"},
 }
 afx_ambience.LAYERS = LAYERS
 
@@ -74,6 +75,7 @@ local CATEGORY = {
 	{"^afx_bowl", "chimes"}, {"^mcl_bells", "chimes"},
 	{"^afx_dry_heart", "heart"},
 	{"^afx_draft", "drafts"},
+	{"^afx_note_", "music"}, {"^afx_dry_score_", "music"},
 	{"^afx_dry_rush", "body"}, {"^afx_leaf_rustle", "body"}, {"^afx_dry_tick", "body"},
 	{"^afx_dry_seashell", "body"},
 }
@@ -480,16 +482,14 @@ local function bed_targets(ctx, wanted)
 	local tod = core.get_timeofday()
 	local day = math.max(0, math.min(1, (0.32 - math.abs(tod - 0.5)) / 0.05))
 	local night = 1 - day
-	-- Where daylight never reaches, none of this would be audible: free the
-	-- voices (the engine would muffle them to nothing anyway)
-	local ear = vector.round(vector.offset(ppos, 0, 1.6, 0))
-	-- sunlight only: a torch-lit cave is still a cave
-	local dl = core.get_natural_light and core.get_natural_light(ear, 0.5) or
-			core.get_node_light(ear, 0.5)
-	if dl and dl <= 3 and not ctx.under_sky then
+	-- Where nothing from outside would be heard, free the voices
+	if ctx.hearing then
+		-- the engine says nothing from outside reaches this spot
+		if ctx.exposure < 0.005 and ctx.through < 0.003 then return end
+	elseif ctx.underground then
 		return
 	end
-	local p = place(ppos, ctx.under_sky or (dl or 0) >= 8)
+	local p = place(ppos, ctx.under_sky or ctx.exposure > 0.3)
 	-- Higher and more exposed is windier; floating islands howl
 	local height = math.max(0, math.min(1, (ppos.y - 40) / 60))
 	local calm_birds = (raining > 0 or snowing > 0) and 0 or (ctx.birds_back or 1)
@@ -709,7 +709,7 @@ end
 
 local modpath = core.get_modpath(core.get_current_modname())
 for _, f in ipairs({"mixer.lua", "weather.lua", "water.lua", "life.lua", "places.lua", "body.lua",
-		"cinema.lua"}) do
+		"cinema.lua", "music.lua"}) do
 	dofile(modpath .. "/" .. f)
 end
 
@@ -717,6 +717,38 @@ end
 
 local timer, tick_timer = 0, 0
 local SCAN, TICK = 1.0, 0.2
+
+--[[ Where the player is. The afx engine reports what the player actually
+hears (player:get_acoustics(): the voxel probe's enclosure, the path to
+the sky, under water...), so this mod and the engine agree. Without it (a
+vanilla client) light levels stand in. Fields:
+  ctx.under_sky    open sky right above
+  ctx.exposure     0..1 how much of the outdoors reaches the ear through air
+  ctx.through      0..1 how much reaches it through walls
+  ctx.underground  a cave: dark, enclosed, cut off, not a home
+  ctx.indoors      a built room (or a lit cellar): enclosed, not a cave
+  ctx.hearing      the raw engine report, or nil ]]
+
+local function where(ctx)
+	local h = ctx.player.get_acoustics and ctx.player:get_acoustics()
+	ctx.hearing = h
+	if h then
+		ctx.under_sky = (h.sky or 0) > 0.5
+		ctx.exposure = h.outdoor or 0
+		ctx.through = h.wall or 0
+		-- a cave is rock around you; a dark plank room is not
+		ctx.underground = not ctx.under_sky and ctx.daylight <= 3 and ctx.exposure < 0.15 and
+				(h.homey or 0) < 2 and (h.natural or 1) > 0.55
+		ctx.indoors = not ctx.under_sky and not ctx.underground and (h.enclosure or 0) > 0.5
+		ctx.underwater = (h.underwater or 0) > 0.5
+	else
+		ctx.exposure = ctx.under_sky and 1 or math.max(0, (ctx.daylight - 3) / 12)
+		ctx.through = 0
+		ctx.underground = ctx.daylight <= 3 and not ctx.under_sky
+		ctx.indoors = not ctx.under_sky and not ctx.underground
+	end
+end
+afx_ambience.where = where
 
 core.register_globalstep(function(dtime)
 	tick_timer = tick_timer + dtime
@@ -744,7 +776,7 @@ core.register_globalstep(function(dtime)
 			dimension = dimension(ppos), under_sky = sky_open(ear),
 			daylight = (core.get_natural_light or core.get_node_light)(ear, 0.5) or 0,
 		}
-		ctx.underground = ctx.daylight <= 3 and not ctx.under_sky
+		where(ctx)
 		local wanted = {}
 		for _, fn in ipairs(layers) do fn(ctx, wanted) end
 		if CFG.rain_surfaces and ctx.rain > 0 then
@@ -761,7 +793,10 @@ core.register_globalstep(function(dtime)
 		end
 		underwater_bed(player, wanted)
 		reconcile(pname, st, wanted)
-		if not ctx.underground then maybe_bird(pname, st, ppos, now, ctx.rain + ctx.snow) end
+		-- birds only where any of them would be heard
+		if not ctx.underground and ctx.exposure + ctx.through > 0.03 then
+			maybe_bird(pname, st, ppos, now, ctx.rain + ctx.snow)
+		end
 		maybe_drip(pname, st, ppos, now)
 	end
 end)

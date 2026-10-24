@@ -6,6 +6,8 @@
 #pragma once
 
 #include <ctime>
+#include <string>
+#include <unordered_map>
 #include "constants.h" // PEER_ID_INEXISTENT
 #include "player.h"
 #include "skyparams.h"
@@ -30,6 +32,10 @@ class RemotePlayer : public Player
 
 public:
 	RemotePlayer(const std::string &name, IItemDefManager *idef);
+
+	// afx fork: the client's acoustic picture (see TOSERVER_AFX_STATE)
+	std::unordered_map<std::string, float> afx_state;
+	u64 afx_state_time = 0; // porting::getTimeMs(), 0 = never
 	virtual ~RemotePlayer();
 
 	PlayerSAO *getPlayerSAO() { return m_sao; }

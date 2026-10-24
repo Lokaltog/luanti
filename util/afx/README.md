@@ -179,6 +179,30 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
   - Scenario: `voices`.
 - With `afx_debug`, the log shows each new sound's occlusion and mix, every loop's mix every 2 s, and the remote slot and room tone levels.
 
+## Round 9: one truth for "where am I", HRTF, knocks, wind, music
+
+- **Shared state.** The client sends what it hears to the server twice a second (`TOSERVER_AFX_STATE`, 0x70). The payload is a `key=value` string: enclosure, outdoor (the open path), wall, sky, wet, decay, mfp, absorption, natural (rock/earth share of the surfaces), hollow, underwater, tension, cozy, homey.
+  - Lua reads it with `player:get_acoustics()`: a table, or nil for vanilla clients or a report older than 5 s.
+  - afx_ambience derives `ctx.under_sky / exposure / through / underground / indoors` from it in `where()`, and falls back to light levels without it.
+  - Outdoor beds stop when nothing from outside reaches the ear. Birds only spawn where they'd be heard.
+  - A dark plank room is "indoors", not a cave (the `natural` share decides).
+  - The packet numbers sit far from upstream's, and vanilla peers ignore unknown commands.
+- **Weather back to the client** (`TOCLIENT_AFX_WORLD`, 0x70). `player:set_afx_world({wind_x, wind_z, wind, rain})` is sent only to afx clients. The mod sends its gust model and a slowly veering wind direction.
+  - In the engine (`carryWeather`), sounds more than 8 nodes away fall into the wind's shadow upwind: up to -65 % direct, duller.
+  - They carry further downwind and on still nights (less air absorption).
+  - Rain dulls and masks the distance.
+- **HRTF** (`afx_hrtf`, live, a mixer checkbox). This resets the OpenAL Soft device with `ALC_HRTF_SOFT`, keeping the 6 aux sends. The engine only switches HRTF off again if it turned it on itself, so OpenAL Soft's own headphone auto-detection is left alone.
+- **Knock to find caves.**
+  - Punching stone, earth or wood probes straight into the wall from the struck face. If air turns up within 5 nodes, the open space behind is measured (BFS, cap 240).
+  - A hollow knock (`afx_knock_hollow`: real hits convolved with low cavity modes) plays at the face. Its level falls with wall thickness, and its pitch drops for bigger cavities.
+  - Air that connects back to your own room (a pillar) barely counts. `afx_knock.h`, tested.
+- **Music in the world.**
+  - Note stones: 8 pentatonic notes, sing when stepped on, right-click for the next note, so you can build a stair that plays a scale.
+  - A music box that always plays its own tune, seeded by its position (mesecons work too).
+  - A soft rising chime the first time you find a new kind of place: a biome, a great cavern, the sky, under water, another dimension. It's remembered in player meta.
+  - All positional, so caves ring them.
+- **Scenarios:** `knock` (driven by xdotool: `AFX_XDO=...`), `music` (stairs, boxes, first-cavern chime, upwind/downwind voices).
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

@@ -83,6 +83,9 @@ private:
 	// the build's own voice: a faint looping tone through the room's reverb
 	std::shared_ptr<PlayingSound> m_roomtone;
 	f32 m_roomtone_retry = 0.0f;
+	// HRTF: -1 = never touched (OpenAL Soft's own config decides)
+	int m_hrtf_set = -1;
+	void applyHrtf(bool on);
 	void stepRoomTone(f32 dtime);
 	// the far space sources sit in (send 5), glided
 	afx::RemoteSpace m_remote, m_remote_target;

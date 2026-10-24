@@ -38,6 +38,15 @@ function A.wind_now()
 	return swell + 0.6 * gust.level
 end
 
+-- Where the wind blows: veers slowly over the day, backs a little in a gust.
+-- (A unit vector toward where it blows; the engine bends sound with it.)
+function A.wind_dir()
+	local t = core.get_gametime() or 0
+	local a = 0.8 + 0.9 * math.sin(t * 2 * math.pi / 1300) + 0.25 * math.sin(t * 2 * math.pi / 210)
+	a = a + 0.3 * gust.level
+	return {x = math.cos(a), y = 0, z = math.sin(a)}
+end
+
 -- How exposed the ear is: height above the ground around (ridges, peaks).
 local DIRS = {}
 for i = 0, 7 do
@@ -147,6 +156,13 @@ A.register_layer(function(ctx, wanted)
 	end
 	ctx.wind = A.wind_now() * (0.7 + 0.8 * exposure(ctx.ppos))
 	rain_layer(ctx, wanted)
+	-- tell the player's engine, so distant sounds travel with the weather
+	if ctx.player.set_afx_world and ctx.hearing then
+		local d = A.wind_override and A.wind_override.dir or A.wind_dir()
+		local w = A.wind_override and A.wind_override.wind or ctx.wind
+		ctx.player:set_afx_world({wind_x = d.x, wind_z = d.z, wind = w,
+			rain = math.min(1, ctx.rain + 0.5 * ctx.snow)})
+	end
 end)
 
 core.register_globalstep(step_gust)

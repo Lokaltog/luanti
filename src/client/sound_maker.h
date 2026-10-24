@@ -46,6 +46,9 @@ public:
 	// Second sound made on left punch, currently used for item 'use' sound
 	SoundSpec m_player_leftpunch_sound2;
 	SoundSpec m_player_rightpunch_sound;
+	// afx: the hollow boom of a wall with space behind it, at the struck node
+	SoundSpec m_afx_knock;
+	v3f m_afx_knock_pos;
 
 	SoundMaker(ISoundManager *sound, const NodeDefManager *ndef) :
 		m_sound(sound), m_ndef(ndef) {}

@@ -292,4 +292,29 @@ RoomTone roomTone(const Acoustics &env, const Params &params)
 	return t;
 }
 
+void carryWeather(Mix &m, v3f to_source, const Params &p)
+{
+	const float dist = to_source.getLength();
+	const float far = std::clamp((dist - 8.f) / 40.f, 0.f, 1.f);
+	const float night = std::clamp(p.night, 0.f, 1.f);
+	const float rain = std::clamp(p.rain, 0.f, 1.f);
+	float absorb = 3.f * (1.f - 0.4f * night) * (1.f + 1.5f * rain);
+	if (far > 0.f && p.wind > 0.f && p.wind_dir.getLengthSQ() > 0.5f) {
+		v3f travel = to_source * (-1.f / std::max(dist, 1e-3f));
+		travel.Y = 0.f;
+		const float c = travel.getLengthSQ() > 1e-4f ?
+				travel.normalize().dotProduct(p.wind_dir) : 0.f;
+		const float w = std::clamp(p.wind / 1.4f, 0.f, 1.f);
+		const float shadow = std::clamp(-c, 0.f, 1.f) * w * far;
+		m.direct_gain *= 1.f - 0.65f * shadow;
+		m.direct_hf *= 1.f - 0.6f * shadow;
+		m.reverb_send *= 1.f - 0.3f * shadow;
+		// with the wind, sound bends back down and carries
+		absorb *= 1.f - 0.45f * std::clamp(c, 0.f, 1.f) * w;
+	}
+	// rain hiss over the distance
+	m.direct_gain *= 1.f - 0.3f * rain * far;
+	m.air_absorption = std::clamp(absorb, 0.5f, 10.f);
+}
+
 } // namespace afx

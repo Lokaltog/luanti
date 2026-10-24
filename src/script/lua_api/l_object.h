@@ -302,6 +302,12 @@ private:
 	// get_player_control_bits(self)
 	static int l_get_player_control_bits(lua_State *L);
 
+	// afx fork: get_acoustics(self) -> table or nil
+	static int l_get_acoustics(lua_State *L);
+
+	// afx fork: set_afx_world(self, {wind_x=, wind_z=, wind=, rain=})
+	static int l_set_afx_world(lua_State *L);
+
 	// hud_add(self, id, form)
 	static int l_hud_add(lua_State *L);
 

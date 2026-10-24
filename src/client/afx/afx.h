@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include "client/sound.h"
 #include "afx_types.h"
 #include <memory>
 #include <string>
@@ -41,6 +42,14 @@ const Mood &mood();
 
 /// One line for the F5 debug text, or "" when afx_debug is off.
 std::string debugLine(ISoundManager *sound);
+
+/// Weather from the server (TOCLIENT_AFX_WORLD): "key=value ..."
+void setWorldState(const std::string &state);
+
+/// Knock to find caves: the extra hollow layer for punching `node` from the
+/// side of `normal` (pointing out of the struck face). Empty spec when the
+/// wall is solid or afx is off. Cached per node and face.
+SoundSpec knockSound(Client *client, v3s16 node, v3s16 normal);
 
 /// Build a snapshot (exposed for tools/tests that have a Client).
 std::shared_ptr<VoxelSnapshot> buildSnapshot(Client *client, v3s16 center, s16 radius);

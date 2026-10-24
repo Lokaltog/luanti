@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 
 #include "afx.h"
+#include "afx_knock.h"
 #include "afx_mood.h"
 #include "afx_score.h"
 
@@ -40,7 +41,7 @@ static const char *const SETTING_NAMES[] = {
 	"afx_outdoor_muffle", "afx_smoothing", "afx_debug",
 	"afx_dry_sounds", "afx_outdoor_sounds", "afx_indoor_sounds", "afx_doppler", "afx_mood",
 	"afx_variation", "afx_score", "afx_score_replaces_music", "afx_roomtone",
-	"afx_source_space",
+	"afx_source_space", "afx_hrtf",
 };
 
 static void readParams()
@@ -65,6 +66,7 @@ static void readParams()
 	p.score_replaces_music = s->getBool("afx_score_replaces_music");
 	p.roomtone = rangelim(s->getFloat("afx_roomtone"), 0.f, 2.f);
 	p.source_space = rangelim(s->getFloat("afx_source_space"), 0.f, 2.f);
+	p.hrtf = s->getBool("afx_hrtf");
 	p.dry_sounds = s->get("afx_dry_sounds");
 	p.outdoor_sounds = s->get("afx_outdoor_sounds");
 	p.indoor_sounds = s->get("afx_indoor_sounds");
@@ -486,6 +488,101 @@ void updateMood(Client *client, ISoundManager *sound, v3f ear, float dtime, cons
 
 const Mood &mood() { return s_mood.smoother.current(); }
 
+static struct {
+	v3f wind_dir;
+	float wind = 0.f, rain = 0.f;
+} s_world;
+
+void setWorldState(const std::string &state)
+{
+	std::istringstream is(state);
+	std::string kv;
+	float wx = 0.f, wz = 0.f;
+	while (is >> kv) {
+		const size_t eq = kv.find('=');
+		if (eq == std::string::npos)
+			continue;
+		const std::string k = kv.substr(0, eq);
+		const float v = (float)std::atof(kv.c_str() + eq + 1);
+		if (!std::isfinite(v))
+			continue;
+		if (k == "wind_x") wx = v;
+		else if (k == "wind_z") wz = v;
+		else if (k == "wind") s_world.wind = rangelim(v, 0.f, 3.f);
+		else if (k == "rain") s_world.rain = rangelim(v, 0.f, 1.f);
+	}
+	v3f d(wx, 0.f, wz);
+	if (d.getLengthSQ() > 1e-6f)
+		s_world.wind_dir = d.normalize();
+}
+
+SoundSpec knockSound(Client *client, v3s16 node, v3s16 normal)
+{
+	static v3s16 last_node(S16_MAX, S16_MAX, S16_MAX), last_normal;
+	static SoundSpec last;
+	if (!s_params.enabled)
+		return SoundSpec();
+	if (node == last_node && normal == last_normal)
+		return last;
+	last_node = node;
+	last_normal = normal;
+	last = SoundSpec();
+	if (std::abs(normal.X) + std::abs(normal.Y) + std::abs(normal.Z) != 1)
+		return last; // inside the node, or an edge: no face to knock on
+	ClientMap &map = client->getEnv().getClientMap();
+	const NodeDefManager *ndef = client->getNodeDefManager();
+	// Only solid walls knock: stone, earth, wood (not leaves or glass)
+	const Material struck = classifyNode(ndef->get(map.getNode(node)));
+	if (struck != Material::Stone && struck != Material::Earth && struck != Material::Wood)
+		return last;
+	auto open = [&](v3s16 p) {
+		bool ok = false;
+		MapNode n = map.getNode(p, &ok);
+		if (!ok || n.getContent() == CONTENT_IGNORE)
+			return false;
+		const ContentFeatures &f = ndef->get(n);
+		return !f.walkable && f.liquid_type == LIQUID_NONE;
+	};
+	const Knock k = knockProbe(open, node, -normal);
+	if (k.hollow < 0.08f)
+		return last;
+	// planks over a void ring higher and shorter than rock over a cavern
+	const float material_pitch = struck == Material::Wood ? 1.2f : 1.f;
+	last = SoundSpec("afx_knock_hollow", std::min(1.f, 0.25f + 0.75f * k.hollow) * 0.9f,
+			false, 0.f, k.pitch * material_pitch);
+	if (s_params.debug)
+		infostream << "afx knock " << node.X << "," << node.Y << "," << node.Z << " depth "
+				<< k.depth << " size " << k.size << " hollow " << k.hollow << std::endl;
+	return last;
+}
+
+/// Tell the server what the player hears, so server mods (afx_ambience)
+/// agree with it: indoors or out, a cave, under water. Twice a second.
+static void sendState(Client *client, ISoundManager *sound, float dtime)
+{
+	static float timer = 0.f;
+	if ((timer -= dtime) > 0.f)
+		return;
+	timer = 0.5f;
+	Report r;
+	if (!sound->getAcousticReport(r) || !r.valid)
+		return;
+	const Acoustics &a = r.now;
+	const Mood &m = s_mood.smoother.current();
+	char buf[512];
+	snprintf(buf, sizeof(buf),
+			"v=1 enclosure=%.3f outdoor=%.3f outdoor_hf=%.3f wall=%.3f path=%.1f "
+			"sky=%d wet=%.3f decay=%.2f mfp=%.2f absorption=%.3f hf=%.3f echo=%.3f "
+			"coupling=%.3f hollow=%.3f underwater=%d lava=%d submerged=%.2f "
+			"natural=%.2f tension=%.3f cozy=%.3f homey=%d efx=%d",
+			a.enclosure, a.outdoor_gain, a.outdoor_hf, a.outdoor_wall, a.outdoor_path,
+			(a.outdoor_path < 0.5f && a.outdoor_gain > 0.99f) ? 1 : 0,
+			a.wet, a.decay, a.mean_free_path, a.absorption, a.hf, a.echo,
+			a.coupling, a.hollow, a.underwater ? 1 : 0, a.in_lava ? 1 : 0, a.submerged,
+			a.natural, m.tension, m.cozy, (int)s_last_homey, r.efx ? 1 : 0);
+	client->sendAfxState(buf);
+}
+
 void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 {
 	if (!sound)
@@ -503,6 +600,7 @@ void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 	s_was_enabled = true;
 
 	updateMood(client, sound, ear, dtime, p);
+	sendState(client, sound, dtime);
 
 	// With afx_debug, log the state every 2 s (for headless runs and tuning)
 	static float log_timer = 0.f;
@@ -523,7 +621,13 @@ void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 	std::shared_ptr<const VoxelSnapshot> snap = buildSnapshot(client, center, p.probe_radius);
 	s_build_ms = std::chrono::duration<float, std::milli>(
 			std::chrono::steady_clock::now() - t0).count();
-	sound->setAcoustics(std::move(snap), p);
+	Params q = p;
+	q.wind_dir = s_world.wind_dir;
+	q.wind = s_world.wind;
+	q.rain = s_world.rain;
+	const float tod = client->getEnv().getTimeOfDayF();
+	q.night = 1.f - std::clamp((0.32f - std::fabs(tod - 0.5f)) / 0.05f, 0.f, 1.f);
+	sound->setAcoustics(std::move(snap), q);
 }
 
 std::string debugLine(ISoundManager *sound)

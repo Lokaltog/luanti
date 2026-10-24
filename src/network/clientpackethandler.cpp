@@ -3,6 +3,7 @@
 // Copyright (C) 2015 nerzhul, Loic Blot <loic.blot@unix-experience.fr>
 
 #include "client/client.h"
+#include "client/afx/afx.h"
 
 #include "exceptions.h"
 #include "irr_v2d.h"
@@ -1881,6 +1882,13 @@ void Client::handleCommand_MinimapModes(NetworkPacket *pkt)
 
 	if (m_minimap)
 		m_minimap->setModeIndex(mode);
+}
+
+void Client::handleCommand_AfxWorld(NetworkPacket *pkt)
+{
+	std::string state;
+	*pkt >> state;
+	afx::setWorldState(state);
 }
 
 void Client::handleCommand_SetLighting(NetworkPacket *pkt)

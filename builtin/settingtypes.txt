@@ -1013,6 +1013,10 @@ afx_roomtone (Room tone) float 1.0 0.0 2.0
 #    dull from above.
 afx_source_space (Sounds carry their own space) float 1.0 0.0 2.0
 
+#    3D sound for headphones (HRTF): sounds above, below and behind you are
+#    heard there, not just left and right. Turn off for speakers.
+afx_hrtf (Headphone 3D sound) bool false
+
 #    Pitch shift of moving sound sources (minecarts, mobs). 0 = off.
 afx_doppler (Doppler) float 0.5 0.0 2.0
 

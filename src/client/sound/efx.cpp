@@ -465,7 +465,7 @@ void EfxRig::applySource(ALuint src, const afx::Mix &mix, bool positional, bool 
 	}
 
 	if (positional)
-		alSourcef(src, AL_AIR_ABSORPTION_FACTOR, 3.f);
+		alSourcef(src, AL_AIR_ABSORPTION_FACTOR, clampf(mix.air_absorption, 0.f, 10.f));
 
 	if (mix.spatial_bed) {
 		// Steer the bed toward the opening; the deeper inside, the narrower.

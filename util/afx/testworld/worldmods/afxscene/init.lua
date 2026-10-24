@@ -18,6 +18,12 @@ core.register_node("afxscene:planks", {
 	groups = {wood = 1, axey = 1, choppy = 2},
 	sounds = {footstep = {name = "default_wood_footstep", gain = 0.5}},
 })
+-- rock the hand can't dig: punching it plays only the knock layer
+core.register_node("afxscene:bedrock", {
+	description = "Rock", tiles = {"[fill:16x16:#707070"},
+	groups = {stone = 1},
+	sounds = {footstep = {name = "default_hard_footstep", gain = 0.5}},
+})
 core.register_node("afxscene:glass", {
 	description = "Glass", drawtype = "glasslike", tiles = {"[fill:16x16:#c0e0ff40"},
 	use_texture_alpha = "blend", paramtype = "light", sunlight_propagates = true,
@@ -286,6 +292,29 @@ function BUILD.voices(b)
 	b.fill(v(-2, 0, 12), v(2, 3, 18), "air")
 	-- a pond to the east, with something in it
 	b.fill(v(8, -5, -8), v(18, -1, 2), "basenodes:water_source")
+end
+
+function BUILD.knock(b)
+	b.fill(v(MIN.x, -20, MIN.z), v(MAX.x, 20, MAX.z), "afxscene:bedrock")
+	b.fill(v(-8, 0, -2), v(8, 2, 0), "air")          -- a tunnel running east-west
+	-- behind the north wall: solid at x < 0; at x > 0 a cave, 2 nodes in
+	b.fill(v(2, -3, 3), v(10, 5, 12), "air")
+end
+
+function BUILD.music(b)
+	b.fill(v(MIN.x, -30, MIN.z), v(MAX.x, -2, MAX.z), "basenodes:stone")
+	b.fill(v(MIN.x, -1, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	-- a stair of note stones out in the meadow, going up the scale
+	for i = 1, 8 do
+		b.fill(v(-12 + i, 0, 0), v(-12 + i, i - 1, 0), "afx_ambience:note_stone_" .. i)
+	end
+	b.fill(v(4, 0, 4), v(4, 0, 4), "afx_ambience:music_box")
+	-- a great cavern below, with its own stair and a music box
+	b.fill(v(-16, -28, -16), v(16, -12, 16), "air")
+	for i = 1, 8 do
+		b.fill(v(-6 + i, -28, 2), v(-6 + i, -29 + i, 2), "afx_ambience:note_stone_" .. i)
+	end
+	b.fill(v(6, -28, 6), v(6, -28, 6), "afx_ambience:music_box")
 end
 
 function BUILD.bridge(b)
@@ -636,6 +665,48 @@ TIMELINE.voices = {
 	end, wait = 1, log = "mixer"},
 }
 
+-- (driven by AFX_XDO: hold the left mouse button from ~4 s to the end)
+TIMELINE.knock = {
+	{fn = function() P():set_pos(v(-4, 0, -1)); P():set_look_horizontal(0); P():set_look_vertical(0) end,
+		wait = 9, log = "punching solid rock"},
+	{fn = function() P():set_pos(v(5, 0, -1)); P():set_look_horizontal(0) end,
+		wait = 9, log = "punching rock with a cave behind it"},
+	{fn = function() P():set_pos(v(-4, 0, -1)) end, wait = 6, log = "solid again"},
+}
+
+local function climb(x0, y0, z, steps_down)
+	local seq = {}
+	for i = 1, 8 do
+		seq[#seq + 1] = {fn = function() P():set_pos(v(x0 + i, y0 + i, z)) end, wait = 0.55}
+	end
+	return seq
+end
+
+local function box(pos)
+	local def = core.registered_nodes["afx_ambience:music_box"]
+	def.on_rightclick(pos, core.get_node(pos), P())
+end
+
+TIMELINE.music = {}
+local function add(t) for _, s in ipairs(t) do TIMELINE.music[#TIMELINE.music + 1] = s end end
+add({{fn = function() P():set_pos(v(-14, 0, -2)) end, wait = 2, log = "meadow: up the note stair"}})
+add(climb(-12, 0, 0))
+add({{fn = function() box(v(4, 0, 4)) end, wait = 7, log = "the music box on the grass"}})
+add({{fn = function() P():set_pos(v(0, -28, -6)) end, wait = 6, log = "down in the cavern (first visit: a chime)"}})
+add(climb(-6, -28, 2))
+add({{fn = function() box(v(6, -28, 6)) end, wait = 8, log = "the music box in the cavern"}})
+-- wind: a far voice upwind, then the same downwind
+local function growl_at(p) core.sound_play("afxscene_growl", {pos = p, gain = 1, max_hear_distance = 64}, true) end
+add({{fn = function()
+	P():set_pos(v(0, 0, -6))
+	afx_ambience.wind_override = {dir = {x = 1, y = 0, z = 0}, wind = 1.4}
+end, wait = 3, log = "meadow, a strong wind blowing east"},
+	{fn = function() growl_at(v(28, 0.5, -6)) end, wait = 3, log = "a voice 28 nodes east (upwind)"},
+	{fn = function() growl_at(v(28, 0.5, -6)) end, wait = 3},
+	{fn = function() growl_at(v(-28, 0.5, -6)) end, wait = 3, log = "a voice 28 nodes west (downwind)"},
+	{fn = function() growl_at(v(-28, 0.5, -6)) end, wait = 3},
+	{fn = function() afx_ambience.wind_override = nil end, wait = 1}})
+
 TIMELINE.bridge = {
 	{walk = v(-8, 0, 0), speed = 2, steps = "default_hard_footstep", log = "on rock"},
 	{walk = v(6, 0, 0), speed = 2, steps = "default_wood_footstep", log = "on the bridge"},
@@ -706,7 +777,7 @@ TIMELINE.cinema = {
 }
 
 local START = {
-	cinema = v(0, 0, 0), voices = v(-24, 0, -20),
+	cinema = v(0, 0, 0), voices = v(-24, 0, -20), knock = v(-4, 0, -1), music = v(-14, 0, -2),
 	details = v(-24, 0, 0),
 	corner = v(-16, 0, 0), nextdoor = v(0, 0, -4), bridge = v(-16, 0, 0), draft = v(0, 0, 0),
 	steps = v(0, 0, 0),
