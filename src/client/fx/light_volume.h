@@ -153,6 +153,7 @@ private:
 	std::vector<u8> m_uploaded;          // the atlas last uploaded (CPU copy)
 	v3s16 m_held_node;
 	u8 m_held_level = 0;
+	u64 m_held_upload_ms = 0;
 	std::vector<u32> m_held_texels;      // atlas texels whose alpha it set
 	v3s16 m_uploaded_origin;
 	u32 m_uploaded_generation = 0;

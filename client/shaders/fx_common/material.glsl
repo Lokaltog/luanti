@@ -67,7 +67,7 @@ vec2 fxParallax(vec2 uv)
 	vec3 eye = cameraPosition - cameraOffset;
 	vec3 V = worldPosition - eye;
 	float dist = length(V);
-	if (dist > 16.0 * FX_BS)
+	if (dist > 10.0 * FX_BS)
 		return uv;
 	vec3 v = (V / max(dist, 1e-4)) * fxTBN; // into tangent space (transpose)
 	if (v.z > -0.08)
@@ -77,15 +77,16 @@ vec2 fxParallax(vec2 uv)
 	// offset limiting: the shift grows with the view angle only up to ~70
 	// degrees, so grazing views don't look bottomless or swim
 	vec2 dir = v.xy / max(-v.z, 0.35) * fxParallaxDepth;
-	// 12 layers looking straight down, up to 32 at grazing angles
-	float n = mix(32.0, 12.0, clamp(-v.z, 0.0, 1.0));
+	// 6 layers looking straight down, up to 16 at grazing angles, fewer far
+	// away (the interpolation hides the coarse steps)
+	float n = mix(16.0, 6.0, clamp(-v.z, 0.0, 1.0)) * mix(1.0, 0.5, smoothstep(3.0 * FX_BS, 8.0 * FX_BS, dist));
 	float layer = 1.0 / n;
 	float cur = 1.0;
 	vec2 p = uv;
 	float h = fxMatN(p).a;
 	float prev_h = h, prev_cur = cur;
 	vec2 prev_p = p;
-	for (int i = 0; i < 32; i++) {
+	for (int i = 0; i < 16; i++) {
 		if (float(i) >= n || h >= cur)
 			break;
 		prev_p = p;
@@ -100,7 +101,7 @@ vec2 fxParallax(vec2 uv)
 	float before = prev_h - prev_cur;    // < 0: still above it
 	float t = clamp(after / max(after - before, 1e-5), 0.0, 1.0);
 	p = mix(p, prev_p, t);
-	return mix(p, uv, smoothstep(10.0 * FX_BS, 16.0 * FX_BS, dist));
+	return mix(p, uv, smoothstep(7.0 * FX_BS, 10.0 * FX_BS, dist));
 }
 
 // Normal-mapped relief, AO, GGX sun specular, glints, _s emission.

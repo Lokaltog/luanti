@@ -365,6 +365,12 @@ void LightVolume::setHeld(v3s16 node, u8 level)
 	level = std::min<u8>(level, 14);
 	if (level == m_held_level && (level == 0 || node == m_held_node))
 		return;
+	// a full atlas upload per change: at most every 50 ms while moving
+	// (picking the item up or putting it away goes through at once)
+	const u64 now = porting::getTimeMs();
+	if (level == m_held_level && now - m_held_upload_ms < 50)
+		return;
+	m_held_upload_ms = now;
 	m_held_node = node;
 	m_held_level = level;
 	if (m_have_result)
@@ -391,9 +397,20 @@ void LightVolume::applyHeld()
 		return c >= m_info.size() || m_info[c].opaque;
 	};
 	if (m_held_level > 0) {
-		// the engine's rule: one level per step, through what light passes
+		// the engine's rule: one level per step, through what light passes;
+		// a flat box around the source (light reaches 14 nodes)
+		constexpr s16 R = 14, D = 2 * R + 1;
+		static thread_local std::vector<u8> seen;
+		seen.assign((size_t)D * D * D, 0);
+		auto bi = [&] (v3s16 q) -> s32 {
+			const v3s16 o = q - m_held_node + v3s16(R, R, R);
+			if (o.X < 0 || o.Y < 0 || o.Z < 0 || o.X >= D || o.Y >= D || o.Z >= D)
+				return -1;
+			return ((s32)o.Z * D + o.Y) * D + o.X;
+		};
 		std::vector<std::pair<v3s16, u8>> queue{{m_held_node, m_held_level}};
-		std::unordered_map<v3s16, u8> seen{{m_held_node, m_held_level}};
+		queue.reserve(8192);
+		seen[bi(m_held_node)] = m_held_level;
 		static const v3s16 dirs[6] = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
 		for (size_t head = 0; head < queue.size(); head++) {
 			const auto [p, l] = queue[head];
@@ -406,12 +423,10 @@ void LightVolume::applyHeld()
 				continue;
 			for (const v3s16 &d : dirs) {
 				const v3s16 q = p + d;
-				if (opaque(q))
+				const s32 b = bi(q);
+				if (b < 0 || seen[b] >= l - 1 || opaque(q))
 					continue;
-				auto it = seen.find(q);
-				if (it != seen.end() && it->second >= l - 1)
-					continue;
-				seen[q] = l - 1;
+				seen[b] = l - 1;
 				queue.emplace_back(q, (u8)(l - 1));
 			}
 		}
