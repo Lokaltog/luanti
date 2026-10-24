@@ -15,6 +15,12 @@
 --   drips      water dripping from the underside of blocks below water
 --   bubbles    rising in water near the player
 --   leaves     falling from leaf blocks with air below (uses the leaf texture)
+--
+-- The fx client's GPU particles (fx_use_gpu_particles) draw fireflies,
+-- motes, embers, leaves, Nether air and rain drips themselves, client-side,
+-- so those spawners only run with fx_ambience_legacy_particles = true (for
+-- players without them). Drips, bubbles and breath fog (which other players
+-- see) always run.
 
 local S = core.settings
 local R, RY = 12, 6           -- search box half size
@@ -105,6 +111,11 @@ local function night()
 end
 
 local debug = S:get_bool("fx_particles_debug", false)
+
+-- replaced by the fx client's GPU particles unless asked for
+local LEGACY = {fireflies = true, motes = true, embers = true, leaves = true,
+	nether_air = true, rain_drips = true}
+local legacy = S:get_bool("fx_ambience_legacy_particles", false)
 local spawned = 0
 
 local function spawn(player, def)
@@ -413,7 +424,8 @@ core.register_globalstep(function(dtime)
 		local list = lists[f]
 		if f == "rain_drips" then list = lists["leaves"] end
 		local listless = f == "nether_air" or f == "breath"
-		if (listless or (list and #list > 0)) and S:get_bool("fx_particles_" .. f, true) then
+		if (listless or (list and #list > 0)) and S:get_bool("fx_particles_" .. f, true)
+				and (legacy or not LEGACY[f]) then
 			local before = spawned
 			feature[f](name, list, d, pp)
 			if debug and spawned > before then

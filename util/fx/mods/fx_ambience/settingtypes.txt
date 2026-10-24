@@ -3,3 +3,10 @@ fx_particles (Ambient particles) bool true
 
 #    Multiplier for how many ambient particles spawn.
 fx_particles_density (Ambient particle density) float 0.5 0.0 4.0
+
+#    The spawners the fx client's GPU particles replace (fireflies, motes,
+#    embers, falling leaves, Nether air, rain dripping off leaves). Off by
+#    default: clients with fx_use_gpu_particles draw these themselves, and
+#    both at once would double up. Turn on for players without the GPU
+#    particles. Drips under water, bubbles and breath fog stay either way.
+fx_ambience_legacy_particles (Legacy ambient particles) bool false
