@@ -1,83 +1,78 @@
-# fx fork: mood renderer (M1 Light & glow, M2 Foundations, M3 Glass & water, M4 Light volume)
+# fx fork: mood renderer
 
-A patch queue on top of upstream Luanti. Everything is client-only: no map, protocol or server changes. Every effect sits behind an `fx_*` setting (Settings → Mood Renderer).
+A patch queue on top of upstream Luanti for a Terraria-like look: coloured,
+leak-free light, glowing emissives, HDR bloom, glass and water, material maps.
+Everything is client-only: no map, protocol or server changes. Every effect sits
+behind an `fx_*` setting (Settings → Mood Renderer), and fx only runs on the
+`opengl3` video driver; GLES and the legacy OpenGL 2 driver get plain upstream
+rendering.
 
-## What M1 adds
+## How it is put together
 
-| Feature | How | Setting |
+- **One renderer per world.** `fx::attach` (when the client is created) builds
+  an `fx::Renderer` and `fx::detach` destroys it; there is no mutable global
+  state between worlds. Code under `src/client/fx/`; the hooks in upstream
+  files are a few lines each.
+- **Settings registry.** `src/client/fx/params.def` lists every setting once
+  (type, default, range, apply policy, tuner label). Defaults, the tuner's
+  sliders, the `FxParams` uniform block and its GLSL accessors (`fxBloomKnee`
+  …) are generated from it; a unit test keeps `builtin/settingtypes.txt` in
+  sync. Apply policy: **LIVE** (next frame), **SHADERS** (shaders rebuild
+  automatically) or **RESTART** (applies when you next join a world; the tuner
+  says so).
+- **Capabilities.** Decided once per world (`caps.cpp`) from the settings and
+  the driver: HDR needs post-processing and float render targets and then
+  forces an RGBA16F scene buffer; TAA is off by default (anti-aliasing is a
+  non-goal) and off with MSAA/SSAA; AO needs HDR; material maps need array
+  textures. Shaders get these as defines.
+- **Uniform blocks.** Irrlicht gained uniform buffer objects
+  (`setUniformBlockBinding`, `setUniformBufferData`). Binding 1 holds the
+  parameters, 2 the per-frame data (matrices, camera, sun, water level, light
+  volume origin), 3 the light list.
+- **Colour contract.** Every fx term is computed in linear light. The scene
+  buffer stores display-encoded values (`x^(1/2.2)`, HDR above 1 allowed), like
+  upstream, so sky, clouds, particles and other upstream shaders keep working;
+  fx shaders decode on read and encode on write (`fx_common/color.glsl`).
+- **Shader includes.** `#include "fx_common/…"` with include-once guards and
+  `#line` per source; `fx_generated/params.glsl` is generated.
+
+## Features
+
+| Feature | How | Settings |
 | --- | --- | --- |
-| HDR composite | Tonemap (AgX by default) before clamping. Upstream clamped first, which wasted the 16-bit buffer. | `fx_hdr_composite`, `fx_tonemapper`, `fx_exposure` |
-| AgX look | Power and saturation in AgX space, so colored lights stay colored | `fx_grade_saturation`, `fx_grade_contrast` |
-| Threshold bloom | Soft-knee luminance threshold, added on top. Upstream blurred the whole frame and mixed it back in. | `fx_bloom_threshold`, `fx_bloom_knee`, `fx_bloom_intensity` |
-| Emissive maps | `<texture>_e.png` packed into a companion texture array (slot 2). Light-source nodes without one get `[fx_autoemissive`. | `fx_emissive_strength`, `fx_auto_emissive_threshold` |
-| Colored light (T1) | Each mesh records its light sources, clustered per 4³ cell and color. Each frame the nearest 128 go to the vertex shader, which tints the artificial-light term. The engine's scalar light still decides brightness, so color can bleed through walls but light can't. | `fx_colored_light`, `fx_light_saturation`, `fx_light_gather_radius` |
-| Flicker | Per-light phase. Amplitude comes from the light table or a name heuristic (torch/fire 1.0, lava 0.35). | `fx_flicker` |
-| Held light | A light-emitting item in hand adds a light at the camera | `fx_held_light` |
-| Debug views | 1 light chroma, 2 emissive, 3 HDR luminance (false color, blue −4 EV, green 0, red +4 EV), 4 bloom input. Later milestones add 5, 6 (M3) and 7 (AO). | `fx_debug_view` |
-| Shader hot reload | Polls `*.glsl` modification times and recompiles in place, keeping material IDs stable. On a compile error the old program keeps running. | `fx_shader_hot_reload` |
+| HDR composite | AO → exposure → underwater → bloom → tonemap (AgX by default, or ACES) → grade → dither. | `fx_hdr_composite`, `fx_tonemapper`, `fx_exposure` |
+| AgX look | Power and saturation in AgX space, so coloured lights stay coloured. Neutral by default. | `fx_grade_saturation`, `fx_grade_contrast` |
+| Threshold bloom | Soft-knee luminance threshold, added on top. | `fx_bloom_threshold`, `fx_bloom_knee`, `fx_bloom_intensity` |
+| Emissive maps | `<texture>_e.png` companions in a texture array beside the base array (slot 2). Light-source tiles no unlit node uses, without a map, go through `[fx_autoemissive`. Entities glow only with an authored map. | `fx_emissive_strength`, `fx_auto_emissive_threshold` |
+| Coloured light | A 64×48×64-node RGB flood fill around the camera: the engine's light rule per channel on a worker thread, so colour only reaches where light can travel. Stained glass multiplies what passes through it. The snapshot is updated incrementally (re-meshed blocks are re-read, moving the window reads only new slabs) and recomputed only when its generation changes. Map nodes and entities sample it; brightness still comes from the engine's scalar light. Beyond the window light is white. | `fx_colored_light`, `fx_light_saturation` |
+| Flicker | Flickering sources (torches, fire, lava; pack table or name heuristic) go to the shader as a light list with per-light phase. | `fx_flicker`, `fx_light_gather_radius` |
+| Held light | A light-emitting item in hand lights and tints the camera's surroundings. | `fx_held_light` |
+| Sky light | Golden hour warmth and blue moonlight, graded by sun elevation. | `fx_sky_tint` |
+| Ambient floor, rim light | Caves are dark but never pure black; mobs and items read against dark backgrounds. | `fx_ambient_floor`, `fx_rim_light` |
+| Ambient occlusion | Half resolution, normal-weighted horizon sampling; the held item neither receives nor casts it. Without TAA a 4×4 bilateral blur and a depth-aware upsample denoise it. | `fx_ao`, `fx_ao_strength`, `fx_ao_radius` |
+| Contact shadows | A short screen-space march towards the sun in the AO pass, applied to mid-bright pixels. | `fx_contact_shadows` |
+| Glass | Glasslike drawtypes, nodes named `*glass*` and translucent solid nodes with a liquid drawtype (Mineclonia's ice) refract the opaque scene copy (slots 4 and 5), tint by their texture, reflect (SSR with a sky fallback). Drawn in the transparent pass, opaque, writing depth. Patterns: fluted, frosted, rippled. | `fx_surfaces`, `fx_refraction`, `fx_ssr`, `fx_reflection` |
+| Water | Translucent liquids: ripple normals, depth absorption, caustics on the floor, Fresnel reflection. The light behind the surface is fogged for its own distance, the surface's own light for the surface's. | `fx_water_absorption`, `fx_caustics` |
+| Underwater | Per pixel in the composite, using the water surface height above the camera: absorption only along the submerged part of each ray, caustics, light shafts. Replaces upstream's flat overlay. | `fx_underwater_shafts` |
+| Material maps | LabPBR 1.3 `_n`/`_s` companions: normals (cotangent frame from screen-space derivatives), texel-stepped parallax, AO, GGX sun specular, glints that fade once a texel is smaller than a pixel, `_s` emission. | `fx_materials`, `fx_normal_strength`, `fx_parallax_depth`, `fx_specular`, `fx_glints` |
+| Heat haze | UV shimmer above warm, strongly blooming sources. | `fx_heat_haze` |
+| TAA (off) | Kept but frozen: jitter, reprojection, variance clipping, sharpen. | `fx_taa`, `fx_taa_blend`, `fx_sharpen` |
+| Moods | `client/fx_moods/*.conf` plus your own in `<user dir>/fx_moods/`. A mood is a complete overlay on the defaults; `cave.*`, `night.*` and `underwater.*` keys blend in situationally. | `fx_mood` |
+| Mood tuner | Pause menu → Mood: a slider per tunable setting, "Save as mood". | |
+| Debug views | 1 light chroma, 2 emissive, 3 HDR luminance (false colour), 4 bloom input, 5 scene copy, 6 scene copy depth, 7 AO. | `fx_debug_view` |
+| Shader hot reload | Recompiles changed `*.glsl` in place; on a compile error the old program keeps running. | `fx_shader_hot_reload` |
+| Ambient particles | `util/fx/mods/fx_ambience` (server mod, enable per world): fireflies at night under the open sky, motes around lights, embers over lava and fire, drips, bubbles, falling leaves. One grouped node scan per player per second. | `fx_particles`, `fx_particles_density`, `fx_particles_<kind>` |
 
-## What M2 adds
+Texture slots (Irrlicht now has 8): 0 base, 1 crack, 2 emissive, 3 shadow map,
+4 and 5 scene copy, 6 light volume, 7 material array.
 
-| Feature | How | Setting |
-| --- | --- | --- |
-| TAA | Halton jitter around the scene draw only (the held item and HUD are drawn after post-processing). Depth-based reprojection through the previous unjittered matrix, YCoCg variance clipping, and a Catmull-Rom history fetch so pixel art stays crisp. Off with MSAA or SSAA. | `fx_taa`, `fx_taa_blend` |
-| Sharpening | Cross unsharp mask in the final pass | `fx_sharpen` |
-| Ambient occlusion | Half resolution, normal-weighted horizon sampling (HBAO-style rather than full GTAO), noise rotated per frame. Applied inside the TAA resolve so the noise converges. Bright pixels (emissive, sunlit) keep their light. | `fx_ao`, `fx_ao_strength`, `fx_ao_radius` |
-| Sky light | Golden hour warmth and blue moonlight, graded by sun elevation | `fx_sky_tint` |
-| Ambient floor | A little light everywhere, so caves are dark but never pure black | `fx_ambient_floor` |
-| Entity lighting | Mobs, players and items get the colored-light tint and a rim light | `fx_rim_light` |
-| Moods | `client/fx_moods/*.conf` (vibrant, cozy, dark, neutral) plus your own in `<user dir>/fx_moods/`. Plain keys are applied as settings when selected. `cave.*`, `night.*` and `underwater.*` keys are targets blended in over about 1.5 s. Cave detection uses the sky light reaching the camera. | `fx_mood` |
-| Mood tuner | Pause menu → Mood: sliders for every tunable `fx_*` value over the running world, plus "Save as mood". The same values are in Settings → Mood Renderer. | |
+## Texture packs
 
-## What M4 adds
-
-| Feature | How | Setting |
-| --- | --- | --- |
-| RGB light volume | A 64×48×64-node window around the camera. Node content IDs are snapshotted on the main thread (only when the block/mesh signature changes, or the camera moves 8 nodes). A worker thread runs the engine's light rule per RGB channel (−1 per step, opaque stops it) in 1–5 ms. The result is uploaded as a 2D atlas (Y slices, 8 per row) and sampled in the node vertex shader with manual trilinear filtering, half a node in front of each face. | `fx_light_volume` |
-| Leak-free hue | World-light hue comes from the volume, so colour only goes where light can travel. The T1 light list still supplies flicker and the held light. Outside the volume, it falls back to T1. | |
-| Stained glass tints light | Glass multiplies the light that passes through it by its texture's hue; saturation decides how strongly, so clear glass stays neutral | |
-
-Texture slots: Irrlicht now has 8. Slot 6 holds the volume and slot 7 the M5 material array.
-
-## What M5 adds
-
-| Feature | How | Setting |
-| --- | --- | --- |
-| Material maps | LabPBR 1.3 companions from the texture pack: `<stem>_n.png` (R,G normal in DirectX/Y-down convention, B AO, A height) and `<stem>_s.png` (R smoothness, G F0 with 230+ meaning metal, A emission with 255 = none). Interleaved per array bunch into one texture array on slot 7 (layer 2i = `_n`, 2i+1 = `_s`). Bunches without maps share a neutral array. Array-texture tiles only (the default renderer path). | `fx_materials` (restart) |
-| Normals | Cotangent frame from screen-space derivatives, so rotated and world-aligned tiles work with no mesher change. Relief is relative to the flat face (sun direction by day, the viewer's side for artificial light), so average brightness stays put. | `fx_normal_strength` |
-| Parallax | 12 texel-stepped steps on the height channel, faded out by 16 nodes | `fx_parallax_depth` |
-| Specular | GGX sun highlight, gated by vertex light as a shadow proxy; metals take F0 from albedo (LabPBR's predefined metals 230–254 are all treated as "albedo") | `fx_specular` |
-| Glints | Hashed per texel and reflection direction on metals and smooth texels | `fx_glints` |
-| Contact shadows | 10-step screen-space march towards the sun in the AO pass (G channel), applied in the TAA resolve to mid-bright pixels | `fx_contact_shadows` (needs `fx_ao`) |
-| Heat haze | Composite UV distortion masked by warm bloom sampled below the pixel, so it shimmers above lava and fire, not the sun | `fx_heat_haze` |
-| Entity emissive | Entity textures with an authored `<stem>_e.png` glow (eyes, lanterns). No auto-emissive on entities. | |
-| Ambient particles | `util/fx/mods/fx_ambience` (enable per world; `fx-install-mods` links it): fireflies at night over plants and leaves, motes around lights, embers over lava and fire, drips under water, bubbles near the player, falling leaves using the leaf node's texture. Game agnostic (node groups). | `fx_particles`, `fx_particles_density`, `fx_particles_<kind>` |
-
-jsl2mcl's fx step derives `_n` (luminance height, Sobel normals, cavity AO) and `_s` (smoothness and F0 from name tags, ore specks) for terrain textures. Authored maps are never overwritten. Override per texture with `[fx."<texture>.png"] material = "<tag>"|"none"` in overrides.toml.
-
-## What M3 adds
-
-| Feature | How | Setting |
-| --- | --- | --- |
-| Scene copy | At the start of ClientMap's transparent pass, the opaque color and depth are blitted into a copy bound to texture slots 4 and 5. Irrlicht now has 6 slots instead of 4. | `fx_surfaces` |
-| Glass | Glasslike drawtypes and nodes named `*glass*` get a glass shader variant and are drawn alpha-blended, so clear pixels still refract. Translucent texels tint (stained glass), opaque texels stay the lit frame. | `fx_refraction` |
-| Glass patterns | `fluted` (vertical ridges), `frosted` (disk blur) and `rippled`, picked from the node name (`*fluted*`, `*frosted*`, `*ripple*`) or from `fx_materials.txt`. A texture's own luminance also bends light slightly. | |
-| Water | Translucent non-glowing liquids: moving ripple normals, depth absorption (red goes first), scattering toward the water's lit color, caustics on the floor seen through it | `fx_water_absorption`, `fx_caustics` |
-| Reflections | Screen-space ray march against the depth copy (28 steps plus 5 refine steps), Fresnel-weighted, falling back to a sky color from the fog color | `fx_ssr`, `fx_reflection` |
-| Underwater | Post pass: absorption by distance, caustics on everything visible, and light shafts marched along the view ray through a soft caustic pattern. It replaces upstream's flat `post_effect_color` overlay. | `fx_underwater_shafts` |
-| Debug views | 5 raw scene copy, 6 scene copy depth | `fx_debug_view` |
-
-`fx_materials.txt` in a texture pack overrides the detection:
-
-```
-# <node> glass|water|none [pattern=fluted|frosted|rippled]
-mcl_core:glass_light_blue  glass pattern=fluted
-mcl_core:ice               glass pattern=frosted
-```
-
-Two more Irrlicht fixes came with M3. `blitRenderTarget` now flushes a target's lazy attachments first, because a never-bound blit destination was an empty, incomplete FBO. `IVideoDriver::getCurrentRenderTarget()` is now public.
-
-The engine also gets an Irrlicht fix: `sampler2DArray` uniforms were never bound to their texture unit. Upstream only worked because the base texture uses unit 0.
+The pack contract (emissive companions, light colours, surfaces, material maps,
+`fx_pack.txt`, key syntax, diagnostics) is specified in
+[PACK_FORMAT.md](PACK_FORMAT.md). `util/fx/testpack/` is a conformance fixture.
+jsl2mcl (lokaltog/mineclonia-jsl) produces packs to it; give it a node dump from
+`util/fx/mods/fx_nodedump` so it works from the real node definitions.
 
 ## Recommended config
 
@@ -88,50 +83,63 @@ enable_auto_exposure = true
 fx_enable = true
 ```
 
-## Light color table
-
-Put `fx_light_colors.txt` in a texture pack. The jsl2mcl `fx` step generates it.
-
-```
-# <node> <#rrggbb> [flicker=<0..1>]
-mcl_torches:torch      #ffb060 flicker=1
-mcl_nether:glowstone   #ffd890
-```
-
-Nodes not listed get their color from their texture's glowing pixels.
-
 ## Tooling
 
-`devenv shell` (or direnv with the bundled `.envrc`) gives you these commands. `fx-help` lists them.
+`devenv shell` (or direnv) gives you these commands; `fx-help` lists them. The
+nixpkgs revisions in `devenv.yaml` and `flake.nix` are pinned.
 
 | Command | What it does |
 | --- | --- |
-| `fx-build` | Incremental build: RelWithDebInfo, RUN_IN_PLACE, ccache. Configures on the first run. |
-| `fx-run` | Runs with `util/fx/dev.conf` (hot reload on). In-game settings persist in `.devenv/luanti.conf`. Set `FX_TEXTURE_PACK=…` to load a pack. |
-| `fx-play <world>` | Opens a world from `~/.minetest/worlds` directly. Your games and mods are found through `LUANTI_*_PATH`. |
-| `fx-upstream` | Same as `fx-run` with `fx_enable = false`, for A/B |
-| `fx-smoke` / `devenv test` | Headless smoke test on Mesa: every config and debug view must render without shader or GL errors |
-| `fx-shots [dir]` | A/B screenshots of the test scene on your GPU |
-| `fx-renderdoc` | Frame capture |
-| `fx-install-mods` | Symlinks `util/fx/mods/*` (fx_ambience) into `~/.minetest/mods` |
+| `fx-build` | Incremental build: RelWithDebInfo, RUN_IN_PLACE, ccache, unit tests. |
+| `fx-run` | Runs with `util/fx/dev.conf` (hot reload on); settings persist in `.devenv/luanti.conf`. `FX_TEXTURE_PACK=…` loads a pack. |
+| `fx-play <world>` | Opens a world from `~/.minetest/worlds`. |
+| `fx-upstream` | `fx-run` with `fx_enable = false`, for A/B. |
+| `fx-test` / `devenv test` | The test harness on Xvfb + llvmpipe (see below). |
+| `fx-test-gpu` | The same on your display and GPU, against the `gpu` goldens. |
+| `fx-unit` | C++ unit tests (`TestFx`: flood fill, settings registry and settingtypes sync, pack tables and globs). |
+| `fx-mcl <path>` | Links a Mineclonia checkout as `games/mineclonia` for the `mcl_*` cases. |
+| `fx-renderdoc` | Frame capture. |
+| `fx-install-mods` | Links `util/fx/mods/*` into this tree's `mods/` (not `~/.minetest`). |
+| `fx-jsl-test` | Runs mineclonia-jsl's fx tests against this tree's test pack and node dump (`JSL2MCL_DIR`). |
+| `fx-gl <cmd>` | Runs a command with the NixOS GPU driver on the library path; the GPU commands above use it, the shell itself doesn't. |
 
-The scripts behind these are `util/fx/abshot.sh` and `util/fx/smoketest.sh`. The client saves screenshots itself (`fx_auto_screenshot = <path>`, after `fx_auto_screenshot_delay` seconds) and quits, so they work on X11, Wayland or headless.
+## Test harness
 
-`flake.nix` also works: `nix develop` gives a shell, `nix run .#client` runs the fork.
+`util/fx/test/run.py` renders every case in `cases.py` in a deterministic test
+mode (`fx_test_*` settings: fixed 1/60 s steps, capture once the scene mod says
+it is ready and meshing and the light volume are idle) from a snapshot of the
+build, so editing shaders mid-run can't affect it. Each case checks:
+
+- that it rendered without Lua, shader or GL errors (and no NaN: in test mode
+  NaN/Inf pixels turn magenta);
+- probes: luminance, hue or saturation of screen regions (the lit floor, a red
+  lamp's hue, a jack o'lantern's face glowing and its side not);
+- comparisons between cases (a mood must change the image, toggling fx must
+  return to the same image);
+- a golden image at 480×270 (`golden/llvmpipe/`, `golden/gpu/`).
+
+`xfail` marks a known bug: reported, not failed, and failing once it passes.
+Options: `--only REGEX`, `--update-goldens`, `--gpu`, `--set KEY=VALUE`,
+`--display N` (parallel runs), `--out DIR`. Report: `shots/test/report.html`.
+
+Scenes: `util/fx/testworld` (devtest: lamps, glass, water, lava, materials,
+mob) and `util/fx/test/worlds/mcl` (Mineclonia: light sources facing the camera
+with their unlit twins behind, ores, glass, water and lava).
 
 ## Known gaps
 
 - Inventory and wield item meshes have no emissive maps.
-- Material maps need the array-texture path. Animated tiles (vertical frame strips) get no maps; jsl2mcl skips non-square textures.
-- Contact shadows don't know whether the sun reaches a pixel, so in daylit caves a floor next to a wall can pick up a faint sun-direction shadow. It's limited to 0.7 nodes and to mid-bright pixels.
-- Particle alpha blending showed dark fringes on llvmpipe, so fx_ambience textures are premultiplied and drawn with add/screen blending.
-- Glass behind glass refracts the opaque scene only, so the nearer pane doesn't see the farther one.
-- SSR runs before TAA's resolve but is not itself accumulated. Thin reflected details can still shimmer slightly.
-- Underwater detection uses the node at the camera. Caustics and shafts also apply to anything seen above the surface while submerged.
-- Entities still use T1 hue: the light volume is only bound to map materials.
-- Heat haze and contact shadows are only verified on llvmpipe stills; their motion and strength need a look on a real GPU.
-- Beyond the volume window (about 32 nodes horizontally), hue falls back to T1.
-- `fx_debug_view`, `fx_colored_light` and `fx_hdr_composite` are shader defines. Change them and either restart or save a shader file with hot reload on.
-- The flake and devenv have not been run on NixOS yet. If `pkgs.luanti`'s recipe drifts from master's CMake options, adjust the flake's `cmakeFlags`.
-- Cave detection reads the sky light at the camera, so a deep, roofed-over build counts as a cave.
-- TAA does not reproject moving entities (no motion vectors). Variance clipping keeps ghosting short.
+- Material maps need the array-texture path; animated tiles get none.
+- Auto-emissive keeps bright pixels whatever their colour, so bright stone
+  parts of a light source's unique tile (the rim of a lit furnace's front)
+  glow too. An authored `_e.png` fixes it.
+- Contact shadows don't know whether the sun reaches a pixel, so a daylit cave
+  floor next to a wall can pick up a faint shadow (limited to 0.7 nodes and
+  mid-bright pixels).
+- Glass behind glass refracts the opaque scene only.
+- Beyond the light volume window (about 32 nodes horizontally) artificial
+  light is white. Particles and the held item don't sample the volume.
+- Cave detection reads the sky light at the camera, so a deep, roofed-over
+  build counts as a cave.
+- The flake and devenv have not been run on NixOS yet; run `nix flake lock` /
+  `devenv shell` once to record the hashes.

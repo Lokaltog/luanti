@@ -50,8 +50,8 @@ never reach that pack.
 
 | | |
 |---|---|
-| Name | For every top-level atom `foo.png` in a tile's texture string, the renderer looks for `foo_e.png` among the known source images (pack, then game). Atoms inside `[combine` and similar escaped modifiers are not rewritten. |
-| Missing | The atom is blackened but keeps its alpha (`foo.png^[multiply:#000000`), so overlays still composite. If no atom of a tile has a map **and the tile is used only by light sources** (no node with `light_source = 0` uses the same tile string), the base goes through `[fx_autoemissive:<fx_auto_emissive_threshold>`. So a lit furnace's top, shared with the unlit furnace, and a jack o'lantern's sides, shared with the pumpkin, never glow. |
+| Name | For every top-level atom `foo.png` in a tile's texture string, the renderer looks for `foo_e.png` among the known source images (pack, then game). Top-level means at the start of the string or right after `^` or `(`, so atoms inside parentheses count; atoms inside `[combine` and similar escaped modifiers are not rewritten. |
+| Missing | The atom is blackened but keeps its alpha (`foo.png^[multiply:#000000`), so overlays still composite. If no atom of a tile has a map **and the tile is used only by light sources** (no node with `light_source = 0` uses the same tile string), the base goes through `[fx_autoemissive:<fx_auto_emissive_threshold>`. So a lit furnace's top, shared with the unlit furnace, and a jack o'lantern's sides, shared with the pumpkin, never glow. The comparison is per tile string, the unit the runtime works on; an authored `_e.png` applies per image file, to every node whose tile string has that atom, so a producer that generates maps offline must check per file (an unlit node may use the same file with a modifier). |
 | RGB | Emitted colour in sRGB, **premultiplied by strength**: black means no glow. The shader adds `pow(rgb, 2.2) * fx_emissive_strength` in linear light. |
 | Alpha | Ignored by the shader, which uses the base texture's alpha. It is still used when the companion texture string is composited, so a map should be transparent where it doesn't glow. |
 | Size and layout | Same layout as the base: the same vertical frame strip for animated tiles. **Animated tiles: the size must match.** Their companion is cut with `^[verticalframe:N:i` and is not resized. For static tiles a mismatch falls back to `[resize`, whose filtering is unspecified. |
@@ -111,9 +111,11 @@ order as texture lookups).
 - An entry replaces detection for that node. `none` opts a node out.
 - `glass` and `water` work on any drawtype. A surface on a non-liquid node is
   drawn in the transparent pass, after the opaque scene copy, writing depth.
-- Detection without an entry: translucent, non-glowing liquids are water.
-  Glasslike drawtypes, and non-`normal` drawtypes named `*glass*` without
-  light, are glass. The pattern comes from the name: `fluted`/`reeded`,
+- Detection without an entry: translucent, non-glowing liquids (a
+  `liquidtype` other than `none`, liquid drawtype) are water. Translucent,
+  non-glowing nodes with a liquid drawtype that are not liquids (Mineclonia's
+  ice) are glass. Glasslike drawtypes, and non-`normal` drawtypes named
+  `*glass*` without light, are glass. The pattern comes from the name: `fluted`/`reeded`,
   `frosted` or `ripple`.
 
 ### Diagnostics
@@ -131,7 +133,8 @@ only light sources; surface keys only when surfaces are on).
 
 - Looked up for the base atom (the first atom at the start of the tile string)
   and resized to the base size. Missing maps get neutral fills.
-- Only tiles that go into array textures get maps. The maps of a size bunch
+- Every tile slot gets maps: base, overlay and special tiles alike. Only
+  tiles that go into array textures get them, though. The maps of a size bunch
   form one interleaved array (layer 2i = `_n`, 2i+1 = `_s`), so with materials
   on, a bunch holds at most half of `array_texture_max` tiles.
 - The normal is in texture space. The renderer builds the tangent frame per

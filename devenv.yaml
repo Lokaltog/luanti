@@ -1,4 +1,6 @@
 # devenv (https://devenv.sh) for the fx fork. `devenv shell`, then `fx-help`.
 inputs:
   nixpkgs:
-    url: github:cachix/devenv-nixpkgs/rolling
+    # pinned (rolling as of 2026-10-24); bump deliberately, then re-run the
+    # goldens: llvmpipe output can change with mesa
+    url: github:cachix/devenv-nixpkgs/760b85220489f69855e6df78a6d1dad5873f8bf6

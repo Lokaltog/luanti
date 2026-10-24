@@ -1,9 +1,11 @@
 {
-  # Luanti "fx" fork: mood renderer. Untested on a real NixOS box yet, see
-  # util/fx/README.md for the expected rough edges.
+  # Luanti "fx" fork: mood renderer. Day-to-day development uses devenv.nix
+  # (`devenv shell`, then `fx-help`); this flake builds a package and offers a
+  # minimal dev shell.
   description = "Luanti with the fx mood renderer (colored light, emissive, HDR bloom)";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  # pinned (nixos-unstable as of 2026-10-24); `nix flake lock` records the hash
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/02c087f3fe673c9e317f206a627cb6b910336dbe";
 
   outputs = { self, nixpkgs }:
     let
@@ -28,6 +30,8 @@
       });
 
       apps = forAll (pkgs: rec {
+        # NixOS: the GPU driver comes from /run/opengl-driver; nixpkgs' luanti
+        # wrapper (via libglvnd) finds it, no LD_LIBRARY_PATH needed
         client = {
           type = "app";
           program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.luanti-fx}/bin/luanti";
@@ -51,9 +55,9 @@
             gdb
             renderdoc
             glslang # glslangValidator for linting shaders outside the game
-            imagemagick # util/fx/abshot.sh
-            grim # util/fx/abshot.sh on Wayland
-            (python3.withPackages (ps: [ ps.pillow ps.numpy ])) # jsl2mcl
+            xorg.xorgserver # Xvfb for util/fx/test/run.py
+            mesa # llvmpipe for util/fx/test/run.py
+            (python3.withPackages (ps: [ ps.pillow ps.numpy ])) # util/fx/test/run.py
           ];
           CMAKE_GENERATOR = "Ninja";
         };

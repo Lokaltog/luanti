@@ -2,7 +2,13 @@
 #
 # The build is RUN_IN_PLACE: the binary lands in ./bin and reads shaders from
 # ./client/shaders, so fx_shader_hot_reload picks up edits in the working tree.
-# Your existing games, worlds and mods are found through LUANTI_*_PATH below.
+# Your existing games, worlds and mods in ~/.minetest are found through
+# LUANTI_*_PATH below (read-only use); everything the dev build writes (config,
+# new worlds, linked fx mods) stays in this tree.
+#
+# NixOS: the GPU driver lives in /run/opengl-driver, outside the store. Only the
+# commands that start the game on your GPU add it (fx-gl); the shell itself
+# keeps a clean LD_LIBRARY_PATH, so the headless tests get llvmpipe.
 { pkgs, lib, config, ... }:
 
 let
@@ -40,18 +46,15 @@ in
     # fx tooling
     renderdoc # frame captures (opengl3 driver)
     glslang # glslangValidator
-    imagemagick # screenshots in util/fx/*.sh
-    grim # screenshots on Wayland
-    xorg.xorgserver # Xvfb for the headless smoke test
-    mesa # llvmpipe for the headless smoke test
-    (python3.withPackages (ps: [ ps.pillow ps.numpy ])) # jsl2mcl
+    xorg.xorgserver # Xvfb for the headless test harness
+    mesa # llvmpipe for the headless test harness
+    (python3.withPackages (ps: [ ps.pillow ps.numpy ])) # util/fx/test/run.py
+    uv # fx-jsl-test runs the mineclonia-jsl test suite
   ];
 
   env = {
     CMAKE_GENERATOR = "Ninja";
     CCACHE_DIR = "${config.devenv.root}/.devenv/ccache";
-    # NixOS: GL/Vulkan drivers (NVIDIA included) live here, not in the store
-    LD_LIBRARY_PATH = "/run/opengl-driver/lib";
   };
 
   enterShell = ''
@@ -81,8 +84,15 @@ in
       fx-renderdoc        run under RenderDoc for a frame capture
       fx-jsl-test         run the jsl2mcl fx step tests (needs JSL2MCL_DIR)
       fx-install-mods     symlink util/fx/mods/* (fx_ambience particles) into
-                          ~/.minetest/mods; then enable them per world
+                          this tree's mods/; then enable them per world
+      fx-gl <cmd>         run <cmd> with the NixOS GPU driver on the library path
       EOF
+    '';
+
+    fx-gl.exec = ''
+      # GL/Vulkan drivers (NVIDIA included) live here on NixOS, not in the store
+      export LD_LIBRARY_PATH="/run/opengl-driver/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+      exec "$@"
     '';
 
     fx-configure.exec = ''
@@ -117,7 +127,7 @@ in
         sed -i '/^texture_path =/d' "$conf"
         echo "texture_path = $FX_TEXTURE_PACK" >> "$conf"
       fi
-      exec bin/luanti --config "$conf" "$@"
+      exec fx-gl bin/luanti --config "$conf" "$@"
     '';
 
     fx-play.exec = ''
@@ -134,7 +144,7 @@ in
       conf=.devenv/luanti-upstream.conf
       sed '/^fx_/d' util/fx/dev.conf > "$conf"
       echo "fx_enable = false" >> "$conf"
-      exec bin/luanti --config "$conf" "$@"
+      exec fx-gl bin/luanti --config "$conf" "$@"
     '';
 
     fx-test.exec = ''
@@ -152,7 +162,7 @@ in
       set -e
       cd "$DEVENV_ROOT"
       fx-build
-      python3 util/fx/test/run.py --gpu "$@"
+      fx-gl python3 util/fx/test/run.py --gpu "$@"
     '';
 
     fx-unit.exec = ''
@@ -171,20 +181,26 @@ in
     fx-renderdoc.exec = ''
       cd "$DEVENV_ROOT"
       fx-build
-      exec renderdoccmd capture -w bin/luanti --config util/fx/dev.conf "$@"
+      exec fx-gl renderdoccmd capture -w bin/luanti --config util/fx/dev.conf "$@"
     '';
 
     fx-jsl-test.exec = ''
-      [ -n "''${JSL2MCL_DIR:-}" ] || { echo "set JSL2MCL_DIR to your jsl2mcl checkout"; exit 1; }
-      python "$JSL2MCL_DIR/tests/test_fx.py" "$DEVENV_ROOT/games/devtest"
+      [ -n "''${JSL2MCL_DIR:-}" ] || { echo "set JSL2MCL_DIR to your mineclonia-jsl checkout"; exit 1; }
+      # its fx tests check the fork's test pack and node dump when pointed at them
+      cd "$JSL2MCL_DIR"
+      FX_TESTPACK="$DEVENV_ROOT/util/fx/testpack" \
+        FX_NODEDUMP="$DEVENV_ROOT/util/fx/test/data/mineclonia_nodes.json" \
+        uv run pytest tests/test_fxpack.py "$@"
     '';
 
     fx-install-mods.exec = ''
-      mkdir -p "$LUANTI_MOD_PATH"
+      # RUN_IN_PLACE: ./mods is this build's user mod dir; stock Luanti and
+      # ~/.minetest are left alone
+      mkdir -p "$DEVENV_ROOT/mods"
       for m in "$DEVENV_ROOT"/util/fx/mods/*/; do
         name=$(basename "$m")
-        ln -sfn "$m" "$LUANTI_MOD_PATH/$name"
-        echo "linked $name -> $LUANTI_MOD_PATH/$name (enable it in the world's mod list)"
+        ln -sfn "$m" "$DEVENV_ROOT/mods/$name"
+        echo "linked $name -> mods/$name (enable it in the world's mod list)"
       done
     '';
   };
