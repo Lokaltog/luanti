@@ -110,7 +110,11 @@ layout(std140) uniform FxFrame {
 	vec4 fxCloudOrigin;
 	vec4 fxCloudColor;
 	vec4 fxCloudShadow;
+	vec4 fxStrike;
 };
+#define fxStrikePos fxStrike.xy          // nodes, relative to the camera offset
+#define fxStrikeSeed fxStrike.z
+#define fxStrikeAge fxStrike.w           // seconds since the strike
 #define fxEyePos fxEyeTime.xyz          // camera in scene space
 #define fxTime fxEyeTime.w              // seconds, wraps hourly
 #define fxSunDir fxSun.xyz              // towards the sun (or the moon at night)

@@ -449,6 +449,97 @@ vec3 fxLensDirtColor(vec2 uv)
 
 // Lightning: the whole scene lights up, slightly blue. Linear, before
 // exposure is final.
+// Rain in the distance: grey curtains hanging under the clouds, drifting
+// with the wind, made of fine slanted streaks; only beyond ~20 nodes (the
+// particles are the near rain). Exposed linear in, out.
+vec3 fxApplyRainSheets(vec3 col, vec2 uv, float expo)
+{
+	float k = fxRaining * fxOverworld;
+	if (k <= 0.01)
+		return col;
+	float dn = fxViewDist01(uv) * fxNearFar.y / FX_BS;
+	float sky = step(0.99999, texture2D(fxDepth, uv).r);
+	float far = max(smoothstep(20.0, 90.0, dn), sky);
+	if (far <= 0.0)
+		return col;
+	vec3 dir = fxSafeNormalize(fxScenePos(uv, 1.0) - fxEyePos);
+	// curtains: patches around the horizon, under the cloud base
+	float az = atan(dir.z, dir.x);
+	float t = fxTime;
+	float curtain = smoothstep(0.3, 0.7, fxFbm2(vec2(az * 2.2 + t * 0.02 * fxWindStrength, 3.7)))
+		* (1.0 - smoothstep(0.02, 0.32, dir.y));
+	// streaks: thin, slanted with the wind, falling fast
+	vec2 res = vec2(textureSize(fxDepth, 0));
+	vec2 p = uv * res / res.y;
+	float slant = 0.12 * fxWindStrength * sin(fxWindAngle - az);
+	float x = (p.x + p.y * slant) * 260.0;
+	float s = fxVNoise2(vec2(x, p.y * 2.5 + t * 9.0)) * fxVNoise2(vec2(x * 0.37 + 11.0, p.y * 1.3 + t * 6.0));
+	float streak = smoothstep(0.35, 0.7, s);
+	float a = k * far * curtain * (0.35 + 0.25 * streak) * (0.6 + 0.4 * fxStorm);
+	vec3 rain_c = fxToLinear(fxFogColor) * expo * 0.85;
+	return mix(col, rain_c, clamp(a, 0.0, 0.75));
+}
+
+// 1D value noise for the bolt's zigzag
+float fxBoltNoise(float x, float seed)
+{
+	float i = floor(x), f = fract(x);
+	return mix(fxHash13(vec3(i, seed, 3.0)), fxHash13(vec3(i + 1.0, seed, 3.0)), f * f * (3.0 - 2.0 * f));
+}
+
+// Distance in pixels from p to a jagged bolt from a to b (pixels), and the
+// position t along it
+float fxBoltDist(vec2 p, vec2 a, vec2 b, float seed, float rough, out float t)
+{
+	vec2 ab = b - a;
+	float len = max(length(ab), 1.0);
+	t = clamp(dot(p - a, ab) / (len * len), 0.0, 1.0);
+	vec2 nrm = vec2(-ab.y, ab.x) / len;
+	float jag = (fxBoltNoise(t * 7.0, seed) - 0.5) * 0.9
+		+ (fxBoltNoise(t * 19.0, seed + 7.0) - 0.5) * 0.35
+		+ (fxBoltNoise(t * 53.0, seed + 13.0) - 0.5) * 0.12;
+	jag *= len * rough * smoothstep(0.0, 0.08, t); // pinned where it leaves the cloud
+	return abs(dot(p - (a + ab * t), nrm) - jag);
+}
+
+// A lightning bolt from the cloud base to the ground where it struck, while
+// it flashes; hidden behind anything nearer than it. Linear, exposed.
+vec3 fxApplyBolt(vec3 col, vec2 uv)
+{
+	float k = fxFlash * fxLightningFlash;
+	if (k <= 0.01 || fxStrikeAge > 0.6 || fxOverworld < 0.5)
+		return col;
+	float base_y = (fxCloud.y > 0.0 ? fxCloud.x : 120.0) * FX_BS - fxCameraOffsetY;
+	vec3 top = vec3(fxStrikePos.x * FX_BS, base_y, fxStrikePos.y * FX_BS);
+	vec3 bottom = vec3(top.x, fxEyePos.y - 14.0 * FX_BS, top.z);
+	vec4 ca = fxViewProj * vec4(top, 1.0), cb = fxViewProj * vec4(bottom, 1.0);
+	if (ca.w <= 0.0 || cb.w <= 0.0)
+		return col;
+	vec2 res = vec2(textureSize(fxDepth, 0));
+	vec2 a = (ca.xy / ca.w * 0.5 + 0.5) * res, b = (cb.xy / cb.w * 0.5 + 0.5) * res;
+	vec2 p = uv * res;
+	// cheap reject: far from the segment's bounding box
+	vec2 lo = min(a, b) - res.y * 0.15, hi = max(a, b) + res.y * 0.15;
+	if (any(lessThan(p, lo)) || any(greaterThan(p, hi)))
+		return col;
+	float t;
+	float d = fxBoltDist(p, a, b, fxStrikeSeed * 50.0, 0.12, t);
+	// a branch forking off a third of the way down
+	vec2 fork = mix(a, b, 0.33);
+	vec2 fork_end = fork + (b - a) * 0.35 + vec2((fxStrikeSeed - 0.5) * 2.0, 0.0) * length(b - a) * 0.25;
+	float tb;
+	float db = fxBoltDist(p, fork, fork_end, fxStrikeSeed * 50.0 + 3.0, 0.2, tb) + tb * res.y * 0.004;
+	float scale = res.y / 1080.0;
+	float core = exp(-pow(d / (1.6 * scale), 2.0)) + 0.6 * exp(-pow(db / (1.1 * scale), 2.0));
+	float glow = exp(-d / (14.0 * scale)) * 0.35 + exp(-db / (10.0 * scale)) * 0.15;
+	// behind whatever is nearer than the bolt
+	float sd = texture2D(fxDepth, uv).r;
+	float bolt_w = mix(ca.w, cb.w, t);
+	if (sd < 0.99999 && fxLinearDepth(sd) < bolt_w)
+		return col;
+	return col + vec3(0.75, 0.82, 1.0) * (core * 30.0 + glow * 3.0) * k;
+}
+
 vec3 fxApplyFlash(vec3 col)
 {
 	float f = fxFlash * fxLightningFlash;

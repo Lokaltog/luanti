@@ -140,10 +140,31 @@ void Renderer::updateWorld(Client *client, float dtime)
 	events.droplets = std::max(0.f, events.droplets - dtime / 3.f);
 
 	// 2. lightning: each new strike flashes twice, quickly
-	if (hints.present && events.last_flash >= 0 && hints.flash > events.last_flash)
+	if (hints.present && events.last_flash >= 0 && hints.flash > events.last_flash) {
 		events.flash_age = 0.f;
+		// where it strikes: somewhere around, rarely close (nodes)
+		static u32 rng = 0x9e3779b9u;
+		auto rnd = [&] { rng = rng * 1664525u + 1013904223u; return (rng >> 8) / 16777216.f; };
+		const float a = rnd() * 6.2831853f, d = 50.f + rnd() * rnd() * 220.f;
+		const v3f eye = player->getEyePosition() / BS;
+		events.strike[0] = eye.X + std::cos(a) * d;
+		events.strike[1] = eye.Z + std::sin(a) * d;
+		events.strike[2] = rnd();
+	}
 	events.last_flash = hints.present ? hints.flash : -1;
 	events.flash_age += dtime;
+	// test mode: a strike pinned at "dx,dz,age" from the eye (nodes, s)
+	if (test::active()) {
+		const std::string ts = g_settings->get("fx_test_strike");
+		const auto v = str_split(ts, ',');
+		if (v.size() == 3) {
+			const v3f eye = player->getEyePosition() / BS;
+			events.strike[0] = eye.X + stof(v[0]);
+			events.strike[1] = eye.Z + stof(v[1]);
+			events.strike[2] = 0.37f;
+			events.flash_age = stof(v[2]);
+		}
+	}
 	{
 		const float t = events.flash_age;
 		const float a = std::exp(-t / 0.08f), b = t > 0.15f ? std::exp(-(t - 0.15f) / 0.2f) : 0.f;

@@ -654,7 +654,11 @@ void main(void)
 #endif
 		lin = fxTranslucent(lin, fxToLinear(base.rgb), sss);
 	}
-	lin = fxWeatherSurface(lin, fxToLinear(base.rgb), fxSafeNormalize(vNormal));
+#ifdef FX_MAT_ACTIVE
+	lin = fxWeatherSurface(lin, fxToLinear(base.rgb), fxSafeNormalize(vNormal), true, fxMatSm, fxMatNm, fxMatNormal);
+#else
+	lin = fxWeatherSurface(lin, fxToLinear(base.rgb), fxSafeNormalize(vNormal), false, vec4(0.0), vec4(0.0), vec3(0.0));
+#endif
 #endif
 	// emissive: an HDR multiplier, values above 1 bloom
 #if defined(FX_MAT_ACTIVE)

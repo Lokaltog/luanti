@@ -74,8 +74,9 @@ struct FrameBlock {
 	float cloud_origin[4];      // noise origin x, z; camera offset x, z (world, BS units)
 	float cloud_color[4];       // lit colour now (linear)
 	float cloud_shadow[4];      // shadow tint (linear)
+	float strike[4];            // last lightning strike: x, z (nodes, rel. camera offset), seed, age (s)
 };
-static_assert(sizeof(FrameBlock) == 3 * 64 + 17 * 16, "FxFrame std140 layout");
+static_assert(sizeof(FrameBlock) == 3 * 64 + 18 * 16, "FxFrame std140 layout");
 
 /// std140 mirror of FxLights.
 struct LightsBlock {
@@ -182,6 +183,7 @@ public:
 		int last_flash = -1;
 		s32 last_hp = -1;
 		float flash_age = 10.f;
+		float strike[3] = {0.f, 0.f, 0.f}; // world nodes x, z; seed
 	} events;
 
 	CameraState cam;

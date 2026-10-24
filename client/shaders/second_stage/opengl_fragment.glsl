@@ -168,10 +168,12 @@ void main(void)
 	color.rgb *= fxExpo;
 	color.rgb += fxEndSkyColor(uv);
 	color.rgb = fxApplySky(color.rgb, uv);
+	color.rgb = fxApplyBolt(color.rgb, uv); // behind the clouds in front of it
 #ifdef FX_CLOUDS
 	// over the sky (which replaces sky pixels), exposed like the scene
 	color.rgb = fxApplyClouds(color.rgb, uv, fxExpo);
 #endif
+	color.rgb = fxApplyRainSheets(color.rgb, uv, fxExpo);
 	color.rgb *= 1.0 - fxDropMask * 0.15; // the drops darken their rim a little
 	color.rgb = fxApplyFlash(color.rgb);
 	vec3 fxTrans = vec3(1.0);

@@ -25,6 +25,8 @@ bool fxTBNok = false;
 vec2 fxUVdx, fxUVdy;            // derivatives of the unshifted uv
 vec3 fxMatEmission = vec3(0.0); // linear, from _s.a
 vec4 fxMatSm = vec4(0.0);       // the _s texel fxShadeMaterial read
+vec4 fxMatNm = vec4(0.0);       // the _n texel (a: height)
+vec3 fxMatNormal = vec3(0.0);   // the mapped normal (world), 0 without maps
 
 // Cotangent frame from screen-space derivatives (Schueler 2013): works for
 // rotated and world-aligned tiles without tangents in the mesh. Call once at
@@ -118,6 +120,7 @@ vec3 fxShadeMaterial(vec3 lin, vec4 base, vec2 uv)
 	vec4 nm = fxMatN(uv);
 	vec4 sm = fxMatS(uv);
 	fxMatSm = sm;
+	fxMatNm = nm;
 	vec3 N = fxSafeNormalize(vNormal);
 	vec3 Nm = N;
 	float ao = 1.0;
@@ -126,6 +129,7 @@ vec3 fxShadeMaterial(vec3 lin, vec4 base, vec2 uv)
 		vec3 nts = vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0)));
 		Nm = fxSafeNormalize(fxTBN * nts);
 		ao = mix(1.0, nm.b, clamp(fxNormalStrength, 0.0, 1.0));
+		fxMatNormal = Nm;
 	}
 	vec3 eye = cameraPosition - cameraOffset;
 	vec3 V = fxSafeNormalize(eye - worldPosition);

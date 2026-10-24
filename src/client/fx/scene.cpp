@@ -198,6 +198,10 @@ void Renderer::uploadFrame()
 		b.cloud_color[i] = std::pow(clouds.color[i], 2.2f);
 		b.cloud_shadow[i] = std::pow(clouds.shadow[i], 2.2f);
 	}
+	b.strike[0] = events.strike[0] - cam.offset.X;
+	b.strike[1] = events.strike[1] - cam.offset.Z;
+	b.strike[2] = events.strike[2];
+	b.strike[3] = events.flash_age;
 	driver->setUniformBufferData(UBO_FRAME, &b, sizeof(b));
 }
 

@@ -46,7 +46,13 @@ vec3 fxTranslucent(vec3 lin, vec3 albedo, float sss)
 	return lin + albedo * fxToLinear(dayLight) * t * sss * sky * fxSunStrength * fxTranslucency * 1.5;
 }
 
-vec3 fxWeatherSurface(vec3 lin, vec3 albedo, vec3 N)
+// Rain and snow on a surface open to the sky. With material maps (mat:
+// true) the LabPBR channels drive it: porosity (_s blue 0..64) says how
+// much the material soaks up (darkens, stays matte, dries slowly) versus
+// carries a film of water (glossy, dries first); the height map (_n alpha)
+// says where water collects, so joints and cracks flood before faces.
+// sm: _s texel, nm: _n texel, Nm: the mapped normal.
+vec3 fxWeatherSurface(vec3 lin, vec3 albedo, vec3 N, bool mat, vec4 sm, vec4 nm, vec3 Nm)
 {
 	float sky = smoothstep(0.35, 0.75, fxSkyExp);
 	if (sky <= 0.0)
@@ -58,33 +64,59 @@ vec3 fxWeatherSurface(vec3 lin, vec3 albedo, vec3 N)
 	float snow = fxSnowCover * fxSnow * sky * up;
 	if (snow > 0.001) {
 		float m = smoothstep(0.35, 0.65, fxFbm2(wp.xz * 0.8) + snow * 0.6 - 0.3);
+		// in a height-mapped tile it lies in the dips first
+		if (mat && nm.r + nm.g > 0.002)
+			m = clamp(m + (0.6 - nm.a) * 0.8 * snow, 0.0, 1.0);
 		snow = clamp(snow * m * 1.4, 0.0, 1.0);
 		float light = fxLuma(lin) / max(fxLuma(albedo), 0.04);
 		lin = mix(lin, vec3(0.92, 0.95, 1.0) * light, snow);
 	}
 
-	float wet = fxWet * fxWetness * sky * (1.0 - snow);
-	if (wet <= 0.001)
+	float wetness = fxWet * fxWetness * sky * (1.0 - snow);
+	if (wetness <= 0.001)
 		return lin;
-	float w = clamp(wet, 0.0, 1.0);
-	lin *= mix(1.0, 0.62, w * 0.8); // wet materials darken
-	float puddle = up * w * smoothstep(0.55, 0.7, fxFbm2(wp.xz * 0.35 + 31.0) + (wet - 1.0) * 0.2);
-	vec3 n = N;
+	// porosity: 0 dense (glazed, polished, metal) .. 1 soaks it up (wool,
+	// dirt); subsurface texels (leaves) count as half; no maps: in between
+	float por = 0.5, f0 = 0.04;
+	bool metal = false;
+	if (mat) {
+		float b = sm.b * 255.0;
+		por = b <= 64.5 ? b / 64.0 : 0.5;
+		metal = sm.g * 255.0 >= 229.5;
+		f0 = metal ? 1.0 : sm.g;
+	}
+	// porous things stay dark longer as it dries; dense ones lose the film first
+	float w_dark = smoothstep(0.0, 0.5 + 0.5 * por, wetness);
+	float w_film = smoothstep(0.15 + 0.4 * por, 0.55 + 0.4 * por, wetness);
+	if (!metal)
+		lin *= mix(1.0, mix(0.8, 0.45, por), w_dark); // soaked materials darken
+	// puddles: on up faces, where the ground is low; with a height map, in
+	// its joints and cracks first, as the level rises with the wetness
+	float puddle = 0.0;
+	float big = fxFbm2(wp.xz * 0.35 + 31.0);
+	if (mat && nm.r + nm.g > 0.002) {
+		float level = 1.0 - 0.35 * w_film + (big - 0.5) * 0.3;
+		puddle = up * smoothstep(level, level - 0.06, nm.a) * w_film;
+	} else {
+		puddle = up * w_film * smoothstep(0.55, 0.7, big + (wetness - 1.0) * 0.2);
+	}
+	vec3 n = mat && dot(Nm, Nm) > 0.5 ? normalize(mix(Nm, N, w_film * 0.5)) : N; // the film smooths the relief
 	if (puddle > 0.0) {
 		vec2 r = fxRipples(wp.xz) * fxRaining;
-		n = fxSafeNormalize(N + vec3(r.x, 0.0, r.y) * puddle);
-		lin = mix(lin, lin * 0.45, puddle * 0.6); // standing water over the ground
+		n = fxSafeNormalize(mix(n, N, puddle) + vec3(r.x, 0.0, r.y) * puddle);
+		lin = mix(lin, lin * 0.55, puddle * 0.6); // standing water over the ground
 	}
+	// the film: a smooth layer of water over the material (F0 0.02)
 	vec3 eye = cameraPosition - cameraOffset;
 	vec3 V = fxSafeNormalize(eye - worldPosition);
 	float cosv = clamp(dot(n, V), 0.0, 1.0);
 	float fres = 0.02 + 0.98 * pow(1.0 - cosv, 5.0);
-	float gloss = mix(0.25, 1.0, puddle);
+	float gloss = max(mix(0.85, 0.3, por) * w_film, puddle);
 	float daylight = clamp(1.0 - nightRatio, 0.1, 1.0);
 	vec3 sky_c = fxToLinear(fogColor.rgb) * daylight;
-	lin += sky_c * fres * gloss * w * 0.8;
+	lin += sky_c * fres * gloss * 0.8;
 	vec3 H = fxSafeNormalize(fxSunDir + V);
-	float spec = pow(max(dot(n, H), 0.0), mix(60.0, 400.0, puddle)) * fxSunStrength * gloss * w * 3.0;
+	float spec = pow(max(dot(n, H), 0.0), mix(40.0, 500.0, gloss)) * fxSunStrength * gloss * 3.0;
 	lin += fxToLinear(dayLight) * spec * sky;
 	return lin;
 }

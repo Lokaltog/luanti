@@ -98,6 +98,9 @@ void main(void)
 	vec3 sun_c = fxCloudColor.rgb;
 	vec3 amb_c = mix(fxCloudShadow.rgb * fxCloudColor.rgb, fxToLinear(fxFogColor), 0.3);
 	float sigma_k = 0.22 * fxCloudOpacity; // extinction per node at density 1
+	// lightning: the cloud around the strike lights up from inside
+	float bolt = fxFlash * fxLightningFlash;
+	vec2 strike = fxStrikePos + fxCloudOrigin.zw / FX_BS; // world nodes, like w
 	vec3 acc = vec3(0.0);
 	float T = 1.0;
 	for (int i = 0; i < STEPS; i++) {
@@ -111,6 +114,10 @@ void main(void)
 		float sunlit = exp(-od * sigma_k * 0.9);
 		float yf = (w.y - y0) / max(y1 - y0, 0.5);
 		vec3 lum = sun_c * sunlit * phase * 1.3 + amb_c * mix(0.3, 0.8, yf);
+		if (bolt > 0.001) {
+			float ds = length(w.xz - strike);
+			lum += vec3(0.75, 0.82, 1.0) * bolt * 9.0 * exp(-ds / 70.0) * (1.0 - yf * 0.5);
+		}
 		float s = den * sigma_k;
 		float a = 1.0 - exp(-s * dt);
 		acc += T * a * lum;
