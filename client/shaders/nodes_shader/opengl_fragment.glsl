@@ -659,6 +659,20 @@ void main(void)
 #endif
 	// tinted nodes glow in their tint (a wire's power level)
 	emit *= fxToLinear(varFxTint);
+	{
+		vec3 wp = (worldPosition + cameraOffset) / FX_BS;
+		// lava, fire and other warm glows breathe slowly, unevenly
+		float warm = clamp((emit.r - emit.b) / max(emit.r, 1e-3), 0.0, 1.0);
+		if (fxLavaPulse > 0.0 && warm > 0.3) {
+			float pulse = fxNoise3(wp * 0.35 + vec3(0.0, fxTime * 0.25, fxTime * 0.1));
+			emit *= 1.0 + (pulse - 0.5) * 0.7 * warm * fxLavaPulse;
+		}
+		// the End: a faint violet shimmer drifting over every surface
+		if (fxEndAura > 0.0 && fxEnd > 0.01) {
+			float s = fxNoise3(wp * 0.5 + vec3(0.0, fxTime * 0.15, 0.0));
+			lin += vec3(0.25, 0.08, 0.40) * (s * s * s) * 0.12 * fxEnd * fxEndAura;
+		}
+	}
 	lin += emit;
 
 	vec3 fog = fxFogLinear(fogColor.rgb, clarity);

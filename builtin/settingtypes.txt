@@ -903,6 +903,15 @@ fx_snow (Snow cover) float 1.0 0.0 2.0
 #    weather). Sways leaves and plants even with the engine's waving off.
 fx_wind (Wind) float 1.0 0.0 3.0
 
+#    The first-person camera breathes slowly while you stand still (0 = off).
+fx_idle_breath (Idle breathing) float 1.0 0.0 3.0
+
+#    Lava, fire and other warm glows pulse slowly and unevenly.
+fx_lava_pulse (Lava pulse) float 1.0 0.0 2.0
+
+#    A faint violet shimmer drifting over surfaces in the End (needs fx_hints).
+fx_end_aura (End aura) float 1.0 0.0 3.0
+
 #    Linear luminance above which pixels bloom.
 fx_bloom_threshold (Bloom threshold) float 1.0 0.0 8.0
 

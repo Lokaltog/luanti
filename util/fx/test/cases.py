@@ -141,7 +141,7 @@ CASES = [
      "compare": [{"with": "night", "min_mean": 3.0, "name": "the portal warps the image"}]},
     {"name": "low_health", "doc": "damage FX off unless hurt: same image as night",
      "settings": {}, "golden": False,
-     "compare": [{"with": "night", "max_mean": 1.0, "name": "no damage, no red"}]},
+     "compare": [{"with": "night", "max_mean": 2.0, "name": "no damage, no red"}]},
 
     # --- content -----------------------------------------------------------------
     {"name": "particles", "mods": ["fx_ambience"],

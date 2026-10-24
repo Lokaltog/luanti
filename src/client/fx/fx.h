@@ -68,6 +68,9 @@ const Caps &caps();
 /// Effective parameters this frame (settings + mood blend). Main thread.
 const Params &params();
 
+/// Camera offset (head space) for slow breathing while standing still.
+v3f idleBreath();
+
 /// The client changed a map block (new data or a node edit). Main thread.
 void noteBlockChanged(v3s16 blockpos);
 

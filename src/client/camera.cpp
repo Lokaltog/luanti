@@ -3,6 +3,7 @@
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "camera.h"
+#include "fx/fx.h"
 #include "client.h"
 #include "clientmap.h"     // MapDrawControl
 #include "localplayer.h"
@@ -400,6 +401,13 @@ void Camera::update(LocalPlayer* player, f32 frametime, f32 tool_reload_ratio)
 		rel_cam_pos += bobvec * m_cache_view_bobbing_amount;
 		rel_cam_target += bobvec * m_cache_view_bobbing_amount;
 		rel_cam_up.rotateXYBy(-0.03 * bobdir * bobtmp * M_PI * m_cache_view_bobbing_amount);
+	}
+
+	// fx: slow breathing while standing still (first person)
+	if (m_camera_mode < CAMERA_MODE_THIRD && m_view_bobbing_state == 0) {
+		const v3f b = fx::idleBreath();
+		rel_cam_pos += b;
+		rel_cam_target += b;
 	}
 
 	// Compute absolute camera position and target

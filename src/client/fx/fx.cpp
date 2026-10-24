@@ -421,6 +421,17 @@ video::SColor tintParticleLight(v3s16 node, video::SColor color, float artificia
 	return video::SColor(color.getAlpha(), out[0], out[1], out[2]);
 }
 
+v3f idleBreath()
+{
+	Renderer *r = renderer();
+	if (!r || r->params.idle_breath <= 0.f || test::active())
+		return v3f(0.f);
+	// ~4.5 s per breath, a slight sway on the out-breath
+	const float t = porting::getTimeMs() / 1000.f;
+	const float a = r->params.idle_breath;
+	return v3f(std::sin(t * 0.7f) * 0.015f, std::sin(t * 1.4f) * 0.04f, 0.f) * a;
+}
+
 bool lightVolumeCurrent()
 {
 	Renderer *r = renderer();
