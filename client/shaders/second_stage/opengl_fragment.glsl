@@ -21,6 +21,61 @@ uniform ExposureParams exposureParams;
 uniform lowp float bloomIntensity;
 uniform lowp float saturation;
 
+#ifdef FX_HDR_COMPOSITE
+uniform float fxBloomIntensity;
+uniform float fxExposure;
+uniform float fxGradeSaturation;
+uniform float fxGradeContrast;
+
+// AgX, minimal fit by Benjamin Wrensch (MIT), sRGB primaries.
+// Input: linear scene-referred. Output: display-encoded (gamma) in [0,1].
+vec3 fxAgxContrast(vec3 x)
+{
+	vec3 x2 = x * x;
+	vec3 x4 = x2 * x2;
+	return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4
+		- 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+}
+
+vec3 fxAgx(vec3 v)
+{
+	const mat3 inset = mat3(
+		0.842479062253094, 0.0423282422610123, 0.0423756549057051,
+		0.0784335999999992, 0.878468636469772, 0.0784336,
+		0.0792237451477643, 0.0791661274605434, 0.879142973793104);
+	const mat3 outset = mat3(
+		1.19687900512017, -0.0528968517574562, -0.0529716355144438,
+		-0.0980208811401368, 1.15190312990417, -0.0980434501171241,
+		-0.0990297440797205, -0.0989611768448433, 1.15107367264116);
+	const float min_ev = -12.47393;
+	const float max_ev = 4.026069;
+	v = inset * v;
+	v = clamp(log2(max(v, vec3(1e-10))), min_ev, max_ev);
+	v = (v - min_ev) / (max_ev - min_ev);
+	v = fxAgxContrast(v);
+	// AgX "look": power + saturation in AgX log space (the "punchy" look is
+	// power 1.35, saturation 1.4). Keeps colored lights colored.
+	float luma = dot(v, vec3(0.2126, 0.7152, 0.0722));
+	v = pow(max(v, vec3(0.0)), vec3(fxGradeContrast));
+	luma = pow(max(luma, 0.0), fxGradeContrast);
+	v = luma + fxGradeSaturation * (v - luma);
+	return clamp(outset * v, 0.0, 1.0);
+}
+
+// ACES filmic fit (Narkowicz 2015). Linear in, linear out.
+vec3 fxAces(vec3 x)
+{
+	return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+vec3 fxFalseColor(float lum)
+{
+	// log2 luminance stops: blue (-4) .. green (0) .. yellow (+2) .. red (+4)
+	float s = clamp((log2(max(lum, 1e-5)) + 4.0) / 8.0, 0.0, 1.0);
+	return clamp(vec3(4.0 * s - 2.0, 2.0 - abs(4.0 * s - 2.0), 2.0 - 4.0 * s), 0.0, 1.0);
+}
+#endif
+
 CENTROID_ VARYING_ mediump vec2 varTexCoord;
 
 #ifdef ENABLE_AUTO_EXPOSURE
@@ -114,6 +169,44 @@ void main(void)
 
 	// translate to linear colorspace (approximate)
 	color.rgb = pow(color.rgb, vec3(2.2));
+
+#ifdef FX_HDR_COMPOSITE
+	// fx: HDR path. Bloom is added (energy above threshold, see extract_bloom),
+	// tonemapping happens BEFORE any clamp, so highlights roll off instead of clipping.
+	color.rgb *= exposureParams.compensationFactor * fxExposure;
+#ifdef ENABLE_AUTO_EXPOSURE
+	color.rgb *= exposure;
+#endif
+#ifdef ENABLE_BLOOM
+	vec3 fxBloom = texture2D(bloom, uv).rgb;
+	color.rgb += fxBloom * fxBloomIntensity;
+#endif
+
+#if defined(FX_DEBUG_VIEW) && FX_DEBUG_VIEW == 3
+	gl_FragColor = vec4(fxFalseColor(dot(color.rgb, vec3(0.2126, 0.7152, 0.0722))), 1.0);
+	return;
+#elif defined(FX_DEBUG_VIEW) && FX_DEBUG_VIEW == 4 && defined(ENABLE_BLOOM)
+	gl_FragColor = vec4(pow(fxBloom, vec3(1.0 / 2.2)), 1.0);
+	return;
+#endif
+
+#if FX_TONEMAPPER == 1
+	color.rgb = fxAgx(color.rgb);
+#elif FX_TONEMAPPER == 2
+	color.rgb = pow(fxAces(color.rgb), vec3(1.0 / 2.2));
+#else
+	color.rgb = pow(clamp(color.rgb, 0.0, 1.0), vec3(1.0 / 2.2));
+#if ENABLE_TONE_MAPPING
+	color = applyToneMapping(color);
+#endif
+#endif
+	color.rgb = applySaturation(color.rgb, saturation);
+#ifdef ENABLE_DITHERING
+	color.rgb += screen_space_dither(gl_FragCoord.xy);
+#endif
+	gl_FragColor = vec4(color.rgb, 1.0);
+	return;
+#endif
 
 #ifdef ENABLE_BLOOM_DEBUG
 	if (uv.x > 0.5 || uv.y > 0.5)

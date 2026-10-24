@@ -6,6 +6,20 @@
 #define crackTexture texture1
 uniform sampler2D crackTexture;
 
+#ifdef FX_ENABLE
+// fx: emissive companion, same layer layout as baseTexture (slot 2)
+#define fxMaterial texture2
+#ifdef USE_ARRAY_TEXTURE
+	uniform mediump sampler2DArray fxMaterial;
+#else
+	uniform sampler2D fxMaterial;
+#endif
+uniform float fxEmissiveStrength;
+#endif
+#if defined(FX_ENABLE) && defined(FX_COLORED_LIGHT)
+VARYING_ vec3 fxChroma;
+#endif
+
 uniform vec3 dayLight;
 uniform lowp vec4 fogColor;
 uniform float fogDistance;
@@ -604,8 +618,31 @@ void main(void)
 	// For high clarity (light fog) we tint the fog color.
 	// For this to not make the fog color artificially dark we need to normalize using the
 	// fog color's brightest value. We then blend our base color with this to make the fog.
+#ifdef FX_ENABLE
+	// Emissive, added in linear light so fxEmissiveStrength is a true HDR
+	// multiplier; values above 1.0 survive into the float buffer and bloom.
+#ifdef USE_ARRAY_TEXTURE
+	vec3 fxE = texture(fxMaterial, vec3(uv, float(varTexLayer))).rgb;
+#else
+	vec3 fxE = texture2D(fxMaterial, uv).rgb;
+#endif
+	{
+		vec3 lin = pow(max(col.rgb, vec3(0.0)), vec3(2.2));
+		lin += pow(fxE, vec3(2.2)) * fxEmissiveStrength;
+		col.rgb = pow(lin, vec3(1.0 / 2.2));
+	}
+#endif
+
 	col = mix(fogColor * pow(fogColor / fogColorMax, vec4(2.0 * clarity)), col, clarity);
 	col = vec4(col.rgb, base.a);
+
+#ifdef FX_DEBUG_VIEW
+#if FX_DEBUG_VIEW == 1 && defined(FX_COLORED_LIGHT)
+	col = vec4(fxChroma, base.a); // light chroma
+#elif FX_DEBUG_VIEW == 2
+	col = vec4(fxE, base.a); // emissive companion
+#endif
+#endif
 
 	gl_FragColor = col;
 }
