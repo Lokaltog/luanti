@@ -118,7 +118,11 @@ void OpenALSoundManager::applyHrtf(bool on)
 	// Off hands the choice back to OpenAL Soft (its headphone detection),
 	// rather than forcing HRTF off
 	const ALCint attrs[] = {ALC_MAX_AUXILIARY_SENDS, 6, ALC_HRTF_SOFT,
-			on ? ALC_TRUE : ALC_DONT_CARE_SOFT, 0};
+			on ? ALC_TRUE : ALC_DONT_CARE_SOFT,
+#ifdef ALC_OUTPUT_LIMITER_SOFT
+			ALC_OUTPUT_LIMITER_SOFT, ALC_TRUE,
+#endif
+			0};
 	if (!reset(m_device, attrs)) {
 		warningstream << "afx: resetting the device for HRTF failed" << std::endl;
 		return;
@@ -137,6 +141,8 @@ void OpenALSoundManager::deactivateAcoustics()
 	afx::Acoustics neutral;
 	neutral.wet = 0.f;
 	neutral.echo = 0.f;
+	m_efx->setRecordedSpace(-1, 0, 0.f);
+	m_ir_held = m_ir_pending = -1;
 	m_efx->applyEnvironment(neutral, m_listener_frame);
 	for (auto &[id, snd] : m_sounds_playing) {
 		m_efx->resetSource(snd->getSourceId(), snd->isStereo());
@@ -468,6 +474,73 @@ void OpenALSoundManager::stepCaveMoan(f32 dtime)
 	m_efx->applySource(m_moan->getSourceId(), mix, true, false, env, m_listener_frame);
 }
 
+ALuint OpenALSoundManager::recordedSpaceBuffer(int index)
+{
+	if (index < 0 || index >= afx::RECORDED_SPACE_COUNT)
+		return 0;
+	if (m_ir_data.empty()) {
+		m_ir_data.resize(afx::RECORDED_SPACE_COUNT);
+		m_ir_retry.resize(afx::RECORDED_SPACE_COUNT, 0.0f);
+	}
+	auto &data = m_ir_data[index];
+	if (!data) {
+		// not there (another game, media still coming): look again later
+		const f32 now = porting::getTimeMs() / 1000.0f;
+		if (now < m_ir_retry[index])
+			return 0;
+		m_ir_retry[index] = now + 10.0f;
+		const std::string name = getLoadedSoundNameFromGroup(afx::RECORDED_SPACES[index].sound);
+		if (name.empty())
+			return 0;
+		data = openSingleSound(name);
+		if (data && data->isStreaming()) {
+			// the effect needs the whole response in one buffer
+			warningstream << "afx: impulse response " << name << " is too long" << std::endl;
+			data.reset();
+		}
+		if (!data)
+			return 0;
+	}
+	return std::get<0>(data->getOrLoadBufferAt(0));
+}
+
+void OpenALSoundManager::stepRecordedSpace(const afx::Acoustics &env, f32 dtime)
+{
+	if (!m_efx->hasConvolution() || m_afx_params.convolution <= 0.0f) {
+		m_efx->setRecordedSpace(-1, 0, 0.0f);
+		m_ir_held = -1;
+		return;
+	}
+	const afx::SpaceChoice c = afx::chooseRecordedSpace(env);
+	// a new best fit takes over after a moment (walking through a doorway
+	// shouldn't flip it back and forth); none at all fades right away
+	if (c.index != m_ir_held) {
+		if (c.index != m_ir_pending) {
+			m_ir_pending = c.index;
+			m_ir_pending_t = 0.0f;
+		}
+		m_ir_pending_t += dtime;
+		if (c.index < 0 || m_ir_held < 0 || m_ir_pending_t > 1.5f) {
+			m_ir_held = c.index;
+			infostream << "afx: recorded space "
+					<< (c.index >= 0 ? afx::RECORDED_SPACES[c.index].sound : "none")
+					<< " fit " << c.confidence << std::endl;
+		}
+	} else {
+		m_ir_pending = -1;
+	}
+	if (m_ir_held < 0) {
+		m_efx->setRecordedSpace(-1, 0, 0.0f);
+		return;
+	}
+	// how well the held one fits now
+	afx::SpaceChoice held = c;
+	if (c.index != m_ir_held)
+		held.confidence *= 0.5f;
+	const ALuint buf = recordedSpaceBuffer(m_ir_held);
+	m_efx->setRecordedSpace(buf ? m_ir_held : -1, buf, m_afx_params.convolution * held.confidence);
+}
+
 void OpenALSoundManager::stepRoomTone(f32 dtime)
 {
 	afx::Acoustics env = m_afx_smoother.current();
@@ -554,7 +627,8 @@ void OpenALSoundManager::stepAcoustics(f32 dtime)
 				reinterpret_cast<void (AL_APIENTRY *)()>(alGetProcAddress("alProcessUpdatesSOFT")) : nullptr;
 		if (defer_fn)
 			defer_fn();
-		m_efx->applyEnvironment(env, m_listener_frame);
+		stepRecordedSpace(env, AFX_APPLY_INTERVAL);
+		m_efx->applyEnvironment(env, m_listener_frame, AFX_APPLY_INTERVAL);
 		m_efx->applyRemote(m_remote, m_listener_frame);
 		for (auto &[id, snd] : m_sounds_playing)
 			applyMix(*snd);

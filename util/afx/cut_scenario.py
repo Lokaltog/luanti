@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Cut a tour.sh recording to the scenario: from "afxscene: start" to the
-end, normalised to -1 dBFS peak, 16-bit.
+end, normalised to -1 dBFS peak, 16-bit, for listening. The same cut at
+its true level (float, as the client mixed it) goes to <out>.raw.npz, for
+loudness checks.
 
     cut_scenario.py <log> <raw.wav> <out.wav>
 """
@@ -31,6 +33,7 @@ def main(log, raw, out):
     x, rate = read_wav(raw)
     off = (t_start - t_audio).total_seconds() if t_audio and t_start else 0
     x = x[int(max(0, off - 0.5) * rate):]
+    np.savez_compressed(out.rsplit(".", 1)[0] + ".raw.npz", x=x.astype(np.float32), rate=rate)
     x = x * (0.89 / max(1e-6, np.abs(x).max()))
     with wave.open(out, "wb") as w:
         w.setnchannels(x.shape[1])

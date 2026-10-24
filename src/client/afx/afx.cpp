@@ -45,7 +45,7 @@ static const char *const SETTING_NAMES[] = {
 	"afx_outdoor_muffle", "afx_smoothing", "afx_debug",
 	"afx_dry_sounds", "afx_outdoor_sounds", "afx_indoor_sounds", "afx_doppler", "afx_mood",
 	"afx_variation", "afx_score", "afx_score_replaces_music", "afx_roomtone",
-	"afx_source_space", "afx_hrtf",
+	"afx_source_space", "afx_hrtf", "afx_convolution",
 };
 
 static void readParams()
@@ -71,6 +71,7 @@ static void readParams()
 	p.roomtone = rangelim(s->getFloat("afx_roomtone"), 0.f, 2.f);
 	p.source_space = rangelim(s->getFloat("afx_source_space"), 0.f, 2.f);
 	p.hrtf = s->getBool("afx_hrtf");
+	p.convolution = rangelim(s->getFloat("afx_convolution"), 0.f, 1.f);
 	p.dry_sounds = s->get("afx_dry_sounds");
 	p.outdoor_sounds = s->get("afx_outdoor_sounds");
 	p.indoor_sounds = s->get("afx_indoor_sounds");

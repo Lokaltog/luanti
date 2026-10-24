@@ -1017,6 +1017,13 @@ afx_source_space (Sounds carry their own space) float 1.0 0.0 2.0
 #    heard there, not just left and right. Turn off for speakers.
 afx_hrtf (Headphone 3D sound) bool false
 
+#    How much of the room's reverb comes from recordings of real spaces (a
+#    cave, a stone hall, a wooden room), picked by what the probe hears,
+#    on top of the synthetic reverb that follows the room's exact shape.
+#    0 = synthetic only. Needs the impulse responses (afx_ir_*) from the
+#    afx_ambience mod.
+afx_convolution (Recorded spaces) float 0.6 0.0 1.0
+
 #    Pitch shift of moving sound sources (minecarts, mobs). 0 = off.
 afx_doppler (Doppler) float 0.5 0.0 2.0
 

@@ -103,6 +103,31 @@ void carryWeather(Mix &m, v3f to_source, const Params &params);
 /// The build's own voice: every enclosed space has a faint presence (air,
 /// distant settling, the room ringing with nothing), stronger in hard rooms
 /// and caves, absent under the sky. Drives one looping noise source.
+/// Recorded spaces for the convolution reverb: the impulse responses the
+/// mod ships (sounds afx_ir_<name>), and which one fits where you are.
+struct RecordedSpace {
+	const char *sound;  // sound group
+	float rt60;         // seconds, measured from the file
+	bool natural;       // rock and earth (a cave) rather than built
+	bool corridor;      // long and narrow
+	bool hard;          // bare hard surfaces (stone, glass) rather than furnished
+};
+extern const RecordedSpace RECORDED_SPACES[];
+extern const int RECORDED_SPACE_COUNT;
+
+struct SpaceChoice {
+	int index = -1;          // into RECORDED_SPACES, -1 = none fits
+	float confidence = 0.f;  // 0..1, how well it fits (scales its share)
+};
+
+/// The recorded space closest to what the probe hears. Pure function.
+SpaceChoice chooseRecordedSpace(const Acoustics &env);
+
+/// The convolution slot's gain for `wet` and `decay`, matching the energy
+/// the synthetic reverb would have, so trading one for the other keeps the
+/// level (the impulse responses are energy-normalised).
+float convolutionLevel(float decay);
+
 struct RoomTone {
 	float gain = 0.f;   // AL_GAIN for the tone
 	float pitch = 1.f;  // bigger spaces sound lower

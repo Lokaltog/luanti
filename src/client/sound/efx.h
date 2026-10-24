@@ -11,6 +11,7 @@
 
 #include "al_helpers.h"
 #include "client/afx/afx_mix.h"
+#include <vector>
 
 #if __has_include(<AL/efx.h>)
 	#include <AL/efx.h>
@@ -48,7 +49,9 @@ public:
 	int sends() const { return m_sends; }
 
 	/// Push the (smoothed) environment into the effect slots.
-	void applyEnvironment(const afx::Acoustics &env, const ListenerFrame &frame);
+	/// `dt` (seconds since the last call) moves the recorded-space fades.
+	void applyEnvironment(const afx::Acoustics &env, const ListenerFrame &frame,
+			float dt = 0.f);
 
 	/// Route one source. `stereo` enables stereo-angle steering for beds.
 	void applySource(ALuint source, const afx::Mix &mix, bool positional, bool stereo,
@@ -61,6 +64,16 @@ public:
 	/// The far space a source sits in (send 5): its tail, panned toward it.
 	void applyRemote(const afx::RemoteSpace &r, const ListenerFrame &frame);
 	bool hasRemote() const { return m_remote_slot != 0; }
+
+	/// The recorded space the room's reverb blends in (convolution, send 3):
+	/// which one (index into afx::RECORDED_SPACES, -1 none), its impulse
+	/// response, and its share of the reverb. Takes effect, faded, over the
+	/// next applyEnvironment calls; a change of space fades out, swaps and
+	/// fades back in.
+	void setRecordedSpace(int index, ALuint ir_buffer, float share);
+	bool hasConvolution() const { return m_conv_effect != 0; }
+	int recordedSpace() const { return m_conv_index; }
+	float recordedShare() const { return m_conv_share; }
 
 	/// Disconnect a source from all sends and filters (afx disabled).
 	void clearSource(ALuint source);
@@ -96,9 +109,24 @@ private:
 	ALuint m_reverb_effect = 0, m_echo_effect = 0;
 	ALuint m_muffle_effect = 0;
 	ALuint m_reverb_slot = 0, m_echo_slot = 0, m_muffle_slot = 0;
-	// the space next door (a cave beyond the doorway): its own reverb,
-	// panned toward the opening
-	ALuint m_nb_effect = 0, m_nb_slot = 0;
+	// The space next door (a cave beyond the doorway) and the space a far
+	// source sits in share one slot (send 5): a far space's tail, panned
+	// toward it. Whichever is louder sets it; each source's send carries
+	// the levels.
+	float m_nb_level = 0.f, m_rm_level = 0.f;
+	struct FarSpace { float decay = -1.f, hf = -1.f, refl = 0.f, late = 0.f, refl_delay = 0.f,
+			late_delay = 0.f, gainhf = 0.f; v3f pan; };
+	FarSpace m_nb_space, m_rm_space, m_far_last;
+	void updateFar();
+	// Recorded spaces (send 3): a slot per impulse response, since a slot
+	// can't change its buffer once it has played; the old one is deleted
+	// when no source uses it any more
+	ALuint m_conv_effect = 0, m_conv_slot = 0;
+	std::vector<ALuint> m_conv_retired;
+	int m_conv_index = -1, m_conv_want = -1;
+	ALuint m_conv_want_buffer = 0;
+	float m_conv_share = 0.f, m_conv_want_share = 0.f;
+	void stepConvolution(const afx::Acoustics &env, float dt);
 	// the cavity under a hollow floor: a short, low, boomy ring
 	ALuint m_hollow_effect = 0, m_hollow_slot = 0;
 	// where a source is: a cave's tail on a zombie in it, while you stand
@@ -107,10 +135,6 @@ private:
 	bool m_walls = false;
 	float m_walls_t[2] = {-1.f, -1.f}, m_walls_far = -1.f, m_walls_last_level = 1.f;
 	v3f m_walls_pan[2];
-	float m_rm_last_decay = -1.f, m_rm_last_hf = -1.f;
-	v3f m_rm_last_pan;
-	float m_nb_last_decay = -1.f, m_nb_last_hf = -1.f;
-	v3f m_nb_last_pan;
 	ALuint m_filter = 0; // scratch: filter params are copied when attached
 
 	// Last values pushed to the effects, to skip redundant reloads

@@ -11,9 +11,9 @@
   ],
   "segments": {
    "forest floor": {
-    "bed": [
-     -32,
-     -10
+    "lufs": [
+     -36,
+     -24
     ]
    },
    "sealed plank house": {
@@ -121,16 +121,16 @@
  {
   "name": "hut_rain",
   "scenario": "hut_rain",
-  "timeout": 160,
+  "timeout": 200,
   "args": [
    "afx_score=0",
    "afx_mood=0"
   ],
   "segments": {
    "outside in the rain": {
-    "bed": [
-     -36,
-     -18
+    "lufs": [
+     -38,
+     -26
     ]
    },
    "inside, door open": {
@@ -145,6 +145,13 @@
      "outside in the rain",
      null,
      -8
+    ]
+   },
+   "door open": {
+    "bed_rel": [
+     "door shut",
+     0,
+     null
     ]
    }
   }

@@ -55,6 +55,7 @@ public:
 	void testShortTunnel();
 	void testWalls();
 	void testTerrain();
+	void testRecordedSpace();
 };
 
 static TestAfx g_test_instance;
@@ -86,6 +87,7 @@ void TestAfx::runTests(IGameDef *gamedef)
 	TEST(testShortTunnel);
 	TEST(testWalls);
 	TEST(testTerrain);
+	TEST(testRecordedSpace);
 }
 
 void TestAfx::testOpenField()
@@ -744,4 +746,60 @@ void TestAfx::testTerrain()
 	lava.submerged = 1.f;
 	Mix m = mixFor(Bus::World, lava, Occlusion(), Params());
 	UASSERT(m.direct_gain < 0.05f);
+}
+
+void TestAfx::testRecordedSpace()
+{
+	auto name = [](const SpaceChoice &c) {
+		return c.index < 0 ? std::string("none") : std::string(RECORDED_SPACES[c.index].sound);
+	};
+	auto show = [&](const char *what, const Acoustics &a, const SpaceChoice &c) {
+		infostream << "recorded space " << what << ": " << name(c) << " " << c.confidence
+				<< " (decay " << a.decay << " natural " << a.natural << " encl " << a.enclosure
+				<< " hf " << a.hf << " walls " << a.wall_near << "@" << a.wall_near_dist << " "
+				<< a.wall_far << "@" << a.wall_far_dist << " mfp " << a.mean_free_path << ")"
+				<< std::endl;
+	};
+	// out under the sky: none
+	Acoustics open = openField().probe(v3f(0.3f, 1.6f, 0.2f));
+	SpaceChoice c = chooseRecordedSpace(open);
+	show("open", open, c);
+	UASSERT(c.confidence < 0.05f);
+
+	// a stone cave: one of the caves
+	Acoustics cave = stoneCave().probe(v3f(0, 0, 0));
+	c = chooseRecordedSpace(cave);
+	show("cave", cave, c);
+	UASSERT(c.index >= 0 && RECORDED_SPACES[c.index].natural && !RECORDED_SPACES[c.index].corridor);
+	UASSERT(c.confidence > 0.4f);
+
+	// a plank hut: a furnished room, not a cave
+	World w = openField();
+	w.fill({-4, 0, -4}, {4, 5, 4}, Material::Wood);
+	w.fill({-3, 0, -3}, {3, 4, 3}, Material::Air);
+	w.markSky();
+	Acoustics hut = w.probe(v3f(0, 1.6f, 0));
+	c = chooseRecordedSpace(hut);
+	show("hut", hut, c);
+	UASSERT(name(c) == "afx_ir_home");
+	UASSERT(c.confidence > 0.3f);
+
+	// a long 2-wide mine tunnel, closed at both ends
+	World t = openField();
+	t.fill({-32, 0, -32}, {31, 12, 31}, Material::Stone);
+	t.fill({-24, 2, 0}, {24, 3, 1}, Material::Air);
+	t.markSky();
+	Acoustics tun = t.probe(v3f(0, 2.6f, 0.5f));
+	c = chooseRecordedSpace(tun);
+	show("tunnel", tun, c);
+	UASSERT(name(c) == "afx_ir_tunnel");
+
+	// under water: none
+	Acoustics wet = cave;
+	wet.submerged = 1.f;
+	UASSERT(chooseRecordedSpace(wet).confidence == 0.f);
+
+	// trading the synthetic reverb for a recording keeps the level
+	UASSERT(convolutionLevel(2.f) > convolutionLevel(0.5f));
+	UASSERT(convolutionLevel(20.f) <= 1.f);
 }

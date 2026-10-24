@@ -40,6 +40,7 @@ cat > "$WORK/alsoft.conf" <<CONF
 drivers = wave
 channels = stereo
 frequency = 48000
+sample-type = float32
 hrtf = false
 [wave]
 file = $WORK/raw.wav

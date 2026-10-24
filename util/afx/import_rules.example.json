@@ -1,0 +1,7 @@
+[
+ {"glob": "**/*Rain*Heavy*Roof*.wav", "name": "afx_in_rain_roof", "kind": "bed", "seconds": 24},
+ {"glob": "**/*Forest*Night*Crickets*.wav", "name": "afx_out_night", "kind": "bed", "seconds": 30},
+ {"glob": "**/*Twig*Snap*.wav", "name": "afx_twig", "kind": "accent", "takes": 4, "max_seconds": 1.2},
+ {"glob": "**/*Water*Drip*Pond*.wav", "name": "afx_drip", "kind": "accent", "takes": 5, "max_seconds": 1.0},
+ {"glob": "**/*Cloth*Rustle*.wav", "name": "afx_cloth", "kind": "foley", "takes": 4, "max_seconds": 0.8}
+]

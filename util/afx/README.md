@@ -297,6 +297,30 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
   - **Fly-bys:** fast objects passing within 3 nodes whizz by, with Doppler.
 - **Scenario:** `nature`.
 
+## Round 13: gain staging, recorded spaces, sound pipeline
+
+- **Gain staging by design:**
+  - Every mod sound sits at its category's reference loudness: beds -30, accents -22, your own body -26, non-positional cues -24 LUFS (short sounds by their loudest 100 ms). `sound_pipeline.py normalize` measures and rewrites the files.
+  - The mix is one table, `mods/afx_ambience/levels.lua`: each sound group's level in dB on top of its files. `normalize` wrote it so the mix stayed as it was. Tune levels there, not in the code; a new or replaced sample needs no gain hunting. Every sound the mod plays goes through it (`afx_ambience.play`, `gain_for`, emitters, loops, the heartbeat).
+  - The engine asks OpenAL Soft for its output limiter (`ALC_OUTPUT_LIMITER_SOFT`), also after an HRTF reset, so whatever piles up is held under full scale.
+  - The listening checks measure at the level the client played (float recording, `<scenario>.raw.npz`): every run must stay under the ceiling (no sample over full scale, no 3 s louder than -12 LUFS short-term), and each segment reports its LUFS. Bands can use `lufs` and `loudest`.
+- **Recorded spaces (convolution reverb):**
+  - OpenAL Soft's convolution reverb plays real impulse responses: caves from Skyline Caverns and Shenandoah Caverns (passage, pool alcove, tall chamber, big cavern), a Berlin railway tunnel, a warehouse hall, a small hard room and a furnished wooden room.
+  - The probe picks one: rock or built, a corridor or not, hard or soft, then the one whose decay is closest. Its fit scales its share. Under the sky or under water there is none.
+  - It blends with the synthetic reverb, which keeps following the room's exact shape (its reflections' pan, its decay) and gives up 70% of what the recording takes. The recording's level is matched to the energy the synthetic reverb would have, so trading one for the other keeps the level.
+  - A new space has to stay the best fit for 1.5 s. Then the old one fades out (about a second, the synthetic reverb filling in), and the new one fades in. A slot can't change its buffer once it has played, so each space gets a fresh slot, and the old one is deleted once no source sends to it.
+  - It needs a send. The space next door and the space a far source sits in now share one slot (send 5), set by whichever is louder; each source's send carries its own level.
+  - Setting `afx_convolution` (0..1, default 0.6), also in `/afx`. Without the effect, or without the `afx_ir_*` sounds, it's the synthetic reverb alone.
+- **Sound pipeline (`sound_pipeline.py`):**
+  - `report`: loudness of every mod sound, by category.
+  - `normalize [--dry-run]`: as above.
+  - `ir <in.wav> <name>` (or `left.wav+right.wav` for two mono takes): from the onset, at most 2.9 s (it has to fit one buffer), trimmed where it's 60 dB down, tail faded, energy normalised. Name it `afx_ir_*`.
+  - `import <pack_dir> <rules.json> [--dry-run]`: cuts a sound library (Sonniss GDC bundles, say) into mod sounds. Beds get the steadiest stretch made into a seamless stereo loop; accents and foley get distinct takes, picked by onset and by how much they differ from each other. Each goes to its category's loudness. See `import_rules.example.json`. Add a level to `levels.lua` for a new group (0 dB is its category's reference).
+- **Tests:**
+  - `testRecordedSpace`: the cave picks a cave, the plank hut the wooden room, a long mine tunnel the tunnel, and the open field and the water none.
+  - `TestAfxEfx.testRecordedSpace`: through a loopback device, a response plays, and a swap fades over and drops the old one.
+- **hut_rain:** "door open" measured quieter than "door shut" because the storm was still building (rain ramps over 30 s). The scenario now waits for it, and checks that opening the door again isn't quieter.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

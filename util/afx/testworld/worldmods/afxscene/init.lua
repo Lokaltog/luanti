@@ -490,12 +490,15 @@ local TIMELINE = {
 			afx_ambience.set_rain(0.8)
 			bed("afx_out_rain", 0.8)
 			door(true)
-		end, wait = 4, log = "outside in the rain"},
+		end, wait = 2},
+		-- a storm builds over half a minute: let it, so the steps after
+		-- compare places, not the storm's rise
+		{wait = 26, log = "outside in the rain"},
 		{walk = v(0, 0, -5.5), speed = 2.5, steps = hut_steps, log = "to the door"},
 		{walk = v(0, 0, 0.5), speed = 2.5, steps = hut_steps, log = "inside, door open"},
 		{wait = 6},
 		{fn = function() door(false) end, wait = 9, log = "door shut"},
-		{fn = function() door(true) end, wait = 3, log = "door open"},
+		{fn = function() door(true) end, wait = 8, log = "door open"},
 		{walk = v(0, 0, -14), speed = 3, steps = hut_steps, log = "back out"},
 		{wait = 4},
 	},

@@ -104,18 +104,39 @@ local function place_scale(cat, pname)
 	return PLACE[pname] or 1
 end
 
--- Every sound this mod plays goes through here, scaled by its layer
+-- The mix: each sound group's level (dB) on top of its files, which the
+-- sound pipeline keeps at their category's reference loudness
+-- (util/afx/sound_pipeline.py). Tune levels in levels.lua, not in the code.
+local LEVELS = dofile(core.get_modpath("afx_ambience") .. "/levels.lua")
+local level_cache = {}
+local function level_of(name)
+	local l = level_cache[name]
+	if not l then
+		local db = LEVELS[name]
+		if not db then
+			-- a group's variants share its level ("afx_drip" for afx_drip.3)
+			db = LEVELS[(name:gsub("%.%d+$", ""))] or 0
+		end
+		l = 10 ^ (db / 20)
+		level_cache[name] = l
+	end
+	return l
+end
+afx_ambience.level_of = level_of
+
+-- Every sound this mod plays goes through here, scaled by its level, its
+-- layer's volume and the place
 function afx_ambience.play(name, params, ephemeral)
 	local cat = afx_ambience.category(name)
 	params = params or {}
 	local v = (VOL[cat] or 1) * place_scale(cat, params.to_player)
 	if v <= 0.001 then return nil end
-	params.gain = (params.gain or 1) * v
+	params.gain = (params.gain or 1) * v * level_of(name)
 	return core.sound_play(name, params, ephemeral)
 end
 function afx_ambience.gain_for(name, gain, pname)
 	local cat = afx_ambience.category(name)
-	return gain * (VOL[cat] or 1) * place_scale(cat, pname)
+	return gain * (VOL[cat] or 1) * place_scale(cat, pname) * level_of(name)
 end
 
 local function log(msg)

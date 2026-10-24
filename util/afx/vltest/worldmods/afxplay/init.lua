@@ -38,6 +38,9 @@ end
 -- Stand on the ground: scan down for the first walkable node that isn't
 -- leaves or a trunk, with two air nodes above it.
 local function ground(p)
+	if not p then return nil end
+	-- under load the emerge callback can come before the column is active
+	core.load_area(v(p.x, -10, p.z), v(p.x, 120, p.z))
 	for y = 120, -10, -1 do
 		local n = core.get_node(v(p.x, y, p.z)).name
 		local def = core.registered_nodes[n]
@@ -267,7 +270,8 @@ core.register_on_joinplayer(function(player)
 		SPOTS.plains = ground(p)
 		SPOTS.snow = ground(s)
 		local cave, n = find_cave(p)
-		SPOTS.cave = cave and vector.offset(cave, 0, 0, 0) or vector.offset(SPOTS.plains, 0, -30, 0)
+		SPOTS.plains = SPOTS.plains or SPOTS.forest
+		SPOTS.cave = cave or vector.offset(SPOTS.plains or v(0, 10, 0), 0, -30, 0)
 		say(("spots forest %s plains %s snow %s cave %s (%s air)"):format(
 			core.pos_to_string(SPOTS.forest), core.pos_to_string(SPOTS.plains),
 			core.pos_to_string(SPOTS.snow), core.pos_to_string(SPOTS.cave), tostring(n)))

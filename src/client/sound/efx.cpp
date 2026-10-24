@@ -17,11 +17,19 @@ v3f ListenerFrame::toLocal(v3f node_dir) const
 	return v3f(d.dotProduct(right), d.dotProduct(up), d.dotProduct(at));
 }
 
+// OpenAL Soft's convolution reverb (AL_SOFTX_convolution_reverb, experimental)
+#ifndef AL_EFFECT_CONVOLUTION_REVERB_SOFT
+#define AL_EFFECT_CONVOLUTION_REVERB_SOFT 0xA000
+#endif
+
 #if !AFX_HAVE_EFX
 
 EfxRig::EfxRig(ALCdevice *, int) {}
 EfxRig::~EfxRig() = default;
-void EfxRig::applyEnvironment(const afx::Acoustics &, const ListenerFrame &) {}
+void EfxRig::applyEnvironment(const afx::Acoustics &, const ListenerFrame &, float) {}
+void EfxRig::setRecordedSpace(int, ALuint, float) {}
+void EfxRig::updateFar() {}
+void EfxRig::stepConvolution(const afx::Acoustics &, float) {}
 void EfxRig::applySource(ALuint, const afx::Mix &, bool, bool, const afx::Acoustics &,
 		const ListenerFrame &) {}
 void EfxRig::clearSource(ALuint) {}
@@ -38,7 +46,14 @@ static float lerpf(float a, float b, float t) { return a + (b - a) * t; }
 
 const ALCint *EfxRig::contextAttributes()
 {
-	static const ALCint attrs[] = {ALC_MAX_AUXILIARY_SENDS, 6, 0};
+	// The output limiter is the last line of gain staging: whatever piles up
+	// (a thunderclap in a stone hall, a dozen accents at once) is held under
+	// full scale rather than clipping
+	static const ALCint attrs[] = {ALC_MAX_AUXILIARY_SENDS, 6,
+#ifdef ALC_OUTPUT_LIMITER_SOFT
+			ALC_OUTPUT_LIMITER_SOFT, ALC_TRUE,
+#endif
+			0};
 	return attrs;
 }
 
@@ -149,11 +164,16 @@ EfxRig::EfxRig(ALCdevice *device, int sends) : m_sends(sends)
 		alAuxiliaryEffectSlotf(m_hollow_slot, AL_EFFECTSLOT_GAIN, 1.f);
 	}
 
-	if (m_sends >= 4 && m_eax) {
-		alGenEffects(1, &m_nb_effect);
-		alEffecti(m_nb_effect, AL_EFFECT_TYPE, AL_EFFECT_EAXREVERB);
-		alGenAuxiliaryEffectSlots(1, &m_nb_slot);
-		alAuxiliaryEffectSlotf(m_nb_slot, AL_EFFECTSLOT_GAIN, 0.f);
+	if (m_sends >= 4) {
+		// Recorded spaces: convolution with real impulse responses. The
+		// slots come with the first one used.
+		alGenEffects(1, &m_conv_effect);
+		alEffecti(m_conv_effect, AL_EFFECT_TYPE, AL_EFFECT_CONVOLUTION_REVERB_SOFT);
+		if (alGetError() != AL_NO_ERROR) {
+			alDeleteEffects(1, &m_conv_effect);
+			m_conv_effect = 0;
+			alGetError();
+		}
 	}
 
 	if (m_sends >= 6 && m_eax) {
@@ -175,7 +195,8 @@ EfxRig::EfxRig(ALCdevice *device, int sends) : m_sends(sends)
 	infostream << "afx: EFX ready, " << (m_eax ? "EAX reverb" : "standard reverb")
 			<< ", " << m_sends << " sends"
 			<< (m_stereo_angles ? ", stereo angles" : "")
-			<< (m_source_radius ? ", source radius" : "") << std::endl;
+			<< (m_source_radius ? ", source radius" : "")
+			<< (m_conv_effect ? ", convolution" : "") << std::endl;
 }
 
 EfxRig::~EfxRig()
@@ -188,8 +209,12 @@ EfxRig::~EfxRig()
 		alDeleteAuxiliaryEffectSlots(1, &m_echo_slot);
 	if (m_muffle_slot)
 		alDeleteAuxiliaryEffectSlots(1, &m_muffle_slot);
-	if (m_nb_slot)
-		alDeleteAuxiliaryEffectSlots(1, &m_nb_slot);
+	if (m_conv_slot)
+		m_conv_retired.push_back(m_conv_slot);
+	for (ALuint s : m_conv_retired)
+		alDeleteAuxiliaryEffectSlots(1, &s);
+	if (m_conv_effect)
+		alDeleteEffects(1, &m_conv_effect);
 	if (m_hollow_slot)
 		alDeleteAuxiliaryEffectSlots(1, &m_hollow_slot);
 	if (m_remote_slot)
@@ -198,8 +223,6 @@ EfxRig::~EfxRig()
 		alDeleteEffects(1, &m_remote_effect);
 	if (m_hollow_effect)
 		alDeleteEffects(1, &m_hollow_effect);
-	if (m_nb_effect)
-		alDeleteEffects(1, &m_nb_effect);
 	if (m_muffle_effect)
 		alDeleteEffects(1, &m_muffle_effect);
 	if (m_reverb_effect)
@@ -217,12 +240,16 @@ static bool differs(float a, float b, float rel = 0.01f, float abs_eps = 1e-3f)
 
 static bool differs(v3f a, v3f b) { return (a - b).getLengthSQ() > 1e-4f; }
 
-void EfxRig::applyEnvironment(const afx::Acoustics &env, const ListenerFrame &frame)
+void EfxRig::applyEnvironment(const afx::Acoustics &env, const ListenerFrame &frame, float dt)
 {
 	if (!m_ok)
 		return;
 
-	alAuxiliaryEffectSlotf(m_reverb_slot, AL_EFFECTSLOT_GAIN, clampf(env.wet, 0.f, 1.f));
+	stepConvolution(env, dt);
+	// What the recording takes over, the synthetic reverb gives up; some of
+	// it stays, for the room's exact shape (its reflections' pan, the decay)
+	alAuxiliaryEffectSlotf(m_reverb_slot, AL_EFFECTSLOT_GAIN,
+			clampf(env.wet * (1.f - 0.7f * m_conv_share), 0.f, 1.f));
 	if (m_echo_slot && !m_walls)
 		alAuxiliaryEffectSlotf(m_echo_slot, AL_EFFECTSLOT_GAIN,
 				clampf(env.echo * env.echo_feedback * 2.f, 0.f, 1.f)); // flutter only
@@ -318,33 +345,20 @@ void EfxRig::applyEnvironment(const afx::Acoustics &env, const ListenerFrame &fr
 		m_last.echo_damping = env.echo_damping;
 		m_last.echo_dir = echo_local;
 	}
-	if (m_nb_slot) {
-		alAuxiliaryEffectSlotf(m_nb_slot, AL_EFFECTSLOT_GAIN,
-				clampf(env.coupling * env.neighbor_wet * 1.4f, 0.f, 1.f));
-		const v3f pan = frame.toLocal(env.neighbor_dir) * 0.85f;
-		if (std::fabs(env.neighbor_decay - m_nb_last_decay) > 0.05f ||
-				std::fabs(env.neighbor_hf_ratio - m_nb_last_hf) > 0.05f ||
-				(pan - m_nb_last_pan).getLengthSQ() > 1e-3f) {
-			const ALuint e = m_nb_effect;
-			alEffectf(e, AL_EAXREVERB_DENSITY, 1.f);
-			alEffectf(e, AL_EAXREVERB_DIFFUSION, 1.f);
-			alEffectf(e, AL_EAXREVERB_GAIN, 0.32f);
-			alEffectf(e, AL_EAXREVERB_GAINHF, 0.7f);
-			alEffectf(e, AL_EAXREVERB_DECAY_TIME, clampf(env.neighbor_decay, 0.1f, 20.f));
-			alEffectf(e, AL_EAXREVERB_DECAY_HFRATIO, clampf(env.neighbor_hf_ratio, 0.1f, 2.f));
-			// No early reflections: we hear the far space's tail, arriving late
-			alEffectf(e, AL_EAXREVERB_REFLECTIONS_GAIN, 0.05f);
-			alEffectf(e, AL_EAXREVERB_LATE_REVERB_GAIN, 1.6f);
-			alEffectf(e, AL_EAXREVERB_LATE_REVERB_DELAY, 0.04f);
-			ALfloat lp[3] = {pan.X, pan.Y, pan.Z};
-			alEffectfv(e, AL_EAXREVERB_LATE_REVERB_PAN, lp);
-			alEffectfv(e, AL_EAXREVERB_REFLECTIONS_PAN, lp);
-			alEffecti(e, AL_EAXREVERB_DECAY_HFLIMIT, AL_TRUE);
-			alAuxiliaryEffectSloti(m_nb_slot, AL_EFFECTSLOT_EFFECT, e);
-			m_nb_last_decay = env.neighbor_decay;
-			m_nb_last_hf = env.neighbor_hf_ratio;
-			m_nb_last_pan = pan;
-		}
+	if (m_remote_slot) {
+		// The space next door: no early reflections, we hear its tail,
+		// arriving late through the opening
+		m_nb_level = clampf(env.coupling * env.neighbor_wet * 1.4f, 0.f, 1.f);
+		FarSpace &f = m_nb_space;
+		f.decay = env.neighbor_decay;
+		f.hf = env.neighbor_hf_ratio;
+		f.gainhf = 0.7f;
+		f.refl = 0.05f;
+		f.refl_delay = 0.02f;
+		f.late = 1.6f;
+		f.late_delay = 0.04f;
+		f.pan = frame.toLocal(env.neighbor_dir) * 0.85f;
+		updateFar();
 	}
 	m_have_last = true;
 	warn_if_al_error("afx: applyEnvironment");
@@ -406,33 +420,109 @@ void EfxRig::applyRemote(const afx::RemoteSpace &r, const ListenerFrame &frame)
 {
 	if (!m_ok || !m_remote_slot)
 		return;
-	alAuxiliaryEffectSlotf(m_remote_slot, AL_EFFECTSLOT_GAIN, clampf(r.level, 0.f, 1.f));
-	const v3f pan = frame.toLocal(r.dir) * 0.6f;
-	if (std::fabs(r.decay - m_rm_last_decay) > 0.05f ||
-			std::fabs(r.hf_ratio - m_rm_last_hf) > 0.05f ||
-			(pan - m_rm_last_pan).getLengthSQ() > 2e-3f) {
-		const ALuint e = m_remote_effect;
-		alEffectf(e, AL_EAXREVERB_DENSITY, 1.f);
-		alEffectf(e, AL_EAXREVERB_DIFFUSION, 1.f);
-		alEffectf(e, AL_EAXREVERB_GAIN, 0.32f);
-		alEffectf(e, AL_EAXREVERB_GAINHF, 0.6f);
-		alEffectf(e, AL_EAXREVERB_DECAY_TIME, clampf(r.decay, 0.1f, 20.f));
-		alEffectf(e, AL_EAXREVERB_DECAY_HFRATIO, clampf(r.hf_ratio, 0.1f, 2.f));
-		// It's over there: the early reflections come with the sound, the
-		// tail from its direction
-		alEffectf(e, AL_EAXREVERB_REFLECTIONS_GAIN, 0.3f);
-		alEffectf(e, AL_EAXREVERB_REFLECTIONS_DELAY, 0.02f);
-		alEffectf(e, AL_EAXREVERB_LATE_REVERB_GAIN, 1.4f);
-		alEffectf(e, AL_EAXREVERB_LATE_REVERB_DELAY, 0.03f);
-		ALfloat lp[3] = {pan.X, pan.Y, pan.Z};
-		alEffectfv(e, AL_EAXREVERB_LATE_REVERB_PAN, lp);
-		alEffectfv(e, AL_EAXREVERB_REFLECTIONS_PAN, lp);
-		alEffecti(e, AL_EAXREVERB_DECAY_HFLIMIT, AL_TRUE);
-		alAuxiliaryEffectSloti(m_remote_slot, AL_EFFECTSLOT_EFFECT, e);
-		m_rm_last_decay = r.decay;
-		m_rm_last_hf = r.hf_ratio;
-		m_rm_last_pan = pan;
+	// It's over there: the early reflections come with the sound, the tail
+	// from its direction
+	m_rm_level = clampf(r.level, 0.f, 1.f);
+	FarSpace &f = m_rm_space;
+	f.decay = r.decay;
+	f.hf = r.hf_ratio;
+	f.gainhf = 0.6f;
+	f.refl = 0.3f;
+	f.refl_delay = 0.02f;
+	f.late = 1.4f;
+	f.late_delay = 0.03f;
+	f.pan = frame.toLocal(r.dir) * 0.6f;
+	updateFar();
+}
+
+void EfxRig::updateFar()
+{
+	// Both rarely matter at once (a source's remote send gives way to the
+	// coupling): the louder one sets the slot
+	const FarSpace &f = m_nb_level >= m_rm_level ? m_nb_space : m_rm_space;
+	alAuxiliaryEffectSlotf(m_remote_slot, AL_EFFECTSLOT_GAIN, 1.f);
+	const FarSpace &l = m_far_last;
+	if (f.decay < 0.f || (std::fabs(f.decay - l.decay) <= 0.05f && std::fabs(f.hf - l.hf) <= 0.05f &&
+			(f.pan - l.pan).getLengthSQ() <= 2e-3f && f.refl == l.refl && f.late == l.late))
+		return;
+	const ALuint e = m_remote_effect;
+	alEffectf(e, AL_EAXREVERB_DENSITY, 1.f);
+	alEffectf(e, AL_EAXREVERB_DIFFUSION, 1.f);
+	alEffectf(e, AL_EAXREVERB_GAIN, 0.32f);
+	alEffectf(e, AL_EAXREVERB_GAINHF, f.gainhf);
+	alEffectf(e, AL_EAXREVERB_DECAY_TIME, clampf(f.decay, 0.1f, 20.f));
+	alEffectf(e, AL_EAXREVERB_DECAY_HFRATIO, clampf(f.hf, 0.1f, 2.f));
+	alEffectf(e, AL_EAXREVERB_REFLECTIONS_GAIN, f.refl);
+	alEffectf(e, AL_EAXREVERB_REFLECTIONS_DELAY, f.refl_delay);
+	alEffectf(e, AL_EAXREVERB_LATE_REVERB_GAIN, f.late);
+	alEffectf(e, AL_EAXREVERB_LATE_REVERB_DELAY, f.late_delay);
+	ALfloat lp[3] = {f.pan.X, f.pan.Y, f.pan.Z};
+	alEffectfv(e, AL_EAXREVERB_LATE_REVERB_PAN, lp);
+	alEffectfv(e, AL_EAXREVERB_REFLECTIONS_PAN, lp);
+	alEffecti(e, AL_EAXREVERB_DECAY_HFLIMIT, AL_TRUE);
+	alAuxiliaryEffectSloti(m_remote_slot, AL_EFFECTSLOT_EFFECT, e);
+	m_far_last = f;
+}
+
+void EfxRig::setRecordedSpace(int index, ALuint ir_buffer, float share)
+{
+	if (!m_conv_effect)
+		return;
+	m_conv_want = ir_buffer ? index : -1;
+	m_conv_want_buffer = ir_buffer;
+	m_conv_want_share = m_conv_want >= 0 ? clampf(share, 0.f, 1.f) : 0.f;
+}
+
+void EfxRig::stepConvolution(const afx::Acoustics &env, float dt)
+{
+	if (!m_conv_effect)
+		return;
+	// slots given up earlier go once no source sends to them
+	for (size_t i = 0; i < m_conv_retired.size();) {
+		alGetError();
+		alDeleteAuxiliaryEffectSlots(1, &m_conv_retired[i]);
+		if (alGetError() == AL_NO_ERROR) {
+			m_conv_retired[i] = m_conv_retired.back();
+			m_conv_retired.pop_back();
+		} else {
+			i++;
+		}
 	}
+	// another space: fade this one out first, the synthetic reverb filling
+	// in, then swap
+	const bool swap = m_conv_want != m_conv_index;
+	const float target = swap ? 0.f : m_conv_want_share;
+	const float rate = 1.5f; // share per second: a swap takes about a second
+	if (dt > 0.f)
+		m_conv_share += clampf(target - m_conv_share, -rate * dt, rate * dt);
+	else if (target < m_conv_share)
+		m_conv_share = target;
+	if (swap && m_conv_share <= 0.f) {
+		if (m_conv_slot)
+			m_conv_retired.push_back(m_conv_slot);
+		m_conv_slot = 0;
+		m_conv_index = -1;
+		if (m_conv_want >= 0) {
+			alGetError();
+			ALuint slot = 0;
+			alGenAuxiliaryEffectSlots(1, &slot);
+			alAuxiliaryEffectSlotf(slot, AL_EFFECTSLOT_GAIN, 0.f);
+			// the buffer first: a slot won't take one with the effect on
+			alAuxiliaryEffectSloti(slot, AL_BUFFER, (ALint)m_conv_want_buffer);
+			alAuxiliaryEffectSloti(slot, AL_EFFECTSLOT_EFFECT, m_conv_effect);
+			if (alGetError() == AL_NO_ERROR) {
+				m_conv_slot = slot;
+				m_conv_index = m_conv_want;
+			} else {
+				warningstream << "afx: can't load recorded space " << m_conv_want << std::endl;
+				alDeleteAuxiliaryEffectSlots(1, &slot);
+				m_conv_want = -1;
+			}
+		}
+	}
+	if (m_conv_slot)
+		alAuxiliaryEffectSlotf(m_conv_slot, AL_EFFECTSLOT_GAIN, clampf(env.wet * m_conv_share *
+				afx::convolutionLevel(env.decay) * (1.f - env.submerged), 0.f, 1.f));
 }
 
 void EfxRig::setLowpass(float gain, float gainhf)
@@ -474,18 +564,23 @@ void EfxRig::applySource(ALuint src, const afx::Mix &mix, bool positional, bool 
 		}
 	}
 
-	if (m_nb_slot) {
-		if (mix.neighbor_send > 1e-3f) {
-			setLowpass(mix.neighbor_send, 0.8f);
-			alSource3i(src, AL_AUXILIARY_SEND_FILTER, m_nb_slot, 3, m_filter);
+	if (m_conv_effect) {
+		// the recorded space hears what the room's reverb hears
+		if (m_conv_slot && mix.reverb_send > 1e-3f) {
+			setLowpass(mix.reverb_send, mix.reverb_hf);
+			alSource3i(src, AL_AUXILIARY_SEND_FILTER, m_conv_slot, 3, m_filter);
 		} else {
 			alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 3, AL_FILTER_NULL);
 		}
 	}
 
 	if (m_remote_slot) {
-		if (mix.remote_send > 1e-3f) {
-			setLowpass(mix.remote_send, std::min(1.f, mix.direct_hf * 1.5f));
+		// the far spaces' shared slot: each send at its own space's level
+		const float nb = mix.neighbor_send * m_nb_level, rm = mix.remote_send * m_rm_level;
+		const float far = nb + rm;
+		if (far > 1e-3f) {
+			const float hf = (nb * 0.8f + rm * std::min(1.f, mix.direct_hf * 1.5f)) / far;
+			setLowpass(std::min(1.f, far), hf);
 			alSource3i(src, AL_AUXILIARY_SEND_FILTER, m_remote_slot, 5, m_filter);
 		} else {
 			alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 5, AL_FILTER_NULL);
@@ -553,7 +648,7 @@ void EfxRig::clearSource(ALuint src)
 		alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 1, AL_FILTER_NULL);
 	if (m_muffle_slot)
 		alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 2, AL_FILTER_NULL);
-	if (m_nb_slot)
+	if (m_conv_effect)
 		alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 3, AL_FILTER_NULL);
 	if (m_hollow_slot)
 		alSource3i(src, AL_AUXILIARY_SEND_FILTER, AL_EFFECTSLOT_NULL, 4, AL_FILTER_NULL);

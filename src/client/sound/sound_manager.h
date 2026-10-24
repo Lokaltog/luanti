@@ -94,6 +94,15 @@ private:
 	int m_hrtf_set = -1;
 	void applyHrtf(bool on);
 	void stepRoomTone(f32 dtime);
+	// Recorded spaces (convolution): the impulse responses, loaded when
+	// first wanted, and the one held (a new one has to stay the best fit
+	// for a moment before it takes over)
+	std::vector<std::shared_ptr<ISoundDataOpen>> m_ir_data;
+	std::vector<f32> m_ir_retry;
+	int m_ir_held = -1, m_ir_pending = -1;
+	f32 m_ir_pending_t = 0.0f;
+	ALuint recordedSpaceBuffer(int index);
+	void stepRecordedSpace(const afx::Acoustics &env, f32 dtime);
 	// the far space sources sit in (send 5), glided
 	afx::RemoteSpace m_remote, m_remote_target;
 	void stepSourceSpaces(f32 dtime, bool recast);

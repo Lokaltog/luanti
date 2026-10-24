@@ -153,6 +153,7 @@ struct Params {
 	float roomtone = 1.0f;       // afx_roomtone, the room's own faint presence
 	float source_space = 1.0f;   // afx_source_space, sounds carry their own surroundings
 	bool hrtf = false;           // afx_hrtf, 3D sound for headphones
+	float convolution = 0.6f;    // afx_convolution, share of the room's reverb from recorded spaces
 	// Weather, from the server mod (not settings)
 	v3f wind_dir;                // node space, horizontal unit (toward where it blows)
 	float wind = 0.f;            // 0 calm .. ~1.6 gale

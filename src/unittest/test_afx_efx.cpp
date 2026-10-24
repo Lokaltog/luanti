@@ -148,6 +148,7 @@ public:
 	void testBedSteering(Loopback &lb);
 	void testNeighborTail(Loopback &lb);
 	void testHollowSteps(Loopback &lb);
+	void testRecordedSpace(Loopback &lb);
 };
 
 static TestAfxEfx g_test_instance;
@@ -171,6 +172,7 @@ void TestAfxEfx::runTests(IGameDef *gamedef)
 	TEST(testBedSteering, lb);
 	TEST(testNeighborTail, lb);
 	TEST(testHollowSteps, lb);
+	TEST(testRecordedSpace, lb);
 }
 
 // The same click, dry vs in a stone cave: the cave keeps ringing.
@@ -371,3 +373,70 @@ void TestAfxEfx::testHollowSteps(Loopback &lb)
 }
 
 #endif // USE_SOUND
+
+// The recorded space plays its impulse response, and swapping to another
+// fades over and leaves the old one behind
+void TestAfxEfx::testRecordedSpace(Loopback &lb)
+{
+	ListenerFrame frame;
+	afx::Params params;
+	{
+		EfxRig probe(lb.dev, lb.sends);
+		if (!probe.hasConvolution()) {
+			rawstream << "  (no convolution reverb in this OpenAL, skipped)" << std::endl;
+			return;
+		}
+	}
+	// two "spaces": a response that is just a reflection burst at `at`
+	auto ir = [](float at) {
+		std::mt19937 rng(7);
+		std::uniform_real_distribution<float> d(-1.f, 1.f);
+		std::vector<int16_t> pcm((size_t)(1.0f * RATE) * 2, 0);
+		for (size_t i = (size_t)(at * RATE); i < (size_t)((at + 0.05f) * RATE); i++)
+			pcm[2 * i] = pcm[2 * i + 1] = (int16_t)(d(rng) * 8000.f);
+		ALuint b;
+		alGenBuffers(1, &b);
+		alBufferData(b, AL_FORMAT_STEREO16, pcm.data(), (ALsizei)(pcm.size() * 2), RATE);
+		return b;
+	};
+	ALuint late = ir(0.6f), early = ir(0.25f);
+	ALuint buf = makeBuffer(1, 0.02f, true);
+	afx::Acoustics env;
+	env.enclosure = 1.f;
+	env.wet = 1.f;
+	env.decay = 0.2f; // the synthetic reverb is gone by the bursts
+	env.late_gain = 0.2f;
+
+	EfxRig rig(lb.dev, lb.sends);
+	auto play = [&]() {
+		ALuint src = makeSource(buf, true);
+		rig.applySource(src, afx::mixFor(afx::Bus::Local, env, {}, params), false, false,
+				env, frame);
+		alSourcePlay(src);
+		auto out = lb.renderSeconds(1.f);
+		alDeleteSources(1, &src);
+		return out;
+	};
+	auto settle = [&](int index, ALuint b, float share) {
+		rig.setRecordedSpace(index, b, share);
+		for (int i = 0; i < 40; i++) // 2 s of applies at 20 Hz
+			rig.applyEnvironment(env, frame, 0.05f);
+	};
+
+	settle(-1, 0, 0.f);
+	auto none = play();
+	settle(0, late, 1.f);
+	UASSERT(rig.recordedSpace() == 0 && rig.recordedShare() > 0.99f);
+	auto with_late = play();
+	settle(1, early, 1.f);
+	UASSERT(rig.recordedSpace() == 1);
+	auto with_early = play();
+
+	auto at = [](const std::vector<float> &o, float t) { return measure(o, t, t + 0.06f).total(); };
+	UASSERT(at(with_late, 0.6f) > at(none, 0.6f) * 100.0 + 1e-7);
+	UASSERT(at(with_early, 0.25f) > at(none, 0.25f) * 100.0 + 1e-7);
+	// the old space is gone
+	UASSERT(at(with_early, 0.6f) < at(with_late, 0.6f) * 0.01);
+	UASSERT(alGetError() == AL_NO_ERROR);
+	alDeleteBuffers(1, &buf);
+}

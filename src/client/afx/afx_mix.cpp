@@ -285,6 +285,68 @@ void carrySpace(Mix &m, const SourceSpace &s, const RemoteSpace &r, const Acoust
 	m.remote_send = std::clamp(m.remote_send, 0.f, 1.f);
 }
 
+// Measured from the files the sound pipeline makes (util/afx/sound_pipeline.py
+// ir): Skyline Caverns and Shenandoah Caverns (Virginia), a Berlin railway
+// tunnel, a warehouse, rooms of a house
+const RecordedSpace RECORDED_SPACES[] = {
+	{"afx_ir_cave", 1.4f, true, false, false},      // a cave passage
+	{"afx_ir_alcove", 2.0f, true, false, false},    // a pool alcove in a cave
+	{"afx_ir_cathedral", 2.3f, true, false, false}, // a tall cave chamber
+	{"afx_ir_cavern", 2.5f, true, false, false},    // a big cavern
+	{"afx_ir_tunnel", 6.2f, true, true, false},     // a long tunnel
+	{"afx_ir_room", 0.36f, false, false, true},    // a small hard room
+	{"afx_ir_home", 0.52f, false, false, false},    // a furnished wooden room
+	{"afx_ir_hall", 2.5f, false, false, false},     // a big built hall
+};
+const int RECORDED_SPACE_COUNT = sizeof(RECORDED_SPACES) / sizeof(RECORDED_SPACES[0]);
+
+SpaceChoice chooseRecordedSpace(const Acoustics &env)
+{
+	SpaceChoice c;
+	const float enclosed = smoothstep(0.45f, 0.8f, env.enclosure) *
+			(1.f - std::clamp(env.submerged * 3.f, 0.f, 1.f));
+	if (enclosed <= 0.f || env.decay <= 0.f)
+		return c;
+	const bool natural = env.natural > 0.5f;
+	// Long and narrow: close walls on both sides, and the rays that run
+	// along it make the average path long for walls that close
+	const float across = env.wall_near_dist + env.wall_far_dist;
+	const bool corridor = env.wall_near > 0.3f && env.wall_far > 0.3f && across <= 4.5f &&
+			env.mean_free_path > 0.7f * across;
+	// Small built rooms: hard (stone, glass) or soft (planks, wool)
+	const bool hard = env.hf > 0.75f;
+	float best = 0.f;
+	for (int i = 0; i < RECORDED_SPACE_COUNT; i++) {
+		const RecordedSpace &r = RECORDED_SPACES[i];
+		if (r.corridor != corridor)
+			continue;
+		// a tunnel is a tunnel, mine or railway
+		if (!r.corridor && r.natural != natural)
+			continue;
+		if (!r.natural && r.rt60 < 1.f && r.hard != hard)
+			continue;
+		const float miss = std::fabs(std::log(r.rt60 / std::max(0.1f, env.decay)));
+		// a long recording in a short room is the worse mismatch; a corridor
+		// keeps its tail whatever the room's decay says
+		const float fit = std::exp(-(r.corridor ? 0.5f : 1.2f) * miss);
+		if (fit > best) {
+			best = fit;
+			c.index = i;
+		}
+	}
+	c.confidence = c.index >= 0 ? enclosed * best : 0.f;
+	return c;
+}
+
+float convolutionLevel(float decay)
+{
+	// The synthetic reverb's energy grows with its decay (measured through
+	// OpenAL Soft: -26.8 dB at 0.5 s, -18.5 dB at 2 s); the recordings sit
+	// at -12.7 dB whatever their length
+	const float db = -22.8f + 13.3f * std::log10(std::clamp(decay, 0.1f, 20.f)) + 12.7f;
+	return std::clamp(std::pow(10.f, db / 20.f), 0.f, 1.f);
+}
+
 RoomTone roomTone(const Acoustics &env, const Params &params)
 {
 	RoomTone t;

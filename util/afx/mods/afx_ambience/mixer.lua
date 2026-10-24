@@ -12,6 +12,7 @@ local F = core.formspec_escape
 -- Engine settings: {key, label, max, default}
 local ENGINE = {
 	{"afx_reverb", "Room reverb", 2, 1},
+	{"afx_convolution", "Recorded spaces (real caves, halls, rooms)", 1, 0.6},
 	{"afx_echo", "Echoes (cliffs, canyons)", 2, 1},
 	{"afx_occlusion", "Walls muffle sounds", 2, 1},
 	{"afx_outdoor_muffle", "Outdoors muffled indoors", 4, 1},

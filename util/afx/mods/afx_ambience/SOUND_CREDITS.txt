@@ -21,3 +21,13 @@ Round 4 additions:
 - Moodist: thunder (cut into near cracks and far rolls), waves (shore), seagulls,
   walk on leaves (rustle), clock, cat purring, night village, chickens.
 - ambient_sounds: ethereal fiery (Nether), ethereal crystal (End chimes).
+
+Round 13, impulse responses (afx_ir_*, for the convolution reverb):
+- Sounds Of The Underground by emilyb124 (github.com/emilyb124/Sounds-Of-The-Underground):
+  balloon pops recorded in Skyline Caverns (Painted Desert, "61") and
+  Shenandoah Caverns (Whirlpool Alcove), Grand Caverns (Cathedral Hall), Virginia:
+  afx_ir_cave, afx_ir_cavern, afx_ir_alcove, afx_ir_cathedral.
+- Tone.js audio (github.com/Tonejs/audio): Berlin tunnel (afx_ir_tunnel).
+- web-audio-samples by Chris Wilson (github.com/cwilso/web-audio-samples):
+  tim-warehouse omni-35-10 (afx_ir_hall), house impulses kitchen (afx_ir_room)
+  and living-bedroom (afx_ir_home). See its LICENSE.
