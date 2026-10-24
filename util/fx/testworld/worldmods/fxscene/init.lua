@@ -184,6 +184,20 @@ core.register_on_joinplayer(function(player)
 			for x = 1, 3 do
 				core.set_node({x = x, y = 3, z = 5}, {name = "basenodes:leaves"})
 			end
+			-- plants along the right side (GPU particles: fireflies at night
+			-- under the open sky, fxscene_open_sky)
+			for x = 6, 10 do
+				for z = 8, 11 do
+					core.set_node({x = x, y = 0, z = z}, {name = "testnodes:plantlike"})
+				end
+			end
+		end
+		if core.settings:get_bool("fxscene_open_sky", false) then
+			for x = -12, 12 do
+				for z = -2, 18 do
+					core.remove_node({x = x, y = 8, z = z})
+				end
+			end
 		end
 		local view = core.settings:get("fxscene_view")
 		if view == "hand" then

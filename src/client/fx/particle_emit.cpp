@@ -290,7 +290,7 @@ void ParticleSystem::emit(Client *client, Camera *camera, float dtime)
 		}
 		// fireflies: night, over plants under the open sky, not in rain
 		if (night > 0.5f && !wet && !snowing && !m_emit.flora.empty()) {
-			const int n = count(A_FIREFLY, std::min<float>(m_emit.flora.size(), 400.f) * 0.04f * motes);
+			const int n = count(A_FIREFLY, std::min<float>(m_emit.flora.size(), 400.f) * 0.1f * motes);
 			for (int i = 0; i < n; i++) {
 				const v3s16 c = pick(m_emit.flora);
 				Spawn s;

@@ -183,7 +183,7 @@ void main(void)
 	} else if (dust) {
 		// motes catch the light: brighter where it is bright
 		col = light * tint * 0.9;
-		alpha = 0.45 * sin(3.14159 * f);
+		alpha = 0.6 * sin(3.14159 * f);
 		occl = 0.0;
 		soft = 0.2;
 	} else if (ash) {
