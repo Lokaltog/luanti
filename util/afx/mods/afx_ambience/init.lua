@@ -152,7 +152,9 @@ end
 
 local game_json, entities_json
 core.register_on_mods_loaded(function()
-	local world = core.get_worldpath():match("([^/\\]+)$") or ""
+	-- (the name and the seed: two worlds of the same name are still two)
+	local world = (core.get_worldpath():match("([^/\\]+)$") or "") .. "-" ..
+			tostring(core.get_mapgen_setting("seed") or "")
 	local mods = core.get_modnames()
 	table.sort(mods)
 	game_json = core.write_json({
@@ -239,7 +241,6 @@ core.register_globalstep(function(dtime)
 				biome = bd and core.get_biome_name(bd.biome) or "",
 				heat = bd and bd.heat or nil, humidity = bd and bd.humidity or nil,
 			}
-			if core.settings:get_bool("afx_ambience_use_biomes") == false then w.biome = "" end
 			player:set_afx_world(w)
 		end
 	end
@@ -291,6 +292,18 @@ core.register_on_mods_loaded(function()
 		end
 	end
 end)
+
+--[[ Nodes dug and punched, by anyone or anything the server knows of (a
+mod, a scripted scene): the digger's client hears what it shakes loose
+(birds out of the leaves). Its own digs it also sees itself; it keeps one. ]]
+
+local function node_event(what, pos, node, player)
+	if player and player.is_player and player:is_player() then
+		player:send_afx_data("node", ("%s %d %d %d %s"):format(what, pos.x, pos.y, pos.z, node.name))
+	end
+end
+core.register_on_dignode(function(pos, oldnode, digger) node_event("dig", pos, oldnode, digger) end)
+core.register_on_punchnode(function(pos, node, puncher) node_event("punch", pos, node, puncher) end)
 
 --[[ Sounds from server content (content.lua): played by the client's
 ambience, which has the sounds and their levels. Positional, to everyone in

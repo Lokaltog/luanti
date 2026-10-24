@@ -350,6 +350,17 @@ The ambience (what plays and where) moved from the server mod into the client. I
 - **Settings:** the ambience's settings are the engine's now (Environmental Audio → Ambience). `afx_debug_eval` runs a line of Lua in the ambience after `afx_debug_eval_at` seconds and logs the result, for headless tests.
 - **Without the bridge** (another server), the ambience still runs on the map. It has no weather, the biome comes from the nodes around, creatures go by name, and it's always the overworld.
 
+### Regression check against round 13
+
+The pre-refactor build (8559225) and this one ran the same 26 scenarios side by side, under the same load: 23 devtest ones plus VoxeLibre's muffle, review and life tours. Per scenario the check compared the sounds each build started and each segment's loudness (`/tmp`-style scripts: run both, diff the inventories, LUFS per segment).
+
+- Loudness matched within the method's noise. Log timestamps are whole seconds, so short segments swing by up to ±5 dB, in both directions, from run to run.
+- Event inventories matched, except for random one-shots (which bird, a gust).
+- It found three real differences, now fixed:
+  - **Digs and punches made on the server** (a scene, a mod, `node_dig`) didn't reach the client, so leaves broken that way flushed no birds. The bridge now forwards them (`@node`), and the client keeps one of each when it also saw its own.
+  - **The biome wasn't sent with `afx_ambience_use_biomes = false`**, so there were no discovery chimes for biomes. It's always sent now; the setting only affects the beds, as before.
+  - **Discoveries were kept per world name.** Two worlds called "world" shared them, so tests didn't chime twice. The key is now name plus seed, and `tour.sh` clears the ambience's storage before each run.
+
 ## Round 15: the tuning view
 
 `/afx_view` (or "Tuning view" in `/afx`, setting `afx_debug_view`) draws what the acoustics see over the world, through walls:

@@ -72,6 +72,8 @@ if [ "${USE_XVFB:-0}" = 1 ]; then
 	sleep 1
 fi
 
+# the client ambience remembers discoveries per world; every run is a new one
+rm -f "$ROOT/client/afx_storage.conf"
 LOG=$OUT/$SCEN.log
 # AFX_XDO="sleep 20; xdotool mousedown 1; ...": drive the client's input (Xvfb)
 if [ -n "${AFX_XDO:-}" ]; then

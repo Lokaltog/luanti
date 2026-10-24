@@ -224,12 +224,27 @@ end
 
 --[[ Node events ]]
 
-function core.afx_on_node(what, pos, name)
+-- From the client's own interaction, and from the server (which also
+-- knows of digs a mod or a scene makes): the same one once
+local recent = {}
+local function node_event(what, pos, name)
+	local key = what .. core.hash_node_position(pos)
+	if time - (recent[key] or -10) < 1.5 then return end
+	recent[key] = time
 	local node = {name = name, param1 = 0, param2 = 0}
 	for _, fn in ipairs(what == "dig" and dig_cbs or what == "punch" and punch_cbs or {}) do
 		fn(pos, node, player)
 	end
 end
+function core.afx_on_node(what, pos, name) node_event(what, pos, name) end
+afx.register_on_data("node", function(data)
+	local what, x, y, z, name = data:match("^(%a+) (%S+) (%S+) (%S+) (%S+)")
+	if not name then return end
+	node_event(what, {x = tonumber(x), y = tonumber(y), z = tonumber(z)}, name)
+	if math.random() < 0.02 then
+		for k, t in pairs(recent) do if time - t > 5 then recent[k] = nil end end
+	end
+end)
 
 --[[ The step ]]
 
