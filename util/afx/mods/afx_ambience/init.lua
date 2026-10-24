@@ -601,7 +601,7 @@ local function dimension(pos)
 end
 
 local modpath = core.get_modpath(core.get_current_modname())
-for _, f in ipairs({"weather.lua", "water.lua", "life.lua", "places.lua", "body.lua"}) do
+for _, f in ipairs({"weather.lua", "water.lua", "life.lua", "places.lua", "body.lua", "cinema.lua"}) do
 	dofile(modpath .. "/" .. f)
 end
 

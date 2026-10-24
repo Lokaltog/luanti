@@ -28,3 +28,11 @@ afx_ambience_proximity (Nearby sources) bool true
 #    Use the biome map (names like "forest", "desert", "ocean") for the beds.
 #    Off: only the nodes around the player count.
 afx_ambience_use_biomes (Use biome names) bool true
+
+#    Deep in the dark, now and then, footsteps follow a beat behind yours and
+#    stop when you stop. Off by default.
+afx_ambience_follower (Something follows you) bool false
+
+#    Rare ore (diamond, emerald, ancient debris) within a few blocks glints
+#    faintly, heard through the rock. A gameplay hint, so off by default.
+afx_ambience_treasure (Treasure shimmer) bool false

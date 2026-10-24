@@ -307,6 +307,14 @@ function BUILD.details(b)
 	b.fill(v(10, -30, -30), v(30, -20, -10), "air")                    -- cave under it
 end
 
+function BUILD.cinema(b)
+	b.fill(v(MIN.x, -40, MIN.z), v(MAX.x, -2, MAX.z), "basenodes:stone")
+	b.fill(v(MIN.x, -1, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+	tree(b, 8, 6, 5)
+	tree(b, -9, 10, 6)
+	b.fill(v(-12, -30, -12), v(12, -20, 12), "air") -- a dark cavern far below
+end
+
 function BUILD.cliff(b)
 	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:stone")
 	b.fill(v(MIN.x, 0, 20), v(MAX.x, 30, 30), "basenodes:stone")
@@ -622,7 +630,31 @@ TIMELINE.details = {
 	end, wait = 14, log = "the cave under the lake, a clock in hand"},
 }
 
+TIMELINE.cinema = {
+	{wait = 48, log = "a meadow at noon (the score starts after a while)"},
+	{fn = function() core.set_timeofday(0.9) end, wait = 26, log = "night"},
+	{fn = function()
+		core.sound_play("tnt_explode", {pos = vector.offset(P():get_pos(), 5, 0, 3),
+			gain = 1.0, max_hear_distance = 64}, true)
+	end, wait = 9, log = "an explosion close by"},
+	{fn = function() P():set_hp(3) end, wait = 10, log = "badly hurt"},
+	{fn = function()
+		local pl = P()
+		pl:set_hp(20)
+		pl:set_pos(v(0, -30, 0))
+		local st = afx_ambience.lib.player_state(player_name)
+		st.next_follow = 0
+	end, wait = 2, log = "deep in the dark"},
+	{walk = v(9, -30, 0), speed = 2, steps = "default_hard_footstep"},
+	{wait = 2},
+	{walk = v(-8, -30, 2), speed = 2, steps = "default_hard_footstep"},
+	{wait = 3},
+	{walk = v(0, -30, -8), speed = 2, steps = "default_hard_footstep"},
+	{wait = 20, log = "standing still in the dark"},
+}
+
 local START = {
+	cinema = v(0, 0, 0),
 	details = v(-24, 0, 0),
 	corner = v(-16, 0, 0), nextdoor = v(0, 0, -4), bridge = v(-16, 0, 0), draft = v(0, 0, 0),
 	steps = v(0, 0, 0),

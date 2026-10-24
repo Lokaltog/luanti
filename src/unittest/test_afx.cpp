@@ -9,6 +9,9 @@
 #include "client/afx/afx_smoother.h"
 #include "client/afx/afx_mood.h"
 #include "client/afx/afx_mix.h"
+#include "client/afx/afx_score.h"
+#include <random>
+#include <cstring>
 #include "afx_worlds.h"
 
 #include <cmath>
@@ -40,6 +43,8 @@ public:
 	void testAroundCorner();
 	void testNeighborRoom();
 	void testHollowFloor();
+	void testScore();
+	void testDeafen();
 };
 
 static TestAfx g_test_instance;
@@ -60,6 +65,8 @@ void TestAfx::runTests(IGameDef *gamedef)
 	TEST(testAroundCorner);
 	TEST(testNeighborRoom);
 	TEST(testHollowFloor);
+	TEST(testScore);
+	TEST(testDeafen);
 }
 
 void TestAfx::testOpenField()
@@ -372,4 +379,72 @@ void TestAfx::testHollowFloor()
 	UASSERT(w.probe(v3f(0, 1.6f, 0)).hollow > 0.6f);
 	// solid ground
 	UASSERT(openField().probe(v3f(0, 1.6f, 0)).hollow < 0.05f);
+}
+
+void TestAfx::testScore()
+{
+	std::mt19937 rng(3);
+	auto r = [&] { return std::uniform_real_distribution<float>(0.f, 1.f)(rng); };
+	auto run = [&](Mood m, float tod, float day, float seconds, Score &sc) {
+		std::vector<Note> out, all;
+		for (float t = 0; t < seconds; t += 0.1f) {
+			out.clear();
+			sc.step(0.1f, m, tod, day, r, out);
+			all.insert(all.end(), out.begin(), out.end());
+		}
+		return all;
+	};
+
+	// Silent at first, then a session plays
+	Score sc;
+	Mood calm;
+	auto first = run(calm, 0.5f, 1.f, 15.f, sc);
+	UASSERT(first.empty());
+	auto day = run(calm, 0.5f, 1.f, 120.f, sc);
+	UASSERT(day.size() > 15);
+	int piano = 0;
+	for (const auto &n : day) {
+		UASSERT(n.pitch > 0.24f && n.pitch < 4.1f);
+		UASSERT(n.gain > 0.f && n.gain < 0.8f);
+		piano += std::strcmp(n.group, "afx_dry_score_piano") == 0;
+	}
+	UASSERT(piano > (int)day.size() / 2);
+
+	// Dread: no melody, only sparse low bowl strikes
+	Score dread_sc;
+	dread_sc.startSession();
+	Mood dread;
+	dread.tension = 0.9f;
+	auto d = run(dread, 0.0f, 0.f, 120.f, dread_sc);
+	UASSERT(!d.empty() && d.size() < 20);
+	for (const auto &n : d) {
+		UASSERT(std::strcmp(n.group, "afx_dry_score_bowl") == 0);
+		UASSERT(n.pitch < 0.75f);
+	}
+
+	// Dawn: one rising phrase, once
+	Score dawn_sc;
+	auto dw = run(calm, 0.25f, 0.5f, 8.f, dawn_sc);
+	UASSERT(dw.size() >= 7);
+	auto again = run(calm, 0.26f, 0.5f, 5.f, dawn_sc);
+	UASSERT(again.empty());
+}
+
+void TestAfx::testDeafen()
+{
+	Params p;
+	Acoustics env;
+	Mix calm = mixFor(Bus::World, env, {}, p);
+	env.deafen = 1.f;
+	Mix blast = mixFor(Bus::World, env, {}, p);
+	UASSERT(blast.direct_hf < calm.direct_hf * 0.1f);
+	UASSERT(blast.direct_gain < calm.direct_gain * 0.6f);
+	// the ear ring (dry) is untouched
+	Mix ring = mixFor(Bus::Dry, env, {}, p);
+	UASSERT(ring.direct_hf == 1.f && ring.direct_gain == 1.f);
+	// ducking only dips the ambience
+	Acoustics loud;
+	loud.duck = 1.f;
+	UASSERT(mixFor(Bus::Outdoor, loud, {}, p).direct_gain < 0.5f);
+	UASSERT(mixFor(Bus::World, loud, {}, p).direct_gain == 1.f);
 }

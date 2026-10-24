@@ -991,6 +991,14 @@ afx_outdoor_muffle (Outdoor muffling) float 1.0 0.0 4.0
 #    Multiplies all transition times. Higher is slower and smoother.
 afx_smoothing (Smoothing) float 1.0 0.05 10.0
 
+#    A score that follows the mood: sparse piano, bell and singing-bowl phrases
+#    whose key, register and density follow day and night, home and dread.
+#    Plays in sessions with long rests. Needs afx_ambience's sounds. 0 = off.
+afx_score (Mood score) float 0.8 0.0 2.0
+
+#    While the mood score is on, silence the game's own music tracks.
+afx_score_replaces_music (Score replaces game music) bool true
+
 #    Variety for short sounds (footsteps, digging, drips): each play gets a
 #    slightly different pitch, speed and level, and the same sample is never
 #    picked twice in a row. 0 = off.

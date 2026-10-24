@@ -134,6 +134,21 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
 - Not done, because there are no usable recordings in the archives reachable here: rooster crows, the gasp on surfacing, cold breath.
 - Scenario `details` (use `AFX_DAMAGE=1` for breath).
 
+## Round 7: cinematic layer
+
+- **Mood score** (engine, `afx_score.h`; settings `afx_score`, `afx_score_replaces_music`). A generative score from real samples: VoxeLibre's note-block piano and bell, and the singing bowl, with a soft hall baked in. It follows the client's mood:
+  - day: C major pentatonic, phrases of 3–4 notes
+  - home: lower and slower, with a bell now and then
+  - night: A minor pentatonic, sparser
+  - dread: no melody, only low bowl strikes a semitone or tritone apart
+  - dawn: a rising phrase once a day
+
+  It plays in sessions of 2–4 minutes with 3–7 minute rests. While it's on, the game's own music (long unnamed non-positional sounds) is suppressed.
+- **Ducking and deafening** (engine). Sounds named like explosions, thunder, hurt, damage or death dip the ambience beds for about a second. A blast within 12 nodes muffles everything (HF cut, gain down, reverb down) for a few seconds and starts a fading ring in the ears.
+- **Heartbeat** (afx_ambience). Lub-dub from a real kick drum, below 35 % health or with a hostile mob within 10 nodes in the dark. It speeds up from 60 to 96 bpm with severity.
+- **Opt-in:** `afx_ambience_follower`: deep in the dark, now and then for 20 s, footsteps a beat behind yours that stop when you stop. `afx_ambience_treasure`: rare ore within 5 nodes glints faintly through the rock.
+- Scenario `cinema`.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

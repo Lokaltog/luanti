@@ -167,6 +167,25 @@ Mix mixFor(Bus bus, const Acoustics &env, const Occlusion &occ, const Params &pa
 	if (bus == Bus::World || bus == Bus::Local)
 		m.neighbor_send = std::clamp(env.coupling, 0.f, 1.f);
 
+	// A loud moment: the ambience steps back for a second
+	if (env.duck > 0.f && (bus == Bus::Outdoor || bus == Bus::Indoor)) {
+		const float k = 1.f - 0.6f * std::clamp(env.duck, 0.f, 1.f);
+		m.direct_gain *= k;
+		m.muffle_send *= k;
+		m.reverb_send *= k;
+	}
+	// A blast close by: the world goes dull and far away while your ears ring
+	if (env.deafen > 0.f) {
+		const float k = std::clamp(env.deafen, 0.f, 1.f);
+		m.direct_hf *= 1.f - 0.93f * k;
+		m.direct_gain *= 1.f - 0.5f * k;
+		m.reverb_send *= 1.f - 0.6f * k;
+		m.reverb_hf *= 1.f - 0.9f * k;
+		m.echo_send *= 1.f - k;
+		m.neighbor_send *= 1.f - k;
+		m.hollow_send *= 1.f - k;
+	}
+
 	// Submerged: everything but the dry bus moves to the muffled path.
 	if (env.submerged > 0.f) {
 		const float s = env.submerged;

@@ -379,6 +379,8 @@ void set_default_settings()
 	settings->setDefault("afx_doppler", "0.5");
 	settings->setDefault("afx_mood", "1.0");
 	settings->setDefault("afx_variation", "1.0");
+	settings->setDefault("afx_score", "0.8");
+	settings->setDefault("afx_score_replaces_music", "true");
 	settings->setDefault("afx_dry_sounds",
 			"*music*,*_ui_*,*gui*,*btn*,*button*,*click*,*inventory*,*award*,*achievement*");
 	settings->setDefault("afx_outdoor_sounds", "*rain*,*wind*,*weather*,*thunder*");

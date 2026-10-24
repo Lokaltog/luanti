@@ -78,6 +78,11 @@ private:
 	bool m_afx_doppler_set = false;
 	afx::AirField m_afx_field; // routes around corners, rebuilt per recast
 	bool m_afx_field_valid = false;
+	f32 m_duck = 0.0f, m_deafen = 0.0f, m_deafen_hold = 0.0f, m_ring_cooldown = 0.0f;
+	std::vector<std::shared_ptr<PlayingSound>> m_internal_sounds; // the ear ring
+	void noteImpact(const std::string &group, f32 gain,
+			const std::optional<std::pair<v3f, v3f>> &pos_vel);
+	void stepImpacts(f32 dtime);
 	// afx: last sample picked per group, so it isn't picked twice in a row
 	std::unordered_map<std::string, std::string> m_last_pick;
 	f32 m_afx_apply_timer = 0.0f;

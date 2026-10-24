@@ -104,9 +104,72 @@ afx::Occlusion OpenALSoundManager::computeOcclusion(const PlayingSound &snd)
 	return o;
 }
 
+static bool anyGlob(const std::string &name, std::initializer_list<const char *> globs)
+{
+	for (const char *g : globs)
+		if (afx::globMatch(g, name))
+			return true;
+	return false;
+}
+
+void OpenALSoundManager::noteImpact(const std::string &group, f32 gain,
+		const std::optional<std::pair<v3f, v3f>> &pos_vel)
+{
+	if (!m_afx_active || group.rfind("afx_", 0) == 0)
+		return;
+	const bool blast = anyGlob(group, {"*explo*", "*tnt*", "*blast*"});
+	if (!blast && !anyGlob(group, {"*hurt*", "*damage*", "*death*", "*thunder*"}))
+		return;
+	f32 dist = 0.0f;
+	if (pos_vel)
+		dist = (swap_handedness(pos_vel->first) - m_listener_pos_node).getLength();
+	const f32 loud = std::min(1.0f, gain) * std::clamp(6.0f / std::max(1.0f, dist), 0.0f, 1.0f);
+	m_duck = std::max(m_duck, std::min(1.0f, loud * 1.2f));
+	if (blast && dist < 12.0f) {
+		const f32 d = std::clamp(1.0f - dist / 12.0f, 0.0f, 1.0f) * std::min(1.0f, gain * 1.5f);
+		if (d > m_deafen) {
+			m_deafen = d;
+			m_deafen_hold = 0.5f;
+		}
+		// the ringing: one at a time
+		if (d > 0.35f && m_ring_cooldown <= 0.0f) {
+			m_ring_cooldown = 3.0f;
+			std::string ring = getLoadedSoundNameFromGroup("afx_dry_ring");
+			if (!ring.empty()) {
+				auto snd = createPlayingSound(ring, false, 0.6f * d, 1.0f, 0.0f,
+						std::nullopt, afx::Bus::Dry);
+				if (snd)
+					m_internal_sounds.push_back(std::move(snd));
+			}
+		}
+	}
+}
+
+void OpenALSoundManager::stepImpacts(f32 dtime)
+{
+	m_duck *= std::exp(-dtime / 1.0f);
+	if (m_deafen_hold > 0.0f)
+		m_deafen_hold -= dtime;
+	else
+		m_deafen *= std::exp(-dtime / 2.5f);
+	if (m_deafen < 0.01f)
+		m_deafen = 0.0f;
+	m_ring_cooldown -= dtime;
+	for (size_t i = 0; i < m_internal_sounds.size();) {
+		if (m_internal_sounds[i]->isDead()) {
+			m_internal_sounds[i] = std::move(m_internal_sounds.back());
+			m_internal_sounds.pop_back();
+		} else {
+			i++;
+		}
+	}
+}
+
 void OpenALSoundManager::applyMix(PlayingSound &snd)
 {
-	const afx::Acoustics &env = m_afx_smoother.current();
+	afx::Acoustics env = m_afx_smoother.current();
+	env.duck = m_duck;
+	env.deafen = m_deafen;
 	afx::Mix mix = afx::mixFor(snd.getBus(), env, snd.getOcclusion(), m_afx_params,
 			snd.isFootstep());
 	if (snd.getBus() == afx::Bus::Dry)
@@ -132,6 +195,7 @@ void OpenALSoundManager::stepAcoustics(f32 dtime)
 	ZoneScoped;
 
 	m_afx_smoother.step(dtime, m_afx_params.smoothing);
+	stepImpacts(dtime);
 
 	m_afx_occlusion_timer -= dtime;
 	const bool recast = m_afx_occlusion_timer <= 0.0f;
@@ -156,7 +220,9 @@ void OpenALSoundManager::stepAcoustics(f32 dtime)
 	m_afx_apply_timer -= dtime;
 	if (m_afx_apply_timer <= 0.0f) {
 		m_afx_apply_timer = AFX_APPLY_INTERVAL;
-		m_efx->applyEnvironment(m_afx_smoother.current(), m_listener_frame);
+		afx::Acoustics env = m_afx_smoother.current();
+		env.deafen = m_deafen;
+		m_efx->applyEnvironment(env, m_listener_frame);
 		for (auto &[id, snd] : m_sounds_playing)
 			applyMix(*snd);
 	}

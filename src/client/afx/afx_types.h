@@ -120,6 +120,8 @@ struct Params {
 	float doppler = 0.5f;        // afx_doppler, OpenAL doppler factor
 	float mood = 1.0f;           // afx_mood, level of the tension/cozy layers
 	float variation = 1.0f;      // afx_variation, pitch/level variety of short sounds
+	float score = 0.8f;          // afx_score, level of the mood-driven score (0 = off)
+	bool score_replaces_music = true; // afx_score_replaces_music
 	bool debug = false;          // afx_debug
 	// Bus routing by sound name, comma-separated globs (see afx_mix.h)
 	std::string dry_sounds =     // afx_dry_sounds
@@ -179,6 +181,10 @@ struct Acoustics {
 
 	// Floor under your feet: 1 = planks over empty space (boomy footsteps)
 	float hollow = 0.f;
+
+	// Set by the sound thread at mix time, not by the probe
+	float duck = 0.f;    // 0..1, ambience dips under a loud event
+	float deafen = 0.f;  // 0..1, a blast close by: muffled, ringing
 
 	// Listener medium
 	bool underwater = false;

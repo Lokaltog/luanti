@@ -3,6 +3,7 @@
 
 #include "afx.h"
 #include "afx_mood.h"
+#include "afx_score.h"
 
 #include "client/client.h"
 #include "client/camera.h"
@@ -38,7 +39,7 @@ static const char *const SETTING_NAMES[] = {
 	"afx_reverb", "afx_max_decay", "afx_echo", "afx_occlusion",
 	"afx_outdoor_muffle", "afx_smoothing", "afx_debug",
 	"afx_dry_sounds", "afx_outdoor_sounds", "afx_indoor_sounds", "afx_doppler", "afx_mood",
-	"afx_variation",
+	"afx_variation", "afx_score", "afx_score_replaces_music",
 };
 
 static void readParams()
@@ -59,6 +60,8 @@ static void readParams()
 	p.doppler = rangelim(s->getFloat("afx_doppler"), 0.f, 2.f);
 	p.mood = rangelim(s->getFloat("afx_mood"), 0.f, 2.f);
 	p.variation = rangelim(s->getFloat("afx_variation"), 0.f, 2.f);
+	p.score = rangelim(s->getFloat("afx_score"), 0.f, 2.f);
+	p.score_replaces_music = s->getBool("afx_score_replaces_music");
 	p.dry_sounds = s->get("afx_dry_sounds");
 	p.outdoor_sounds = s->get("afx_outdoor_sounds");
 	p.indoor_sounds = s->get("afx_indoor_sounds");
@@ -374,6 +377,7 @@ struct MoodState {
 	float tension_peak = 0.f;
 	float age = 0.f; // seconds of mood since joining
 	PcgRandom rng{(u64)porting::getTimeMs()};
+	Score score;
 };
 MoodState s_mood;
 
@@ -448,6 +452,17 @@ void updateMood(Client *client, ISoundManager *sound, v3f ear, float dtime, cons
 			SoundSpec spec("afx_mood_stinger", 0.5f * p.mood);
 			sound->playSoundAt(0, spec, ear + dir * (12.f + s_mood.rng.range(0, 10)), v3f());
 		}
+	}
+
+	// The score
+	if (p.score > 0.f && sound->hasSoundGroup("afx_dry_score_piano")) {
+		std::vector<Note> notes;
+		const float tod = client->getEnv().getTimeOfDayF();
+		const float day = std::clamp((0.32f - std::fabs(tod - 0.5f)) / 0.05f, 0.f, 1.f);
+		s_mood.score.step(dtime, m, tod, day,
+				[] { return s_mood.rng.range(0, 99999) / 100000.f; }, notes);
+		for (const Note &n : notes)
+			sound->playSound(0, SoundSpec(n.group, n.gain * p.score, false, 0.f, n.pitch));
 	}
 
 	// Relief: back out under the sky after real dread. Not armed until the

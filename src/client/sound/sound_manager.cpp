@@ -168,8 +168,14 @@ std::shared_ptr<PlayingSound> OpenALSoundManager::createPlayingSound(
 	// heard in the room: keep them dry. (Ambience beds carry afx_ prefixes or
 	// match the glob lists, so they keep their bus.)
 	if (bus == afx::Bus::Local && !pos_vel_opt.has_value() &&
-			lsnd->m_decode_info.length_seconds > MUSIC_MIN_SECONDS)
+			lsnd->m_decode_info.length_seconds > MUSIC_MIN_SECONDS) {
 		bus = afx::Bus::Dry;
+		// afx: the mood score plays instead of the game's tracks
+		if (m_afx_active && m_afx_params.score > 0.0f && m_afx_params.score_replaces_music) {
+			infostream << "afx: score replaces music \"" << sound_name << "\"" << std::endl;
+			return nullptr;
+		}
+	}
 
 	ALuint source_id;
 	alGenSources(1, &source_id);
@@ -234,6 +240,9 @@ void OpenALSoundManager::playSoundGeneric(sound_handle_t id, const std::string &
 	// afx: route by the group name the game asked for (the file name is a
 	// random pick from it)
 	afx::Bus bus = afx::classify(group_name, pos_vel_opt.has_value(), m_bus_rules);
+
+	// afx: loud moments duck the ambience; a blast close by deafens
+	noteImpact(group_name, volume, pos_vel_opt);
 
 	// afx: no two footsteps alike. Short one-shots get a little pitch/speed
 	// and level variety on every play.
@@ -369,6 +378,7 @@ OpenALSoundManager::~OpenALSoundManager()
 	// afx: sources must go before the effect slots they send to; deleting a
 	// slot that is still in use fails (and leaves the AL error flag set).
 	m_sounds_playing.clear();
+	m_internal_sounds.clear();
 	m_efx.reset();
 }
 
