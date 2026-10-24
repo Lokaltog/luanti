@@ -50,6 +50,12 @@ void Renderer::updateCamera(Client *client, Camera *camera, Sky *sky, float dtim
 	cam.sun_dir[2] = sun.Z;
 	// 0 below the horizon, 1 well above it; moonlight counts as weak
 	cam.sun_strength = std::clamp(sun.Y * 3.f, 0.f, 1.f) * (day ? 1.f : 0.25f);
+	if (sky) {
+		const video::SColor fc = sky->getFogColor();
+		cam.fog_color[0] = fc.getRed() / 255.f;
+		cam.fog_color[1] = fc.getGreen() / 255.f;
+		cam.fog_color[2] = fc.getBlue() / 255.f;
+	}
 
 	ClientMap &map = client->getEnv().getClientMap();
 	const v3f cam_pos = camera->getPosition();
@@ -81,7 +87,9 @@ void Renderer::updateCamera(Client *client, Camera *camera, Sky *sky, float dtim
 		{"rain", hints.weather == "rain" ? 1.f : 0.f},
 		{"snow", hints.weather == "snow" ? 1.f : 0.f},
 		{"storm", hints.weather == "thunder" ? 1.f : 0.f},
-		{"heat", events.heat}, {"portal", events.portal}};
+		{"heat", events.heat}, {"portal", events.portal},
+		// dawn: sunrise and the hour after (time of day 0.2 .. 0.32)
+		{"dawn", std::clamp(1.f - std::abs(tod - 0.26f) / 0.07f, 0.f, 1.f)}};
 	if (!hints.biome.empty())
 		active["biome." + hints.biome] = 1.f;
 	// weather is outdoors: under a roof (the cave measure) it fades out
@@ -154,6 +162,10 @@ void Renderer::uploadFrame()
 	b.weather[1] = events.raining;
 	b.weather[2] = events.wind;
 	b.weather[3] = events.wind_angle;
+	b.fog[0] = cam.fog_color[0];
+	b.fog[1] = cam.fog_color[1];
+	b.fog[2] = cam.fog_color[2];
+	b.fog[3] = cam.offset.Y * BS;
 	driver->setUniformBufferData(UBO_FRAME, &b, sizeof(b));
 }
 

@@ -62,7 +62,7 @@ void main(void)
 	if (dot(n, to_eye) < 0.0)
 		n = -n;
 	if (length(to_eye) < FX_HAND_DIST) { // the wielded item (or a wall in your face)
-		gl_FragColor = vec4(1.0, 1.0, fxPackDepth(length(to_eye)));
+		gl_FragColor = vec4(1.0, 1.0, fxPackDepth(fxLinearDepth(d)));
 		return;
 	}
 
@@ -139,5 +139,5 @@ void main(void)
 		}
 		cs = 1.0 - hit * fxContactShadows * sun * 0.6;
 	}
-	gl_FragColor = vec4(ao, cs, fxPackDepth(length(to_eye)));
+	gl_FragColor = vec4(ao, cs, fxPackDepth(fxLinearDepth(d)));
 }

@@ -47,6 +47,10 @@ public:
 			constants["FX_TAA"] = 1;
 		if (c.ao)
 			constants["FX_AO"] = 1;
+		if (c.volumetrics)
+			constants["FX_VOLUMETRICS"] = 1;
+		if (c.gi)
+			constants["FX_GI"] = 1;
 		if (c.surfaces) {
 			constants["FX_SURFACES"] = 1;
 			if (p.ssr)

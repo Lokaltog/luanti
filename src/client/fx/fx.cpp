@@ -165,7 +165,7 @@ void Renderer::onSettingsChanged()
 const std::vector<std::string> &situations()
 {
 	static const std::vector<std::string> list = {"night", "cave", "underwater",
-		"rain", "snow", "storm", "nether", "heat", "end", "portal"};
+		"dawn", "rain", "snow", "storm", "nether", "heat", "end", "portal"};
 	return list;
 }
 
@@ -419,6 +419,12 @@ video::SColor tintParticleLight(v3s16 node, video::SColor color, float artificia
 		out[i] = (u32)std::clamp(in[i] * (1.f + (ch - 1.f) * k), 0.f, 255.f);
 	}
 	return video::SColor(color.getAlpha(), out[0], out[1], out[2]);
+}
+
+video::ITexture *lightVolumeTexture()
+{
+	Renderer *r = renderer();
+	return r && r->volume && r->volume->valid() ? r->volume->texture() : nullptr;
 }
 
 v3f idleBreath()

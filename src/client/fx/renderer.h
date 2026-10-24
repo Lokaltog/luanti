@@ -65,8 +65,9 @@ struct FrameBlock {
 	float events[4];            // lightning flash, damage, low health, portal
 	float world[4];             // nether, end, wet (rain/storm), storm
 	float weather[4];           // snow cover, raining now, wind strength, wind angle
+	float fog[4];               // fog colour (display-encoded), camera offset y (scene units)
 };
-static_assert(sizeof(FrameBlock) == 3 * 64 + 10 * 16, "FxFrame std140 layout");
+static_assert(sizeof(FrameBlock) == 3 * 64 + 11 * 16, "FxFrame std140 layout");
 
 /// std140 mirror of FxLights.
 struct LightsBlock {
@@ -100,6 +101,7 @@ struct CameraState {
 	float underwater = 0.f;
 	float water_level = 0.f;   // scene space y of the water surface above the camera
 	float time = 0.f;
+	float fog_color[3] = {0.7f, 0.8f, 1.f};
 	float proj_scale = 1.f;
 };
 

@@ -25,6 +25,8 @@ struct Caps {
 	bool surfaces = false;      // glass/water variants + scene copy
 	bool colored_light = false;
 	bool light_volume = false;
+	bool volumetrics = false;   // the volumetric light / height fog pass
+	bool gi = false;            // the screen-space bounce light pass
 	bool materials = false;     // needs array textures
 	bool array_textures = false;
 

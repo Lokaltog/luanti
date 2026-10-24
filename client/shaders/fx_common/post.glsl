@@ -10,31 +10,30 @@ uniform sampler2D fxDepth;
 
 #if defined(FX_AO) && !defined(FX_TAA)
 // without TAA, AO (R) and contact shadows (G) are applied here (texture4):
-// half resolution, blurred, with view distance packed in B/A
+// half resolution, with view distance packed in B/A
 #define fxAoTex texture4
 uniform sampler2D fxAoTex;
 
-// Depth-aware upsample: of the four nearest half-res texels, the ones at
-// this pixel's distance count, so AO does not halo across depth edges.
+// Bilateral 3x3 gather around this pixel in the half-res AO buffer: the
+// denoise and the depth-aware upsample in one (no separate blur pass).
+// Neighbours count by how close their view distance is to this pixel's,
+// so AO does not halo across depth edges. texelFetch: no filter needed.
 vec2 fxSampleAO(vec2 uv)
 {
 	float d = texture2D(fxDepth, uv).r;
 	if (d >= 0.99999)
 		return vec2(1.0);
-	float dist = length(fxScenePos(uv, d) - fxEyePos) / fxNearFar.y;
-	vec2 hs = vec2(textureSize(fxAoTex, 0));
-	vec2 st = uv * hs - 0.5;
-	vec2 f = fract(st);
-	vec2 b = (floor(st) + 0.5) / hs;
+	float dist = fxLinearDepth(d) / fxNearFar.y;
+	ivec2 hs = textureSize(fxAoTex, 0);
+	ivec2 c = ivec2(uv * vec2(hs));
 	vec2 acc = vec2(0.0);
 	float wsum = 0.0;
-	for (int j = 0; j <= 1; j++)
-	for (int i = 0; i <= 1; i++) {
-		vec4 s = texture2D(fxAoTex, b + vec2(float(i), float(j)) / hs);
+	for (int j = -1; j <= 1; j++)
+	for (int i = -1; i <= 1; i++) {
+		vec4 s = texelFetch(fxAoTex, clamp(c + ivec2(i, j), ivec2(0), hs - 1), 0);
 		float sd = (s.b * 255.0 + s.a) / 255.0;
 		float rel = abs(sd - dist) / max(dist, 1e-5);
-		float bil = (i == 0 ? 1.0 - f.x : f.x) * (j == 0 ? 1.0 - f.y : f.y);
-		float w = bil * exp(-rel * rel * 400.0) + 1e-5;
+		float w = exp(-rel * rel * 400.0) * (i == 0 && j == 0 ? 2.0 : 1.0) + 1e-5;
 		acc += s.rg * w;
 		wsum += w;
 	}
@@ -56,6 +55,57 @@ vec3 fxApplyAO(vec3 color, vec2 uv)
 #endif
 
 #ifdef FX_HDR_COMPOSITE
+
+#ifdef FX_VOLUMETRICS
+// wave 3: in-scattered light (rgb, linear) and transmittance (a), half res
+#define fxVolTex texture5
+uniform sampler2D fxVolTex;
+// Height fog, analytic: density sigma(h) = k * exp(-max(h - base, 0) / H)
+// integrated along the view ray in closed form (no marching). Then the
+// light glowing in the air from the volumetric pass (half res) is added.
+vec3 fxApplyVolumetrics(vec3 color, vec2 uv)
+{
+	float d = texture2D(fxDepth, uv).r;
+	vec3 P = fxScenePos(uv, d >= 0.99999 ? 0.9999 : d);
+	vec3 E = fxEyePos;
+	float len = min(length(P - E), fxNearFar.y);
+	if (fxHeightFog > 0.0 && len > 0.0) {
+		const float H = 12.0 * FX_BS;                         // scale height
+		float base = fxHeightFogBase * FX_BS - fxCameraOffsetY; // scene space
+		float y0 = E.y - base, y1 = P.y - base;
+		// optical depth: exact for the exponential part above base, the
+		// part below base counts at full density
+		float dy = y1 - y0;
+		float a0 = exp(-max(y0, 0.0) / H), a1 = exp(-max(y1, 0.0) / H);
+		float od = abs(dy) > 1e-3 ? abs((a0 - a1) * H / dy) : a0;
+		od *= len * fxHeightFog * 0.0004;
+		float T = exp(-od);
+		float day = clamp(fxSunStrength * 1.2, 0.08, 1.0);
+		color = color * T + fxToLinear(fxFogColor) * day * (1.0 - T);
+	}
+	return color + texture2D(fxVolTex, uv).rgb;
+}
+#endif
+
+#ifdef FX_GI
+// wave 3: bounce light arriving at each pixel (linear), half res and noisy:
+// four bilinear taps around the pixel smooth it
+#define fxGiTex texture6
+uniform sampler2D fxGiTex;
+vec3 fxApplyGI(vec3 color, vec2 uv)
+{
+	if (fxGi <= 0.0)
+		return color;
+	vec2 px = 1.0 / vec2(textureSize(fxGiTex, 0));
+	vec3 gi = (texture2D(fxGiTex, uv + px * vec2(-1.2, -0.4)).rgb
+		+ texture2D(fxGiTex, uv + px * vec2(1.2, 0.4)).rgb
+		+ texture2D(fxGiTex, uv + px * vec2(0.4, -1.2)).rgb
+		+ texture2D(fxGiTex, uv + px * vec2(-0.4, 1.2)).rgb) * 0.25;
+	// what the surface reflects: its own colour, normalised (an albedo proxy)
+	vec3 albedo = color / (max(max(color.r, color.g), color.b) + 0.08);
+	return color + albedo * gi * fxGi * 0.15;
+}
+#endif
 
 // AgX, minimal fit by Benjamin Wrensch (MIT), sRGB primaries.
 // Input: linear scene-referred. Output: display-encoded (gamma) in [0,1].
@@ -206,18 +256,18 @@ vec2 fxPortalUV(vec2 uv)
 	return c + 0.5;
 }
 
-// View distance (0..1 of the far plane) at uv; 1 for the sky
+// View depth (0..1 of the far plane) at uv; 1 for the sky. Planar depth:
+// one division, no matrix.
 float fxViewDist01(vec2 uv)
 {
 	float d = texture2D(fxDepth, uv).r;
-	if (d >= 0.99999)
-		return 1.0;
-	return length(fxScenePos(uv, d) - fxEyePos) / fxNearFar.y;
+	return d >= 0.99999 ? 1.0 : fxLinearDepth(d) / fxNearFar.y;
 }
 
 // Distant things soften into the fog. A gather blur whose radius grows with
 // distance; samples nearer than this pixel don't bleed in (no halos around
-// near objects). Display-encoded in and out, before the HDR chain.
+// near objects). Display-encoded in and out, before the HDR chain. Pixels
+// in the near 20% of the view do no work at all.
 vec3 fxApplyFogBlur(vec3 col, vec2 uv)
 {
 	if (fxFogBlur <= 0.0)
@@ -230,12 +280,11 @@ vec3 fxApplyFogBlur(vec3 col, vec2 uv)
 	vec2 px = vec2(radius * fxDepthAspect(), radius);
 	vec3 acc = col;
 	float wsum = 1.0;
-	for (int i = 0; i < 12; i++) {
-		float t = (float(i) + 0.5) / 12.0;
+	for (int i = 0; i < 8; i++) {
+		float t = (float(i) + 0.5) / 8.0;
 		float ang = float(i) * 2.39996; // golden angle
 		vec2 o = vec2(cos(ang), sin(ang)) * sqrt(t) * px;
-		float sd = fxViewDist01(uv + o);
-		float w = smoothstep(dist * 0.7, dist * 0.9, sd);
+		float w = smoothstep(dist * 0.7, dist * 0.9, fxViewDist01(uv + o));
 		acc += texture2D(rendered, uv + o).rgb * w;
 		wsum += w;
 	}
@@ -259,23 +308,33 @@ vec3 fxEndSkyColor(vec2 uv)
 	return (nebula + vec3(0.9, 0.85, 1.0) * star * 1.5) * k;
 }
 
-// Smudges that light up where bright light (the bloom buffer, gathered wide)
-// crosses them. Linear.
+// Smudges that light up where bright light (the bloom buffer, gathered
+// wide) crosses them. Linear. 2D value noise, 3 octaves, only where there
+// is bright light around.
+float fxNoise2(vec2 p)
+{
+	vec2 i = floor(p), f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	float a = fxHash13(vec3(i, 0.0)), b = fxHash13(vec3(i + vec2(1.0, 0.0), 0.0));
+	float c = fxHash13(vec3(i + vec2(0.0, 1.0), 0.0)), d = fxHash13(vec3(i + vec2(1.0, 1.0), 0.0));
+	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
 vec3 fxLensDirtColor(vec2 uv)
 {
 #ifdef ENABLE_BLOOM
 	if (fxLensDirt <= 0.0)
 		return vec3(0.0);
-	vec3 light = vec3(0.0);
-	for (int y = -1; y <= 1; y++)
-	for (int x = -1; x <= 1; x++)
-		light += texture2D(bloom, clamp(uv + vec2(float(x), float(y)) * 0.12, 0.0, 1.0)).rgb;
-	light /= 9.0;
+	vec3 light = (texture2D(bloom, clamp(uv + vec2(-0.12, -0.12), 0.0, 1.0)).rgb
+		+ texture2D(bloom, clamp(uv + vec2(0.12, -0.12), 0.0, 1.0)).rgb
+		+ texture2D(bloom, clamp(uv + vec2(-0.12, 0.12), 0.0, 1.0)).rgb
+		+ texture2D(bloom, clamp(uv + vec2(0.12, 0.12), 0.0, 1.0)).rgb) * 0.25;
 	if (dot(light, vec3(1.0)) < 0.02)
 		return vec3(0.0); // nothing bright around: skip the noise
-	vec3 p = vec3(uv * vec2(1.0 / fxDepthAspect(), 1.0) * 5.0, 0.0);
-	float dirt = smoothstep(0.55, 0.85, fxFbm3(p)) * 0.8 + smoothstep(0.7, 0.95, fxFbm3(p * 3.0 + 7.0)) * 0.6;
-	return light * dirt * fxLensDirt * 0.6;
+	vec2 p = uv * vec2(1.0 / fxDepthAspect(), 1.0) * 5.0;
+	float n = fxNoise2(p) * 0.55 + fxNoise2(p * 2.7 + 7.0) * 0.3 + fxNoise2(p * 7.1 + 3.0) * 0.15;
+	float dirt = smoothstep(0.5, 0.8, n);
+	return light * dirt * fxLensDirt * 0.8;
 #else
 	return vec3(0.0);
 #endif

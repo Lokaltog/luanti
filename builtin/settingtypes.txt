@@ -912,6 +912,19 @@ fx_lava_pulse (Lava pulse) float 1.0 0.0 2.0
 #    A faint violet shimmer drifting over surfaces in the End (needs fx_hints).
 fx_end_aura (End aura) float 1.0 0.0 3.0
 
+#    Light from torches, lava and lamps glowing in the air around them,
+#    coloured, stopped by walls (from the light volume).
+fx_volumetric (Volumetric light) float 1.0 0.0 4.0
+
+#    Fog pooling in low places; thicker at dawn and in rain (moods).
+fx_height_fog (Height fog) float 0.6 0.0 4.0
+
+#    World height (nodes) below which the height fog is thickest.
+fx_height_fog_base (Height fog base) float 4.0 -64.0 256.0
+
+#    Screen-space bounce light: lit surfaces tint what faces them.
+fx_gi (Bounce light) float 0.6 0.0 3.0
+
 #    Linear luminance above which pixels bloom.
 fx_bloom_threshold (Bloom threshold) float 1.0 0.0 8.0
 
@@ -1070,6 +1083,14 @@ fx_use_snow (Snow cover) bool true
 
 #    Foliage sways in a wind that grows with the weather. Off compiles the effect out of the shaders.
 fx_use_wind (Wind) bool true
+
+#    Volumetric light and height fog pass. Off removes the pass. Changing it
+#    applies when you next join a world.
+fx_use_volumetrics (Volumetric light & fog) bool true
+
+#    Screen-space bounce light pass. Off removes the pass. Changing it
+#    applies when you next join a world.
+fx_use_gi (Bounce light pass) bool true
 
 #    Strength of normal-mapped relief and baked AO from _n maps.
 fx_normal_strength (Normal map strength) float 1.0 0.0 2.0

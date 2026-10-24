@@ -153,6 +153,12 @@ void main(void)
 	return;
 #endif
 #endif
+#ifdef FX_GI
+	color.rgb = fxApplyGI(color.rgb, uv);
+#endif
+#ifdef FX_VOLUMETRICS
+	color.rgb = fxApplyVolumetrics(color.rgb, uv);
+#endif
 	color.rgb *= exposureParams.compensationFactor * fxExposure;
 #ifdef ENABLE_AUTO_EXPOSURE
 	color.rgb *= exposure;

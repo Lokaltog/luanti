@@ -83,6 +83,7 @@ layout(std140) uniform FxFrame {
 	vec4 fxEvents;
 	vec4 fxWorld;
 	vec4 fxWeather;
+	vec4 fxFog;
 };
 #define fxEyePos fxEyeTime.xyz          // camera in scene space
 #define fxTime fxEyeTime.w              // seconds, wraps hourly
@@ -111,6 +112,8 @@ layout(std140) uniform FxFrame {
 #define fxRaining fxWeather.y               // raining right now, 0..1
 #define fxWindStrength fxWeather.z          // ~0.5 calm .. 1.8 storm
 #define fxWindAngle fxWeather.w             // radians
+#define fxFogColor fxFog.rgb                // the engine's fog colour, display-encoded
+#define fxCameraOffsetY fxFog.w             // scene space -> world: + this on y
 
 layout(std140) uniform FxLights {
 	vec4 fxLightPosRadius[FX_LIGHT_MAX];  // xyz scene space, w radius

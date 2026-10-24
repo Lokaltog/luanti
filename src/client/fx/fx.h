@@ -68,6 +68,11 @@ const Caps &caps();
 /// Effective parameters this frame (settings + mood blend). Main thread.
 const Params &params();
 
+/// The light volume atlas (null without one), for post-processing steps.
+video::ITexture *lightVolumeTexture();
+/// Post-processing texture_map index that stands for lightVolumeTexture().
+constexpr u8 RENDER_SOURCE_LIGHT_VOLUME = 254;
+
 /// Camera offset (head space) for slow breathing while standing still.
 v3f idleBreath();
 

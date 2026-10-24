@@ -58,7 +58,8 @@ void PostProcessingStep::run(PipelineContext &context)
 	auto driver = context.device->getVideoDriver();
 
 	for (u32 i = 0; i < texture_map.size(); i++)
-		material.TextureLayers[i].Texture = source->getTexture(texture_map[i]);
+		material.TextureLayers[i].Texture = texture_map[i] == fx::RENDER_SOURCE_LIGHT_VOLUME ?
+				fx::lightVolumeTexture() : source->getTexture(texture_map[i]);
 
 	static const video::SColor color = video::SColor(0, 0, 0, 255);
 	static const video::S3DVertex vertices[4] = {
@@ -200,7 +201,6 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 	static const u8 TEXTURE_FX_TAA_OUT = 30;
 	static const u8 TEXTURE_FX_TAA_HISTORY = 31;
 	static const u8 TEXTURE_FX_AO = 32;
-	static const u8 TEXTURE_FX_AO_BLUR = 33;
 	const bool fx_ao = fx::caps().ao;   // decided once per world (fx/caps.cpp)
 	const bool fx_taa = fx::caps().taa;
 	u8 scene_color = TEXTURE_COLOR;
@@ -211,14 +211,27 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 		auto ao = pipeline->addStep<PostProcessingStep>(shader_id, std::vector<u8> { TEXTURE_DEPTH });
 		ao->setRenderSource(buffer);
 		ao->setRenderTarget(pipeline->createOwned<TextureBufferOutput>(buffer, TEXTURE_FX_AO));
-		if (!fx_taa) {
-			// without TAA to average it, the AO is denoised spatially
-			buffer->setTexture(TEXTURE_FX_AO_BLUR, scale * 0.5f, "fx_ao_blur", video::ECF_A8R8G8B8);
-			shader_id = client->getShaderSource()->getShaderRaw("fx_ao_blur");
-			auto blur = pipeline->addStep<PostProcessingStep>(shader_id, std::vector<u8> { TEXTURE_FX_AO });
-			blur->setRenderSource(buffer);
-			blur->setRenderTarget(pipeline->createOwned<TextureBufferOutput>(buffer, TEXTURE_FX_AO_BLUR));
-		}
+	}
+	// fx wave 3: volumetric light and height fog, bounce light (half res)
+	static const u8 TEXTURE_FX_VOLUMETRIC = 34;
+	static const u8 TEXTURE_FX_GI = 35;
+	const bool fx_vol = fx::caps().volumetrics, fx_gi = fx::caps().gi;
+	if (fx_vol) {
+		buffer->setTexture(TEXTURE_FX_VOLUMETRIC, scale * 0.5f, "fx_volumetric", bloom_format);
+		shader_id = client->getShaderSource()->getShaderRaw("fx_volumetric");
+		auto vol = pipeline->addStep<PostProcessingStep>(shader_id,
+				std::vector<u8> { TEXTURE_DEPTH, fx::RENDER_SOURCE_LIGHT_VOLUME });
+		vol->setRenderSource(buffer);
+		vol->setBilinearFilter(1, true); // the light volume: bilinear within a slice
+		vol->setRenderTarget(pipeline->createOwned<TextureBufferOutput>(buffer, TEXTURE_FX_VOLUMETRIC));
+	}
+	if (fx_gi) {
+		buffer->setTexture(TEXTURE_FX_GI, scale * 0.5f, "fx_gi", bloom_format);
+		shader_id = client->getShaderSource()->getShaderRaw("fx_gi");
+		auto gi = pipeline->addStep<PostProcessingStep>(shader_id,
+				std::vector<u8> { TEXTURE_COLOR, TEXTURE_DEPTH });
+		gi->setRenderSource(buffer);
+		gi->setRenderTarget(pipeline->createOwned<TextureBufferOutput>(buffer, TEXTURE_FX_GI));
 	}
 	if (fx_taa) {
 		buffer->setTexture(TEXTURE_FX_TAA_OUT, scale, "fx_taa_out", bloom_format);
@@ -252,11 +265,15 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 		}
 
 		if (enable_bloom) {
-			buffer->setTexture(TEXTURE_BLOOM, scale, "bloom", bloom_format);
+			// fx: extract at half resolution: the bloom chain blurs it
+			// anyway, and a full-res float target is a lot of bandwidth at 4K
+			buffer->setTexture(TEXTURE_BLOOM, fx::caps().hdr ? scale * 0.5f : scale, "bloom", bloom_format);
 
 			// get bright spots
 			u32 shader_id = client->getShaderSource()->getShaderRaw("extract_bloom");
-			RenderStep *extract_bloom = pipeline->addStep<PostProcessingStep>(shader_id, std::vector<u8> { source, TEXTURE_EXPOSURE_1 });
+			auto *extract_bloom = pipeline->addStep<PostProcessingStep>(shader_id, std::vector<u8> { source, TEXTURE_EXPOSURE_1 });
+			if (fx::caps().hdr)
+				extract_bloom->setBilinearFilter(0, true); // 2x2 average into the half-res target
 			extract_bloom->setRenderSource(buffer);
 			extract_bloom->setRenderTarget(pipeline->createOwned<TextureBufferOutput>(buffer, TEXTURE_BLOOM));
 			source = TEXTURE_BLOOM;
@@ -342,10 +359,19 @@ RenderStep *addPostProcessing(RenderPipeline *pipeline, RenderStep *previousStep
 	shader_id = client->getShaderSource()->getShaderRaw("second_stage");
 	std::vector<u8> final_inputs { final_stage_source, TEXTURE_SCALE_UP, TEXTURE_EXPOSURE_2,
 			TEXTURE_DEPTH /* fx: underwater caustics and shafts */ };
-	if (fx_ao && !fx_taa)
-		final_inputs.push_back(TEXTURE_FX_AO_BLUR); // texture4: AO, upsampled in the final pass
+	// fixed slots: texture4 AO, texture5 volumetrics, texture6 bounce light
+	// (the depth map stands in for a pass that is off: never sampled then)
+	if (fx::caps().enabled) {
+		final_inputs.push_back(fx_ao && !fx_taa ? TEXTURE_FX_AO : TEXTURE_DEPTH);
+		final_inputs.push_back(fx_vol ? TEXTURE_FX_VOLUMETRIC : TEXTURE_DEPTH);
+		final_inputs.push_back(fx_gi ? TEXTURE_FX_GI : TEXTURE_DEPTH);
+	}
 	PostProcessingStep *effect = pipeline->createOwned<PostProcessingStep>(shader_id, final_inputs);
 	pipeline->addStep(effect);
+	if (fx_vol)
+		effect->setBilinearFilter(5, true);
+	if (fx_gi)
+		effect->setBilinearFilter(6, true);
 	if (enable_ssaa)
 		effect->setBilinearFilter(0, true);
 	effect->setBilinearFilter(1, true);

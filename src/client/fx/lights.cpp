@@ -129,7 +129,9 @@ void Renderer::updateLights(Client *client, Camera *camera)
 		}
 	}
 
-	const int max_world = MAX_LIGHTS - 1; // one slot for the held light
+	// The list only carries flicker now (hue comes from the light volume),
+	// and every vertex loops over it: the nearest 31 are plenty.
+	const int max_world = std::min(MAX_LIGHTS - 1, 31); // + one slot for the held light
 	if ((int)cands.size() > max_world) {
 		std::nth_element(cands.begin(), cands.begin() + max_world, cands.end(),
 				[] (const Candidate &a, const Candidate &c) { return a.d2 < c.d2; });
