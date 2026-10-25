@@ -145,3 +145,4 @@ lib/irrlichtmt
 client/mod_storage.sqlite
 # afx fork: the ambience's per-user storage
 client/afx_storage.conf
+__pycache__/
