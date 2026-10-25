@@ -708,7 +708,17 @@ function afx_ambience.register_layer(fn) layers[#layers + 1] = fn end
 -- fn(player, dtime): a fast tick (~5 Hz) for reactions
 function afx_ambience.register_tick(fn) ticks[#ticks + 1] = fn end
 
+-- Where the engine's path search found the way out (or nil): exit is the
+-- first cell under the sky, inner the doorway, size its open cells across
+local function opening(ctx)
+	local h = ctx.hearing
+	if not h or (h.has_opening or 0) < 0.5 then return nil end
+	return {exit = {x = h.opening_x, y = h.opening_y, z = h.opening_z},
+		inner = {x = h.inner_x, y = h.inner_y, z = h.inner_z}, size = h.opening_size or 25}
+end
+
 afx_ambience.lib = {
+	opening = opening,
 	CFG = CFG, log = log, rand = rand, pick = pick, clusters = clusters, nearest = nearest,
 	sky_open = sky_open, count = count, has = has, rained_on = rained_on,
 	player_state = player_state, rain_sound_for = rain_sound_for, game_has = game_has,

@@ -567,8 +567,15 @@ int ModApiAfx::l_afx_server(lua_State *L)
 	return 1;
 }
 
+int ModApiAfx::l_afx_reload(lua_State *L)
+{
+	afx::scriptReload();
+	return 0;
+}
+
 void ModApiAfx::Initialize(lua_State *L, int top)
 {
+	API_FCT(afx_reload);
 	API_FCT(get_builtin_path);
 	API_FCT(get_current_modname);
 	API_FCT(get_modpath);

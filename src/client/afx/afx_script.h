@@ -40,6 +40,9 @@ ScriptContext &scriptContext();
 void scriptStep(Client *client, ISoundManager *sound, float dtime);
 /// Before the client goes away.
 void scriptStop();
+/// Load the scripts from disk again at the next step (/afx_reload): their
+/// sounds stop, what the server told them is told again.
+void scriptReload();
 
 /// From the server: weather and the like ("key=value ...", also parsed by
 /// the engine), and data channels ("@channel payload").

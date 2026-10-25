@@ -173,6 +173,8 @@ namespace {
 
 struct PathResult {
 	bool found = false;
+	v3s16 exit, inner;  // the first sky cell, the one before it
+	int width = 0;      // open cells around `inner` in its plane (5x5)
 	float cost = 0.f;   // nodes of air-equivalent
 	float hf_loss = 0.f;// nepers
 	v3f dir;            // from ear toward the opening along the path
@@ -329,6 +331,23 @@ static void findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear,
 		}
 		res.steps = (float)path.size();
 		if (!path.empty()) {
+			res.exit = path[0];
+			res.inner = path.size() > 1 ? path[1] : path[0];
+			// how wide the way is where it gets out: open cells around the
+			// last step inside, across the direction of that step
+			const v3s16 step = res.exit - res.inner;
+			const int axis = step.X != 0 ? 0 : step.Y != 0 ? 1 : 2;
+			int open_cells = 0;
+			for (int a = -2; a <= 2; a++)
+			for (int b = -2; b <= 2; b++) {
+				v3s16 q = res.inner;
+				if (axis == 0) { q.Y += a; q.Z += b; }
+				else if (axis == 1) { q.X += a; q.Z += b; }
+				else { q.X += a; q.Y += b; }
+				if (snap.contains(q) && !cellBlocks(snap.at(q), axis))
+					open_cells++;
+			}
+			res.width = open_cells;
 			size_t k = path.size() > 5 ? path.size() - 5 : 0;
 			v3f d = intToFloat(path[k], 1.f) - ear;
 			if (d.getLengthSQ() > 1e-4f)
@@ -694,6 +713,10 @@ static Acoustics analyzeCore(const VoxelSnapshot &snap, v3f ear, const Params &p
 			out.outdoor_hf = std::exp(-open.hf_loss * k) *
 					lerpf(1.f, 0.4f + 0.6f * aperture, std::min(1.f, k));
 			out.outdoor_dir = open.dir;
+			out.has_opening = 1.f;
+			out.opening = intToFloat(open.exit, 1.f);
+			out.opening_inner = intToFloat(open.inner, 1.f);
+			out.opening_size = (float)open.width;
 			out.outdoor_focus = clampf(1.f - 2.f * sky_frac, 0.f, 1.f) *
 					clampf(open.steps / 4.f, 0.f, 1.f);
 		} else {

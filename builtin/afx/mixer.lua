@@ -134,6 +134,13 @@ core.register_chatcommand("afx_view", {
 	end,
 })
 
+-- /afx_reload: the engine's own (it works when these scripts are broken);
+-- registered here so it's in the help
+core.register_chatcommand("afx_reload", {
+	description = "Load the ambience scripts (builtin/afx) again from disk",
+	func = function() core.afx_reload() return true end,
+})
+
 --[[ /afx_report ]]
 
 A.report = A.report or {}
@@ -146,6 +153,9 @@ core.register_chatcommand("afx_report", {
 		local player = core.get_player_by_name(name)
 		local lines = {"afx_report " .. os.date("%Y-%m-%d %H:%M")}
 		local function add(s) lines[#lines + 1] = s end
+		local st = core.afx.stats
+		add(("ambience cost: %.2f ms per frame, peak %.2f ms, %.1f ms per second"):format(
+			st.avg_ms, st.peak_ms, st.per_s_ms))
 		local game = core.afx.game
 		add("game: " .. tostring(game.id or "? (no afx_ambience bridge on the server)"))
 		for _, m in ipairs({"mcl_weather", "lightning", "mcl_worlds", "mcl_bells", "mcl_fire",

@@ -758,6 +758,9 @@ std::vector<std::pair<std::string, float>> hearing(ISoundManager *sound)
 		{"submerged", a.submerged}, {"water_depth", a.water_depth}, {"natural", a.natural},
 		{"tension", m.tension}, {"cozy", m.cozy}, {"homey", (float)s_last_homey},
 		{"efx", r.efx ? 1.f : 0.f},
+		{"has_opening", a.has_opening}, {"opening_x", a.opening.X}, {"opening_y", a.opening.Y},
+		{"opening_z", a.opening.Z}, {"inner_x", a.opening_inner.X}, {"inner_y", a.opening_inner.Y},
+		{"inner_z", a.opening_inner.Z}, {"opening_size", a.opening_size},
 	};
 }
 

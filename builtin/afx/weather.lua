@@ -167,7 +167,44 @@ local function rain_layer(ctx, wanted)
 	if raining then rain.last_gutter = gutter end
 	-- only where the outside is in earshot through air: a porch, a doorway
 	local got_gutter = false
-	if gutter > 0 and not ctx.under_sky and not ctx.underground and ctx.exposure > 0.05 then
+	-- first where the engine says the way out is: water running off the
+	-- roof edge right over the doorway you'd step out of
+	local op = gutter > 0 and not ctx.under_sky and not ctx.underground and L.opening(ctx)
+	if op and op.size <= 12 then
+		local roofed = false
+		for up = 1, 3 do
+			-- an overhang outside the door, not the wall above it
+			if solid_top(vector.offset(op.exit, 0, up, 0)) then roofed = true break end
+		end
+		local n = core.get_node_or_nil(op.exit)
+		if roofed and n and n.name == "air" then
+			got_gutter = true
+			wanted["gutter" .. core.hash_node_position(vector.round(op.exit))] = {sound = "afx_gutter",
+				pos = op.exit, gain = 0.35 * gutter, range = 14}
+		elseif raining and n and n.name == "air" then
+			-- no eave: the rain itself, coming down just outside the door, on
+			-- whatever is out there
+			-- the ground under the doorstep
+			local bn, ground = "", vector.round(op.exit)
+			for _ = 1, 4 do
+				ground = vector.offset(ground, 0, -1, 0)
+				if solid_top(ground) then bn = core.get_node(ground).name break end
+			end
+			local snd, g = L.rain_sound_for(bn)
+			if bn == "" then snd = nil end
+			-- on the ground (grass, dirt, sand) it patters rather than drums
+			if core.get_item_group(bn, "soil") > 0 or core.get_item_group(bn, "dirt") > 0 or
+					core.get_item_group(bn, "sand") > 0 or bn:find("grass") then
+				snd, g = "afx_rain_leaves", 0.35
+			end
+			if snd then
+				wanted.door_rain = {sound = snd, pos = vector.offset(ground, 0, 0.6, 0),
+					gain = 0.25 * g * ctx.rain * (ctx.rain_ramp or 1), range = 16}
+			end
+		end
+	end
+	if not got_gutter and gutter > 0 and not ctx.under_sky and not ctx.underground and
+			ctx.exposure > 0.05 then
 		local ear = ctx.ear
 		for dx = -5, 5 do
 			for dz = -5, 5 do
@@ -358,6 +395,17 @@ A.register_layer(function(ctx, wanted)
 	table.sort(gaps, function(a, b)
 		return vector.distance(a.pos, ctx.ear) < vector.distance(b.pos, ctx.ear)
 	end)
+	-- the gap the engine hears the outdoors through comes first: a crack
+	-- or a narrow slot on the way out
+	local op = L.opening(ctx)
+	if op and op.size <= 3 then
+		local inner = vector.round(op.inner)
+		local seen = false
+		for _, g in ipairs(gaps) do
+			if vector.equals(g.pos, inner) then seen = true end
+		end
+		if not seen then table.insert(gaps, 1, {pos = inner, narrow = op.size <= 1}) end
+	end
 	for i = 1, math.min(2, #gaps) do
 		local g = gaps[i]
 		-- a pinhole whistles higher and thinner than a window

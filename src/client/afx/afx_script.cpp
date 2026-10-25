@@ -7,6 +7,8 @@
 #include "client/clientenvironment.h"
 #include "client/clientobject.h"
 #include "client/mod_vfs.h"
+#include "chatmessage.h"
+#include <map>
 #include "constants.h"
 #include "exceptions.h"
 #include "filesys.h"
@@ -25,8 +27,15 @@ static std::unique_ptr<AfxScripting> s_env;
 static bool s_tried = false;
 // what the server said before the scripts were up (its data comes at join)
 static std::vector<std::string> s_pending;
+// what it said once and won't say again, for a reload: the game, its
+// creatures, the latest weather
+static std::map<std::string, std::string> s_once;
+static std::string s_last_world;
+static bool s_reload = false;
 
 ScriptContext &scriptContext() { return s_ctx; }
+
+static void stopEnv(); // below
 
 static void start(Client *client, ISoundManager *sound)
 {
@@ -40,6 +49,10 @@ static void start(Client *client, ISoundManager *sound)
 		s_env = std::make_unique<AfxScripting>(client, s_vfs.get());
 		s_env->load();
 		infostream << "afx: ambience scripts running" << std::endl;
+		for (const auto &[channel, msg] : s_once)
+			scriptWorld(msg);
+		if (!s_last_world.empty())
+			scriptWorld(s_last_world);
 		for (const std::string &m : s_pending)
 			scriptWorld(m);
 	} catch (std::exception &e) {
@@ -51,6 +64,14 @@ static void start(Client *client, ISoundManager *sound)
 
 void scriptStep(Client *client, ISoundManager *sound, float dtime)
 {
+	if (s_reload) {
+		// from disk again: edit builtin/afx, /afx_reload, listen
+		s_reload = false;
+		stopEnv();
+		start(client, sound);
+		client->pushToChatQueue(new ChatMessage(s_env ? L"afx: ambience reloaded" :
+				L"afx: the ambience failed to load (see the log); fix it and /afx_reload"));
+	}
 	if (!s_tried)
 		start(client, sound);
 	if (!s_env)
@@ -79,7 +100,8 @@ void scriptStep(Client *client, ISoundManager *sound, float dtime)
 	s_env->step(dtime);
 }
 
-void scriptStop()
+// the scripts and their sounds; what the server said stays
+static void stopEnv()
 {
 	if (s_env) {
 		s_env->shutdown();
@@ -96,8 +118,26 @@ void scriptStop()
 	s_tried = false;
 }
 
+void scriptStop()
+{
+	stopEnv();
+	s_once.clear();
+	s_last_world.clear();
+	s_pending.clear();
+	s_reload = false;
+}
+
+void scriptReload() { s_reload = true; }
+
 void scriptWorld(const std::string &state)
 {
+	if (!state.empty() && state[0] == '@') {
+		const std::string channel = state.substr(1, state.find(' ') - 1);
+		if (channel == "game" || channel == "entities")
+			s_once[channel] = state;
+	} else {
+		s_last_world = state;
+	}
 	if (!s_env) {
 		if (!s_tried && s_pending.size() < 64)
 			s_pending.push_back(state);
@@ -120,6 +160,11 @@ void scriptNode(const char *what, v3s16 pos, const std::string &node)
 
 bool scriptChat(const std::string &message)
 {
+	// (the engine's own: it has to work when the scripts are broken)
+	if (message == "/afx_reload") {
+		scriptReload();
+		return true;
+	}
 	return s_env && s_env->onChat(message);
 }
 

@@ -105,6 +105,11 @@ public:
 		glide(c.wall_far_dist, t.wall_far_dist, 0.3f, 0.3f);
 		glide_dir(c.wall_far_dir, t.wall_far_dir, 0.3f);
 
+		// where the way out is: not glided (it's a place, not a level)
+		c.has_opening = t.has_opening;
+		c.opening = t.opening;
+		c.opening_inner = t.opening_inner;
+		c.opening_size = t.opening_size;
 		c.underwater = t.underwater;
 		c.in_lava = t.in_lava;
 		glide(c.submerged, t.submerged, 0.08f, 0.2f);

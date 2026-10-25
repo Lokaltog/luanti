@@ -209,6 +209,15 @@ struct Acoustics {
 	float outdoor_path = 0.f;  // nodes, cost of the cheapest open path
 	v3f outdoor_dir;           // node space, unit; zero when standing under the sky
 	float outdoor_focus = 0.f; // 0 wide/ambient .. 1 a single opening
+	// Where the open path gets out: the first cell under the sky (just
+	// outside a door), the last one before it (the doorway itself), and how
+	// many open cells the doorway has around it in its plane (1 a crack, 2
+	// a door, more a wide opening). has_opening 0 when there's none (or
+	// you're out under the sky).
+	float has_opening = 0.f;
+	v3f opening;               // node space
+	v3f opening_inner;         // node space
+	float opening_size = 0.f;
 
 	// The space next door: the biggest region reachable through an opening
 	// that isn't the room you're in (a cave beyond the hut's door). Its

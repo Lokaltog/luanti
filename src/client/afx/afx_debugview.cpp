@@ -128,6 +128,14 @@ void drawDebugView3D(Client *client, video::IVideoDriver *driver)
 		driver->draw3DLine(tip, tip - a.outdoor_dir * (0.4f * BS) + side * (0.25f * BS), c);
 		driver->draw3DLine(tip, tip - a.outdoor_dir * (0.4f * BS) - side * (0.25f * BS), c);
 	}
+	// where it gets out: a box on the doorway, sized by how wide it is
+	if (a.has_opening > 0.5f) {
+		const v3f o = at(a.opening_inner);
+		const float h = (0.25f + 0.04f * a.opening_size) * BS;
+		const video::SColor c(230, 60, 230, 255);
+		driver->draw3DBox(core::aabbox3d<f32>(o - v3f(h, h, h), o + v3f(h, h, h)), c);
+		driver->draw3DLine(o, at(a.opening), c);
+	}
 	// the space next door
 	if (a.coupling > 0.05f && a.neighbor_dir.getLengthSQ() > 0.5f)
 		driver->draw3DLine(e, e + a.neighbor_dir * ((1.f + 3.f * a.coupling) * BS),
@@ -240,6 +248,11 @@ void drawDebugView2D(Client *client, video::IVideoDriver *driver)
 	snprintf(buf, sizeof(buf), "outdoors open %.2f (hf %.2f, path %.0f, focus %.2f)  wall %.3f",
 			a.outdoor_gain, a.outdoor_hf, a.outdoor_path, a.outdoor_focus, a.outdoor_wall);
 	lines.emplace_back(buf);
+	if (a.has_opening > 0.5f) {
+		snprintf(buf, sizeof(buf), "way out at %.0f,%.0f,%.0f, %.0f open cells across",
+				a.opening_inner.X, a.opening_inner.Y, a.opening_inner.Z, a.opening_size);
+		lines.emplace_back(buf);
+	}
 	snprintf(buf, sizeof(buf), "walls near %.2f @%.1f  far %.2f @%.1f  next door %.2f (%.1fs)",
 			a.wall_near, a.wall_near_dist, a.wall_far, a.wall_far_dist, a.coupling, a.neighbor_decay);
 	lines.emplace_back(buf);

@@ -259,8 +259,18 @@ function core.afx_step(dtime)
 		for k, v in pairs(p) do P[k] = v end
 	end
 	if not P.name then return end
+	local t0 = core.get_us_time()
 	for _, fn in ipairs(steps) do fn(dtime) end
+	-- what the ambience costs the frame (in /afx_report and the tuning view)
+	local us = core.get_us_time() - t0
+	local st = afx.stats
+	st.acc, st.n, st.peak = st.acc + us, st.n + 1, math.max(st.peak, us)
+	if time - st.since >= 2 then
+		st.avg_ms, st.peak_ms, st.per_s_ms = st.acc / st.n / 1000, st.peak / 1000, st.acc / (time - st.since) / 1000
+		st.acc, st.n, st.peak, st.since = 0, 0, 0, time
+	end
 end
+afx.stats = {acc = 0, n = 0, peak = 0, since = 0, avg_ms = 0, peak_ms = 0, per_s_ms = 0}
 
 function core.afx_shutdown()
 	for _, fn in ipairs(shutdown_cbs) do fn() end

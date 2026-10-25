@@ -56,6 +56,7 @@ public:
 	void testWalls();
 	void testTerrain();
 	void testRecordedSpace();
+	void testOpening();
 };
 
 static TestAfx g_test_instance;
@@ -88,6 +89,7 @@ void TestAfx::runTests(IGameDef *gamedef)
 	TEST(testWalls);
 	TEST(testTerrain);
 	TEST(testRecordedSpace);
+	TEST(testOpening);
 }
 
 void TestAfx::testOpenField()
@@ -802,4 +804,34 @@ void TestAfx::testRecordedSpace()
 	// trading the synthetic reverb for a recording keeps the level
 	UASSERT(convolutionLevel(2.f) > convolutionLevel(0.5f));
 	UASSERT(convolutionLevel(20.f) <= 1.f);
+}
+
+void TestAfx::testOpening()
+{
+	// A plank hut with a 1x2 doorway at z=-4: the way out is the doorway,
+	// two cells across
+	auto hut = [](bool crack) {
+		World w = openField();
+		w.fill({-4, 0, -4}, {4, 5, 4}, Material::Wood);
+		w.fill({-3, 0, -3}, {3, 4, 3}, Material::Air);
+		if (crack)
+			w.fill({0, 2, -4}, {0, 2, -4}, Material::Air);
+		else
+			w.fill({0, 0, -4}, {0, 1, -4}, Material::Air);
+		w.markSky();
+		return w.probe(v3f(0, 1.6f, 0));
+	};
+	Acoustics door = hut(false);
+	infostream << "opening door: " << door.has_opening << " inner " << door.opening_inner.X << ","
+			<< door.opening_inner.Y << "," << door.opening_inner.Z << " exit " << door.opening.X << ","
+			<< door.opening.Y << "," << door.opening.Z << " size " << door.opening_size << std::endl;
+	UASSERT(door.has_opening > 0.5f);
+	UASSERT(door.opening_inner.X == 0 && door.opening_inner.Z == -4);
+	UASSERT(door.opening.Z < -4);
+	UASSERT(door.opening_size >= 2 && door.opening_size <= 3);
+	Acoustics crack = hut(true);
+	infostream << "opening crack: size " << crack.opening_size << std::endl;
+	UASSERT(crack.has_opening > 0.5f && crack.opening_size == 1);
+	// out under the sky: none
+	UASSERT(openField().probe(v3f(0.3f, 1.6f, 0.2f)).has_opening == 0.f);
 }
