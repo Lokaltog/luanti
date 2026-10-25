@@ -399,6 +399,24 @@ int ModApiAfx::l_afx_sound_move(lua_State *L)
 	return 0;
 }
 
+// afx_debug_text(text): lines for the tuning view's panel
+int ModApiAfx::l_afx_debug_text(lua_State *L)
+{
+	afx::setScriptDebugText(luaL_checkstring(L, 1));
+	return 0;
+}
+
+// afx_sound_tone(handle, hf): its brightness, 0..1 (the air's tone drifting)
+int ModApiAfx::l_afx_sound_tone(lua_State *L)
+{
+	ISoundManager *sound = afxSound();
+	const sound_handle_t h = luaL_checkinteger(L, 1);
+	if (!sound || !afx::scriptContext().sounds.count(h))
+		return 0;
+	sound->setSoundTone(h, (f32)luaL_checknumber(L, 2));
+	return 0;
+}
+
 // afx_sound_alive(handle): still ours and going (an object's sound goes
 // when the object does)
 int ModApiAfx::l_afx_sound_alive(lua_State *L)
@@ -624,6 +642,8 @@ void ModApiAfx::Initialize(lua_State *L, int top)
 	API_FCT(sound_fade);
 	API_FCT(sound_stop);
 	API_FCT(afx_sound_move);
+	API_FCT(afx_sound_tone);
+	API_FCT(afx_debug_text);
 	API_FCT(afx_has_sound);
 	API_FCT(afx_sound_alive);
 	API_FCT(afx_player);

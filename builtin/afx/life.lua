@@ -105,8 +105,9 @@ A.register_layer(function(ctx, wanted)
 
 	-- Croaks from the far bank at night, when they're not hiding from you
 	if frog_time(ctx) and not ctx.frogs_quiet and now >= (st.next_croak or 0) then
-		st.next_croak = now + L.rand(3, 14)
-		for _ = 1, 4 do
+		st.next_croak = now + A.var.interval("life", L.rand(3, 14))
+		-- (in a lull most turns pass without one)
+		for _ = 1, A.var.thin("life") and 4 or 0 do
 			local p = L.pick(shore)
 			if vector.distance(p, ctx.ppos) > 6 then
 				afx_ambience.play("afx_frog", {pos = p, to_player = ctx.pname,

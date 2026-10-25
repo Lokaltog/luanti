@@ -21,7 +21,7 @@ dofile(commonpath .. "after.lua")
 assert(loadfile(commonpath .. "item_s.lua"))(shared) -- push/read node
 
 afx_ambience = {}
-for _, f in ipairs({"ambience.lua", "mixer.lua", "weather.lua", "water.lua", "life.lua",
+for _, f in ipairs({"ambience.lua", "variation.lua", "mixer.lua", "weather.lua", "water.lua", "life.lua",
 		"places.lua", "body.lua", "cinema.lua", "discovery.lua", "creatures.lua", "landing.lua",
 		"nature.lua", "hands.lua"}) do
 	dofile(afxpath .. f)

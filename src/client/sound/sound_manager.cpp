@@ -7,6 +7,7 @@
 // Copyright (C) 2011 Giuseppe Bilotta <giuseppe.bilotta@gmail.com>
 
 #include "sound_manager.h"
+#include <algorithm>
 
 #include "sound_singleton.h"
 #include "util/numeric.h" // myrand()
@@ -650,6 +651,13 @@ void OpenALSoundManager::updateSoundPosVel(sound_handle_t id, const v3f &pos_,
 	i->second->updatePosVel(pos, vel);
 }
 
+void OpenALSoundManager::setSoundTone(sound_handle_t id, f32 hf)
+{
+	auto i = m_sounds_playing.find(id);
+	if (i != m_sounds_playing.end())
+		i->second->tone = std::clamp(hf, 0.0f, 1.0f);
+}
+
 /* Thread stuff */
 
 void *OpenALSoundManager::run()
@@ -691,6 +699,8 @@ void *OpenALSoundManager::run()
 			mgr.fadeSound(msg.soundid, msg.step, msg.target_gain); return Result::Ok; }
 		Result operator()(UpdateSoundPosVel &&msg) {
 			mgr.updateSoundPosVel(msg.sound, msg.pos_, msg.vel_); return Result::Ok; }
+		Result operator()(SetSoundTone &&msg) {
+			mgr.setSoundTone(msg.sound, msg.hf); return Result::Ok; }
 
 		Result operator()(PrintPlayingSounds &&msg) {
 			mgr.printPlayingSounds(false); return Result::Ok; }

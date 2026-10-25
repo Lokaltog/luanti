@@ -57,6 +57,8 @@ SoundSpec knockSound(Client *client, v3s16 node, v3s16 normal);
 /// the scene pass, labels in the HUD pass.
 void drawDebugView3D(Client *client, video::IVideoDriver *driver);
 void drawDebugView2D(Client *client, video::IVideoDriver *driver);
+/// Lines the ambience scripts add to the tuning view's panel
+void setScriptDebugText(const std::string &text);
 /// The latest snapshot and where it was taken from
 std::shared_ptr<const VoxelSnapshot> debugSnapshot(v3f *ear);
 

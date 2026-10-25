@@ -25,9 +25,10 @@ local ENGINE = {
 }
 
 -- what the mixer may set: its own sliders, nothing else
-local ENGINE_KEYS, LAYER_KEYS = {}, {}
+local ENGINE_KEYS, LAYER_KEYS, KNOB_KEYS = {}, {}, {}
 for _, e in ipairs(ENGINE) do ENGINE_KEYS[e[1]] = e[3] end
 for _, l in ipairs(A.LAYERS) do LAYER_KEYS[l[1]] = true end
+for _, k in ipairs(A.var.KNOBS) do KNOB_KEYS[k[1]] = true end
 
 local function get(key, default)
 	return tonumber(core.settings:get(key) or "") or default
@@ -63,6 +64,15 @@ local function formspec(name)
 	y = y + 0.5
 	for _, l in ipairs(A.LAYERS) do
 		rows[#rows + 1] = slider(y, "v_" .. l[1], l[2], A.volume(l[1]), 2, l[3])
+		y = y + 0.6
+	end
+	y = y + 0.3
+	rows[#rows + 1] = ("label[0.4,%f;%s]"):format(y, F("Variation (the ambience breathes)"))
+	rows[#rows + 1] = ("checkbox[6.6,%f;afx_ambience_variation;%s;%s]"):format(y - 0.05, F("On"),
+		tostring(core.settings:get_bool("afx_ambience_variation") ~= false))
+	y = y + 0.5
+	for _, k in ipairs(A.var.KNOBS) do
+		rows[#rows + 1] = slider(y, "k_" .. k[1], k[2], A.var.knob(k[1]), 2, k[3])
 		y = y + 0.6
 	end
 	y = y + 0.2
@@ -107,6 +117,12 @@ core.register_on_player_receive_fields(function(player, formname, fields)
 					core.settings:set(key, val)
 					changed = true
 				end
+			elseif k:sub(1, 2) == "k_" and KNOB_KEYS[k:sub(3)] then
+				local v = math.max(0, math.min(2, ev.value / 100))
+				if math.abs(A.var.knob(k:sub(3)) - v) > 0.001 then
+					A.var.set_knob(k:sub(3), v)
+					changed = true
+				end
 			elseif k:sub(1, 2) == "v_" and LAYER_KEYS[k:sub(3)] then
 				local v = math.max(0, math.min(2, ev.value / 100))
 				if math.abs(A.volume(k:sub(3)) - v) > 0.001 then
@@ -117,7 +133,7 @@ core.register_on_player_receive_fields(function(player, formname, fields)
 		end
 	end
 	for _, key in ipairs({"afx_enable", "afx_hrtf", "afx_debug_view", "afx_ambience_follower",
-			"afx_ambience_treasure"}) do
+			"afx_ambience_treasure", "afx_ambience_variation"}) do
 		if fields[key] then core.settings:set_bool(key, fields[key] == "true") changed = true end
 	end
 	if fields.quit or fields.close then
@@ -196,6 +212,10 @@ core.register_chatcommand("afx_report", {
 			local pos = player:get_pos()
 			local bd = core.get_biome_data(pos)
 			add("biome here: " .. (bd and core.get_biome_name(bd.biome) or "?"))
+			local mix = {}
+			for _, b in ipairs(A.biome_mix() or {}) do mix[#mix + 1] = ("%s %.2f"):format(b.name, b.w) end
+			add("biomes around: " .. (#mix > 0 and table.concat(mix, ", ") or "(none sent)"))
+			for _, l in ipairs(A.var.debug_lines()) do add(l) end
 			local below = core.get_node(vector.round(vector.offset(pos, 0, -0.6, 0))).name
 			local def = core.registered_nodes[below] or {}
 			local g = {}

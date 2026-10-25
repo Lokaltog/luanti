@@ -147,6 +147,11 @@ void ProxySoundManager::fadeSound(sound_handle_t soundid, f32 step, f32 target_g
 	send(sound_manager_messages_to_mgr::FadeSound{soundid, step, target_gain});
 }
 
+void ProxySoundManager::setSoundTone(sound_handle_t sound, f32 hf)
+{
+	send(sound_manager_messages_to_mgr::SetSoundTone{sound, hf});
+}
+
 void ProxySoundManager::updateSoundPosVel(sound_handle_t sound, const v3f &pos_, const v3f &vel_)
 {
 	send(sound_manager_messages_to_mgr::UpdateSoundPosVel{sound, pos_, vel_});

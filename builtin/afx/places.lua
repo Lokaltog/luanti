@@ -98,10 +98,10 @@ local function structures(ctx, wanted)
 	local rails = find(ctx, 10, RAILS)
 	local timber = #rails >= 3 and find(ctx, 10, TIMBER) or {}
 	if #timber >= 3 and now >= (st.next_creak or 0) then
-		st.next_creak = now + L.rand(6, 22)
+		st.next_creak = now + A.var.interval("place", L.rand(6, 22))
 		local p = L.pick(timber)
-		afx_ambience.play("afx_creak", {pos = p, to_player = ctx.pname,
-			gain = L.rand(0.3, 0.7), pitch = L.rand(0.85, 1.1), max_hear_distance = 24}, true)
+		if A.var.thin("place") then afx_ambience.play("afx_creak", {pos = p, to_player = ctx.pname,
+			gain = L.rand(0.3, 0.7), pitch = L.rand(0.85, 1.1), max_hear_distance = 24}, true) end
 	end
 
 	-- A dungeon: a spawner, or old mossy stonework
@@ -109,10 +109,10 @@ local function structures(ctx, wanted)
 	local mossy = spawner and {} or find(ctx, 8, MOSSY)
 	local anchor = spawner or (#mossy >= 15 and L.pick(mossy))
 	if anchor and now >= (st.next_chain or 0) then
-		st.next_chain = now + L.rand(12, 35)
+		st.next_chain = now + A.var.interval("place", L.rand(12, 35))
 		local p = vector.offset(anchor, L.rand(-4, 4), L.rand(0, 3), L.rand(-4, 4))
-		afx_ambience.play("afx_chains", {pos = p, to_player = ctx.pname,
-			gain = L.rand(0.25, 0.5), pitch = L.rand(0.8, 1.0), max_hear_distance = 20}, true)
+		if A.var.thin("place") then afx_ambience.play("afx_chains", {pos = p, to_player = ctx.pname,
+			gain = L.rand(0.25, 0.5), pitch = L.rand(0.8, 1.0), max_hear_distance = 20}, true) end
 	end
 end
 

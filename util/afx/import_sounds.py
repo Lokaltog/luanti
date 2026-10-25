@@ -135,6 +135,22 @@ def main(assets, out):
     bed("afx_out_crickets", f"{md}/animals/crickets.mp3", 40, start=20, db=-28)
     bed("afx_out_birds_far", f"{md}/animals/birds.mp3", 40, start=10, db=-30)
 
+    # Second takes of the beds (round 17): the ambience swaps between takes
+    # over long crossfades, so a biome doesn't loop the same 40 s all day.
+    # Another stretch of the same recording, or another recording of it.
+    TAKES = [
+        ("afx_out_birds_far_b", f"{md}/animals/birds.mp3", 40, 62, -30),
+        ("afx_out_crickets_b", f"{md}/animals/crickets.mp3", 40, 110, -28),
+        ("afx_out_wind_trees_b", f"{am}/ambient_sounds_leaves_wind.ogg", 27, 1, -26),
+        ("afx_out_wind_howl_b", f"{am}/ambient_sounds_howling_wind.ogg", 27, 1, -27),
+        ("afx_out_jungle_b", f"{md}/nature/jungle.mp3", 40, 150, -28),
+        ("afx_out_jungle_c", f"{am}/ambient_sounds_jungle_main.ogg", 40, 8, -28),
+        ("afx_out_frogs_b", f"{am}/ambient_sounds_frogs.ogg", 30, 1, -30),
+        ("afx_out_waves_b", f"{am}/ambient_sounds_beach_1.ogg", 40, 6, -26),
+    ]
+    for name, src, seconds, start, db in TAKES:
+        bed(name, src, seconds, start=start, db=db)
+
     # Rain hitting surfaces (mono, positional loops at the surface)
     emitter("afx_rain_glass", f"{md}/rain/rain-on-window.mp3", 24, start=2, db=-22)
     emitter("afx_rain_wood", f"{md}/rain/rain-on-tent.mp3", 30, start=10, db=-22, lowpass=4000)

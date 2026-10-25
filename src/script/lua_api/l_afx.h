@@ -34,6 +34,8 @@ private:
 	static int l_sound_fade(lua_State *L);
 	static int l_sound_stop(lua_State *L);
 	static int l_afx_sound_move(lua_State *L);
+	static int l_afx_sound_tone(lua_State *L);
+	static int l_afx_debug_text(lua_State *L);
 	static int l_afx_has_sound(lua_State *L);
 	static int l_afx_sound_alive(lua_State *L);
 

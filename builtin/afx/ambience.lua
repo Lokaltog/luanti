@@ -98,7 +98,9 @@ end
 -- The mix: each sound group's level (dB) on top of its files, which the
 -- sound pipeline keeps at their category's reference loudness
 -- (util/afx/sound_pipeline.py). Tune levels in levels.lua, not in the code.
-local LEVELS = dofile(core.get_builtin_path() .. "afx" .. DIR_DELIM .. "levels.lua")
+local LEVELS, TUNING = dofile(core.get_builtin_path() .. "afx" .. DIR_DELIM .. "levels.lua")
+-- how the mix moves (variation.lua, the place blend): hand-tuned, live
+afx_ambience.TUNING = TUNING or {variation = {enabled = false}, biome = {blend_rate = 1}}
 local level_cache = {}
 local function level_of(name)
 	local l = level_cache[name]
@@ -265,11 +267,18 @@ local function reconcile(pname, st, wanted)
 			core.sound_fade(e.handle, e.fade, 0)
 			st.emitters[key] = nil
 		elseif not w then
-			core.sound_fade(e.handle, e.fade, 0)
+			-- (a bed swapping takes lets go slowly: variation.lua)
+			core.sound_fade(e.handle, e.fade_out or e.fade, 0)
 			st.emitters[key] = nil
-		elseif math.abs(w.gain - e.gain) > 0.02 then
-			core.sound_fade(e.handle, w.fade or FADE, w.gain)
-			e.gain = w.gain
+		else
+			if math.abs(w.gain - e.gain) > 0.02 then
+				core.sound_fade(e.handle, w.fade or FADE, w.gain)
+				e.gain = w.gain
+			end
+			if w.tone and math.abs(w.tone - (e.tone or 1)) > 0.02 then
+				core.afx_sound_tone(e.handle, w.tone)
+				e.tone = w.tone
+			end
 		end
 	end
 	for key, w in pairs(wanted) do
@@ -283,7 +292,9 @@ local function reconcile(pname, st, wanted)
 			})
 			if handle then
 				core.sound_fade(handle, w.fade or FADE, w.gain)
+				if w.tone then core.afx_sound_tone(handle, w.tone) end
 				st.emitters[key] = {handle = handle, gain = w.gain, fade = w.fade or FADE, pos = w.pos,
+					tone = w.tone,
 					object = w.object and (type(w.object) == "table" and w.object._id or w.object)}
 			end
 		end
@@ -436,18 +447,15 @@ local st_for_place -- the player place() is looking around for
 
 -- Sea level, for telling the sea from a cave lake or a pond up a hill
 
--- What kind of place, 0..1 each, from the biome name and the nodes around.
-local function place(ppos, under_sky)
-	-- (called above ground only: bed_targets returns early underground)
+local PLACE_KINDS = {"forest", "meadow", "jungle", "coast", "cold", "dry", "swamp"}
+
+-- What kind of place a biome's name says, 0..1 each
+local function biome_place(bname, near_sea)
 	local p = {forest = 0, meadow = 0, jungle = 0, coast = 0, cold = 0, dry = 0, swamp = 0}
-	local bd = CFG.use_biomes and core.get_biome_data and core.get_biome_data(ppos)
-	local bname = bd and core.get_biome_name(bd.biome) or ""
 	bname = bname:lower()
 	-- Mineclonia/VoxeLibre name the layers of a biome: Forest_ocean is the
 	-- sea bed off a forest (and the rock under it), Forest_underground the
 	-- caves below. Only the surface is the place you're in.
-	local WATER_LEVEL = tonumber(afx.game.water_level) or 1
-	local near_sea = under_sky and ppos.y >= WATER_LEVEL - 3 and ppos.y <= WATER_LEVEL + 12
 	local layer = bname:match("_(deep_ocean)$") or bname:match("_(ocean)$") or
 			bname:match("_(underground)$") or bname:match("_(beach)$") or bname:match("_(shore)$")
 	if layer then bname = bname:sub(1, #bname - #layer - 1) end
@@ -469,6 +477,43 @@ local function place(ppos, under_sky)
 	elseif has(bname, {"ice", "snow", "frozen", "cold"}) then p.cold = 1
 	elseif has(bname, {"swamp", "mangrove", "marsh"}) then p.swamp = 1
 	else p.meadow = 0.8 end
+	return p
+end
+
+-- The biomes around (the bridge's samples, by weight; see afx_ambience's
+-- init.lua), or the one here
+local biome_mix
+afx.register_on_data("biomes", function(data)
+	local mix, total = {}, 0
+	for name, w in data:gmatch("([%w_]+) ([%d%.]+)") do
+		w = afx.num(w, 0, 1)
+		if w and #mix < 16 then
+			mix[#mix + 1] = {name = name, w = w}
+			total = total + w
+		end
+	end
+	if total <= 0 then biome_mix = nil return end
+	for _, b in ipairs(mix) do b.w = b.w / total end
+	biome_mix = mix
+end)
+afx_ambience.biome_mix = function() return biome_mix end
+
+-- What kind of place, 0..1 each, from the biomes and the nodes around.
+local function place(ppos, under_sky)
+	-- (called above ground only: bed_targets returns early underground)
+	local WATER_LEVEL = tonumber(afx.game.water_level) or 1
+	local near_sea = under_sky and ppos.y >= WATER_LEVEL - 3 and ppos.y <= WATER_LEVEL + 12
+	local p
+	if CFG.use_biomes and biome_mix then
+		p = {forest = 0, meadow = 0, jungle = 0, coast = 0, cold = 0, dry = 0, swamp = 0}
+		for _, b in ipairs(biome_mix) do
+			local q = biome_place(b.name, near_sea)
+			for _, k in ipairs(PLACE_KINDS) do p[k] = p[k] + b.w * q[k] end
+		end
+	else
+		local bd = CFG.use_biomes and core.get_biome_data and core.get_biome_data(ppos)
+		p = biome_place(bd and core.get_biome_name(bd.biome) or "", near_sea)
+	end
 
 	-- Local evidence beats the biome map: trees around make it a forest,
 	-- open water makes it a shore, flowers make it a meadow.
@@ -508,6 +553,21 @@ local function bed_targets(ctx, wanted)
 	st_for_place = ctx.st
 	local p = place(ppos, ctx.under_sky or ctx.exposure > 0.3)
 	st_for_place = nil
+	-- One place turns into the next no faster than blend_rate a second:
+	-- a fast flight over biomes glides instead of jumping (the first look
+	-- is taken as it is)
+	local s = ctx.st.place_heard
+	if not s then
+		s = {}
+		for _, k in ipairs(PLACE_KINDS) do s[k] = p[k] end
+		ctx.st.place_heard = s
+	else
+		local r = afx_ambience.TUNING.biome.blend_rate * afx_ambience.var.knob("blend") -- (a scan a second)
+		for _, k in ipairs(PLACE_KINDS) do
+			s[k] = s[k] + math.max(-r, math.min(r, p[k] - s[k]))
+		end
+	end
+	for _, k in ipairs(PLACE_KINDS) do p[k] = s[k] end
 	ctx.place = p
 	ctx.st.last_place = p
 	-- Higher and more exposed is windier; floating islands howl
@@ -637,8 +697,9 @@ local function maybe_bird(pname, st, ppos, now, raining)
 	local tod_ = core.get_timeofday()
 	local dawn = math.abs(tod_ - 0.26) < 0.05
 	local mean = CFG.bird_interval * (night and 2.5 or 1) * (dawn and 0.25 or 1)
-	st.next_bird = now - math.log(math.max(1e-3, rand(0, 1))) * mean + 3
-	if raining > 0 then return end
+	local V = afx_ambience.var
+	st.next_bird = now + V.interval("life", -math.log(math.max(1e-3, rand(0, 1))) * mean + 3)
+	if raining > 0 or not V.thin("life") then return end
 	local leaves = core.find_nodes_in_area(vector.offset(ppos, -20, -2, -20),
 			vector.offset(ppos, 20, 14, 20), {"group:leaves"})
 	if #leaves < 6 then return end -- no trees, no birds
@@ -650,15 +711,19 @@ local function maybe_bird(pname, st, ppos, now, raining)
 		spot = nil
 	end
 	if not spot then return end
-	local sound = night and pick(NIGHT_BIRDS) or (dawn and pick(SONGBIRDS) or pick(DAY_BIRDS))
+	local sound = night and pick(NIGHT_BIRDS) or
+			pick(afx_ambience.var.species(dawn and SONGBIRDS or DAY_BIRDS))
 	afx_ambience.play(sound, {pos = spot, to_player = pname, gain = rand(0.35, 0.8),
 		pitch = rand(0.92, 1.08), max_hear_distance = 40}, true)
-	log(pname .. ": " .. sound .. " at " .. core.pos_to_string(spot))
+	log(pname .. ": " .. sound .. " at " .. core.pos_to_string(spot) ..
+		(" (one-shots x%.2f)"):format(V.rate("life")))
 end
 
 local function maybe_drip(pname, st, ppos, now)
 	if not CFG.cave or now < st.next_drip then return end
-	st.next_drip = now + rand(1.2, 6)
+	local V = afx_ambience.var
+	st.next_drip = now + V.interval("place", rand(1.2, 6))
+	if not V.thin("place") then return end
 	local ear = vector.round(vector.offset(ppos, 0, 1.6, 0))
 	-- Only where daylight never reaches (a cave, not a cellar with a door)
 	local day_light = (core.get_natural_light or core.get_node_light)(ear, 0.5)
@@ -686,7 +751,7 @@ local function maybe_drip(pname, st, ppos, now)
 	local spot
 	if #spots > 0 then
 		spot = pick(spots)
-		st.next_drip = now + rand(0.8, 3.5) -- seeping: drips more often
+		st.next_drip = now + V.interval("place", rand(0.8, 3.5)) -- seeping: drips more often
 	else
 		if rng:next(1, 100) > 20 then return end
 		local ceil = core.find_nodes_in_area(vector.offset(ear, -8, 2, -8),
@@ -836,6 +901,7 @@ core.register_globalstep(function(dtime)
 		}
 		where(ctx)
 		update_place(ctx, SCAN)
+		afx_ambience.var.step(ctx, SCAN)
 		local wanted = {}
 		for _, fn in ipairs(layers) do fn(ctx, wanted) end
 		if CFG.rain_surfaces and ctx.rain > 0 then
@@ -851,12 +917,28 @@ core.register_globalstep(function(dtime)
 			proximity_emitters(ppos, wanted, ctx.underground)
 		end
 		underwater_bed(player, wanted)
+		afx_ambience.var.apply(ctx, wanted)
 		reconcile(pname, st, wanted)
 		-- birds only where any of them would be heard
 		if not ctx.underground and ctx.exposure + ctx.through > 0.03 then
 			maybe_bird(pname, st, ppos, now, ctx.rain + ctx.snow)
 		end
 		if ctx.underground then maybe_drip(pname, st, ppos, now) end
+		if core.settings:get_bool("afx_debug_view") then
+			local lines = afx_ambience.var.debug_lines()
+			local pl = ctx.place
+			if pl then
+				local ks = {}
+				for _, k in ipairs(PLACE_KINDS) do
+					if pl[k] > 0.01 then ks[#ks + 1] = ("%s %.2f"):format(k, pl[k]) end
+				end
+				local bs = {}
+				for _, b in ipairs(biome_mix or {}) do bs[#bs + 1] = ("%s %.2f"):format(b.name, b.w) end
+				lines[#lines + 1] = "  place: " .. (#ks > 0 and table.concat(ks, " ") or "-") ..
+					(#bs > 0 and ("  (biomes: " .. table.concat(bs, " ") .. ")") or "")
+			end
+			core.afx_debug_text(table.concat(lines, "\n"))
+		end
 	end
 end)
 

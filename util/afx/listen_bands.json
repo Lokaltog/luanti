@@ -211,5 +211,32 @@
     ]
    }
   }
+ },
+ {
+  "name": "breath",
+  "scenario": "breath",
+  "timeout": 240,
+  "args": [
+   "afx_score=0",
+   "afx_mood=0",
+   "afx_ambience_variation=true",
+   "afx_ambience_use_biomes=true"
+  ],
+  "segments": {
+   "a lull": {
+    "bed_rel": [
+     "forest, normal",
+     null,
+     -1.5
+    ]
+   },
+   "lively": {
+    "bed_rel": [
+     "a lull",
+     1.5,
+     null
+    ]
+   }
+  }
  }
 ]

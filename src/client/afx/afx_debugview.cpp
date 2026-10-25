@@ -171,6 +171,13 @@ void drawDebugView3D(Client *client, video::IVideoDriver *driver)
 	}
 }
 
+static std::string s_script_text; // the ambience's own lines (afx_debug_text)
+
+void setScriptDebugText(const std::string &text)
+{
+	s_script_text = text.substr(0, 2048);
+}
+
 void drawDebugView2D(Client *client, video::IVideoDriver *driver)
 {
 	if (!params().debug_view)
@@ -260,6 +267,9 @@ void drawDebugView2D(Client *client, video::IVideoDriver *driver)
 			rep.remote_level, rep.remote_decay, a.hollow, a.submerged, rep.sources, rep.occluded,
 			rep.routed);
 	lines.emplace_back(buf);
+	for (const std::string &l : str_split(s_script_text, '\n'))
+		if (!l.empty())
+			lines.push_back(l);
 	for (const std::string &f : flat)
 		lines.push_back("  " + f);
 	u32 width = 0;

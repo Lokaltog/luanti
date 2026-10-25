@@ -343,6 +343,7 @@ void OpenALSoundManager::applyMix(PlayingSound &snd)
 			env.outdoor_focus = std::max(env.outdoor_focus, 0.85f * w);
 		}
 	}
+	mix.direct_hf *= snd.tone;
 	snd.last_mix = mix;
 	if (snd.getBus() == afx::Bus::Dry)
 		m_efx->clearSource(snd.getSourceId());
@@ -659,6 +660,7 @@ void OpenALSoundManager::stepAcoustics(f32 dtime)
 					if (snd->isPositional())
 						afx::carryWeather(mix, snd->getPosNode() - m_listener_pos_node, m_afx_params);
 				}
+				mix.direct_hf *= snd->tone;
 				infostream << "afx mix " << snd->getLoggingName() << " " << afx::busName(snd->getBus())
 						<< " gain " << g << " direct " << mix.direct_gain << " hf " << mix.direct_hf
 						<< " muffle " << mix.muffle_send << " rev " << mix.reverb_send

@@ -317,6 +317,8 @@ local function rattle(pos, loudness)
 		local d = vector.distance(ppos, pos)
 		local k = loudness * math.min(1, 60 / math.max(1, d))
 		local pn = player:get_player_name()
+		-- the birds freeze (variation.lua)
+		A.var.startle(k)
 		-- a string of blasts rattles the panes once, not once per blast
 		if k > 0.12 and now >= (rattle_until[pn] or 0) then
 			rattle_until[pn] = now + 0.6

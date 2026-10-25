@@ -159,6 +159,8 @@ public:
 	void stepOcclusion(f32 dtime, f32 tau);
 	/// The mix last applied (for the tuning view)
 	afx::Mix last_mix;
+	/// Brightness the ambience asked for (direct path HF, 0..1)
+	f32 tone = 1.0f;
 };
 
 } // namespace sound

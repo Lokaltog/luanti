@@ -46,18 +46,26 @@ return {
 	["afx_note_bowl"] = -5.0,
 	["afx_note_piano"] = -2.3,
 	["afx_out_birds_far"] = 3.1,
+	["afx_out_birds_far_b"] = 3.1,
 	["afx_out_crickets"] = 7.4,
+	["afx_out_crickets_b"] = 7.4,
 	["afx_out_frogs"] = 5.9,
+	["afx_out_frogs_b"] = 5.9,
 	["afx_out_gulls"] = 2.1,
 	["afx_out_jungle"] = 5.2,
+	["afx_out_jungle_b"] = 5.2,
+	["afx_out_jungle_c"] = 5.2,
 	["afx_out_rain"] = 0.0,
 	["afx_out_rain_heavy"] = 9.4,
 	["afx_out_village_day"] = 0.0,
 	["afx_out_village_night"] = -2.6,
 	["afx_out_waves"] = 6.6,
+	["afx_out_waves_b"] = 6.6,
 	["afx_out_wind"] = 4.6,
 	["afx_out_wind_howl"] = 4.1,
+	["afx_out_wind_howl_b"] = 4.1,
 	["afx_out_wind_trees"] = 0.0,
+	["afx_out_wind_trees_b"] = 0.0,
 	["afx_plop"] = -4.5,
 	["afx_purr"] = 3.0,
 	["afx_rain_glass"] = 8.2,
@@ -77,4 +85,60 @@ return {
 	["afx_thunder_far"] = -1.9,
 	["afx_thunder_near"] = 0.0,
 	["afx_waterfall"] = 8.9,
+}, -- (sound_pipeline.py rewrites the table above and keeps everything below)
+
+--[[ The mix's movement (round 17): how the ambience breathes. Hand-tuned.
+Live: /afx (the mixer's "Variation" sliders scale the main knobs) and
+/afx_var <key> <value> for any of these, until /afx_reload; the tuning view
+shows the phase and drifts. Times in seconds, levels in dB. ]]
+{
+	variation = {
+		enabled = true,
+		-- Phases: the whole place goes quiet together, or livens up. Each
+		-- lasts phase_min..phase_max, and moving between them takes
+		-- transition (a smooth fade, never a step)
+		phase_min = 30, phase_max = 120, transition = 15,
+		-- how likely each is, before context
+		weight = {lull = 0.2, normal = 0.55, lively = 0.25},
+		-- what each does: beds (dB, scaled per bed by `breathes`) and the
+		-- rate of one-shots (birds, croaks, drips: x per minute)
+		lull = {bed_db = -5, rate = 0.2},
+		normal = {bed_db = 0, rate = 1},
+		lively = {bed_db = 2, rate = 1.6},
+		-- context makes lulls likelier (multiplies the lull weight)
+		lull_night = 1.5,  -- after dark
+		lull_dusk = 1.8,   -- the hush at dusk
+		lull_wind = 1.6,   -- the wind swelling (a storm on its way)
+		lull_startled = 3, -- right after thunder or a blast
+		-- Startle: thunder or a blast stops the birds at once; they come
+		-- back over startle_recover
+		startle_rate = 0.05, startle_db = -4, startle_recover = 35,
+		-- Drift inside a phase: every bed wanders a little on its own
+		-- (+-drift_db, over drift_period), one-shot rates by +-drift_rate
+		drift_db = 1, drift_period = 40, drift_rate = 0.25,
+		-- Style: the balance between a place's beds wanders (+-balance of
+		-- each one's share, the total kept), the air's brightness drifts
+		-- (down to 1 - tone of the highs), beds swap takes over takes_fade
+		balance = 0.25, balance_period = 75,
+		tone = 0.25, tone_period = 55,
+		takes_min = 90, takes_max = 240, takes_fade = 18,
+		-- Species: a few of the birds are about at a time; one leaves and
+		-- another arrives every roster_min..roster_max
+		roster = 3, roster_min = 60, roster_max = 180,
+		-- how much each bed breathes with the phases (1 all of it, 0 none):
+		-- the life breathes, and the wind with it (the stillness is the eerie
+		-- part); the sea mostly doesn't
+		breathes = {b_birds = 1, b_crickets = 1, b_frogs = 1, b_gulls = 1, b_jungle = 1,
+			b_trees = 0.8, b_wind = 0.6, b_howl = 0.4, b_waves = 0.3,
+			fl = 0.8}, -- (fl: insects over flowers)
+		-- and the one-shots, by kind
+		rate_breathes = {life = 1, place = 0.5},
+	},
+	biome = {
+		-- Places blend: the server's samples around you (weights), then a
+		-- speed limit on how fast what you hear may change (per second, 0..1
+		-- of a place), so a fast flight glides from biome to biome
+		blend_rate = 0.07,
+	},
 }
+

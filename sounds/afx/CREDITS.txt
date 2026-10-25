@@ -31,3 +31,8 @@ Round 13, impulse responses (afx_ir_*, for the convolution reverb):
 - web-audio-samples by Chris Wilson (github.com/cwilso/web-audio-samples):
   tim-warehouse omni-35-10 (afx_ir_hall), house impulses kitchen (afx_ir_room)
   and living-bedroom (afx_ir_home). See its LICENSE.
+
+Round 17 additions (second takes of the beds, util/afx/import_sounds.py):
+- Moodist: other stretches of birds, crickets and jungle.
+- ambient_sounds by n0RE5: leaves in wind, howling wind, jungle, frogs,
+  beach (see its SOUND_LICENCES.txt).

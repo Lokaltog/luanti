@@ -187,7 +187,15 @@ def cmd_normalize(args):
                 if grp in old:
                     levels[grp] = old[grp]
             lines = lines[:5] + [f'\t["{g}"] = {levels[g]},' for g in sorted(levels)] + ["}"]
-        open(out, "w").write("\n".join(lines) + "\n")
+        # what follows the levels (the hand-written tuning table, returned
+        # second) is kept as it is
+        tail = ""
+        if os.path.exists(out):
+            text = open(out).read()
+            end = text.find("\n}", text.find("return {"))
+            if end >= 0:
+                tail = text[end + 2:].rstrip("\n")
+        open(out, "w").write("\n".join(lines) + tail + "\n")
         print("wrote", out)
 
 

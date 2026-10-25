@@ -224,6 +224,7 @@ private:
 	void stopSound(sound_handle_t sound);
 	void fadeSound(sound_handle_t soundid, f32 step, f32 target_gain);
 	void updateSoundPosVel(sound_handle_t sound, const v3f &pos_, const v3f &vel_);
+	void setSoundTone(sound_handle_t sound, f32 hf);
 
 	void printPlayingSounds(bool rate_limit);
 

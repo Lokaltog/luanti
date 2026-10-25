@@ -449,3 +449,32 @@ Measured in the engine: snapshot 0.7–1.2 ms on the main thread, probe 0.0–0.
 - **Stone only.** Wood and earth are thin almost everywhere (plank walls, trunks, topsoil over stone), so hollowness there is noise. Built stone still counts: a roofed stone house knocks hollow from outside, which is right.
 - **Test scenario:** `knock` now mines `afxscene:rock` with a dull pick, so every swing plays the game's stone hit too (as in a real game).
 - **Pipeline:** `normalize` no longer drops the table's `return {` when it keeps hand-tuned levels, and leaves peak-limited files alone instead of re-encoding them every run.
+
+## Round 17: the ambience breathes (`builtin/afx/variation.lua`)
+
+A place no longer sounds the same every minute. All of it moves slowly (10 s and up), so it reads as life rather than as the mix fidgeting.
+
+- **Phases.** A shared "world breath" moves between three phases: lull, normal and lively. Each lasts 30–120 s, with 15 s smooth transitions.
+  - A lull takes life beds down 5 dB and thins one-shots to about 20%. The wind breathes with it (0.6–0.8) because the stillness is the eerie part. The sea mostly doesn't (0.3).
+  - Context makes lulls likelier: night, the hush at dusk, the wind swelling, and the minute after thunder or a blast.
+- **Startle.** Thunder or a blast (anything that rattles windows) stops the birds at once. Life beds dip, and the birds come back over about 35 s.
+- **Drift.** Inside a phase, each bed wanders by ±1 dB on its own, and one-shot rates by ±25%.
+- **Style.**
+  - The balance between a place's beds wanders (±25% of each one's share, total power kept).
+  - The air's brightness drifts: the beds' direct-path highs go down to 0.75, via the engine's new per-sound tone, `core.afx_sound_tone`.
+  - Beds swap takes every 90–240 s over an 18 s crossfade. Second takes come from other stretches or recordings: `*_b`, `*_c`, made in import_sounds.py.
+  - Three bird species are about at a time; one leaves and another arrives every 1–3 min.
+- **One-shots.** The phase scales birds, croaks, flocks, drips, creaks, chains and ice. It uses `V.thin` (Poisson thinning, so it works the moment the rate drops) and `V.interval` (shorter waits when lively). Life one-shots get the full effect; place one-shots get the square root.
+- **Exempt.** Anything that is information rather than ambience is left alone: water you're next to, lava, fires, creatures, your own actions, rain and music.
+- **Biome blend.**
+  - The bridge samples the biomes on two rings around the player (12 and 24 nodes, `afx_ambience_biome_radius`) and sends weights (`@biomes`).
+  - The client mixes the place from them, then rate-limits how fast what you hear may change (`biome.blend_rate`, 0.07 of a place per second). A fast flight over biomes glides, and an edge sits half and half instead of flipping.
+- **Tuning.**
+  - Everything lives in the second table in `levels.lua`; the pipeline keeps it.
+  - The mixer's Variation sliders scale the main knobs: depth, how often, pace, wander, tone and blend speed. The mixer also has an on/off switch.
+  - `/afx_var <key> <value>` sets any tunable live; `/afx_var phase lull|normal|lively` forces a phase.
+  - The tuning view shows the phase, rates, tone, birds about, takes and the place/biome mix.
+- **Tests.**
+  - Tours turn variation off by default, so runs compare.
+  - The `breath` scenario (normal → lull → lively → near thunder) is a listening check: in the forest the lull is about −2.7 dB on the whole bed, lively +3 dB.
+  - The `biomes` scenario switches the biomes around at once; the jungle comes up over about 14 s.

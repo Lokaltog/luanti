@@ -215,6 +215,39 @@ local function dimension(pos)
 	return "overworld"
 end
 
+-- The biomes around: samples on two rings, nearer ones weighing more, so
+-- the client can blend a place's sound across a biome's edge. Sent when
+-- they change (or every 10 s): "Name weight Name weight ..."
+local BIOME_RADIUS = tonumber(core.settings:get("afx_ambience_biome_radius") or "") or 24
+local biome_sent = {} -- player name -> {text, time}
+local function biomes_around(pos)
+	local w = {}
+	local function add(p, weight)
+		local bd = core.get_biome_data(p)
+		local n = bd and core.get_biome_name(bd.biome)
+		if n and n ~= "" then w[n] = (w[n] or 0) + weight end
+	end
+	add(pos, 1)
+	for i = 0, 7 do
+		local a = i * math.pi / 4
+		for _, ring in ipairs({{0.5, 0.25}, {1, 0.12}}) do
+			local r = BIOME_RADIUS * ring[1]
+			add({x = pos.x + math.cos(a) * r, y = pos.y, z = pos.z + math.sin(a) * r}, ring[2])
+		end
+	end
+	local total = 0
+	for _, v in pairs(w) do total = total + v end
+	local names = {}
+	for n in pairs(w) do names[#names + 1] = n end
+	table.sort(names)
+	local parts = {}
+	for _, n in ipairs(names) do
+		-- (names go as words: anything else in one is left out)
+		if n:match("^[%w_]+$") then parts[#parts + 1] = ("%s %.2f"):format(n, w[n] / total) end
+	end
+	return table.concat(parts, " ")
+end
+
 local timer = 0
 core.register_globalstep(function(dtime)
 	timer = timer + dtime
@@ -244,12 +277,22 @@ core.register_globalstep(function(dtime)
 				heat = bd and bd.heat or nil, humidity = bd and bd.humidity or nil,
 			}
 			player:set_afx_world(w)
+			-- (A.biome_override: test scenarios set the biomes around)
+			local text = A.biome_override or biomes_around(pos)
+			local last = biome_sent[name]
+			local now = core.get_us_time() / 1e6
+			if text ~= "" and (not last or last.text ~= text or now - last.time > 10) then
+				if player:send_afx_data("biomes", text) then
+					biome_sent[name] = {text = text, time = now}
+				end
+			end
 		end
 	end
 end)
 
 core.register_on_leaveplayer(function(player)
 	sent[player:get_player_name()] = nil
+	biome_sent[player:get_player_name()] = nil
 end)
 
 --[[ Events ]]

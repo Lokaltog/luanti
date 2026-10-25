@@ -155,6 +155,11 @@ function BUILD.forest(b)
 	for i, s in ipairs(spots) do tree(b, s[1], s[2], 4 + i % 3) end
 end
 
+BUILD.breath = BUILD.forest
+function BUILD.biomes(b)
+	b.fill(v(MIN.x, -6, MIN.z), v(MAX.x, -1, MAX.z), "basenodes:dirt_with_grass")
+end
+
 function BUILD.cavern(b)
 	b.fill(v(MIN.x, -24, MIN.z), v(MAX.x, 30, MAX.z), "basenodes:stone")
 	b.fill(v(-14, -8, -14), v(14, 4, 14), "air")
@@ -570,6 +575,35 @@ TIMELINE.descent = {
 	{wait = 10},
 }
 
+-- variation.lua: a forest at noon breathing, then made to: a lull, a
+-- lively stretch, a thunderclap that freezes the birds
+local function var(line) return function() afx_ambience.client_chat(player_name, "/afx_var " .. line) end end
+TIMELINE.breath = {
+	-- (the wind, the takes and the drifts held still, so the phases compare)
+	{fn = function()
+		afx_ambience.wind_override = {dir = {x = 1, y = 0, z = 0}, wind = 0.9}
+		for _, l in ipairs({"takes_min 99999", "takes_max 99999", "drift_db 0", "balance 0",
+				"drift_rate 0", "phase normal"}) do var(l)() end
+	end,
+		wait = 25, log = "forest, normal"},
+	{fn = var("phase lull"), wait = 15},
+	{wait = 30, log = "a lull"},
+	{fn = var("phase lively"), wait = 15},
+	{wait = 30, log = "lively"},
+	{fn = function() afx_ambience.thunder_at(v(60, 30, 40), false) end, wait = 3},
+	{wait = 20, log = "after thunder"},
+	{fn = function() afx_ambience.wind_override = nil end, wait = 1},
+}
+
+-- A flight over a biome edge: the biomes the bridge sends switch at once,
+-- what you hear may only follow at the blend's pace
+TIMELINE.biomes = {
+	{fn = function() afx_ambience.biome_override = "Grassland 1" end, wait = 20, log = "grassland"},
+	{fn = function() afx_ambience.biome_override = "Jungle 1" end, wait = 30, log = "jungle (switched at once)"},
+	{fn = function() afx_ambience.biome_override = "Grassland 0.5 Jungle 0.5" end, wait = 25,
+		log = "on the edge"},
+}
+
 TIMELINE.meadow = {
 	{wait = 18, log = "noon in a meadow"},
 	{fn = function() set_time(0.5, 0.86, 12) end, wait = 12, log = "dusk"},
@@ -930,7 +964,7 @@ local START = {
 	steps = v(0, 0, 0),
 	storm = v(-14, 0, -2), shore = v(0, 0, -6), home = v(-2, 0, 2), mineshaft = v(-20, -20, 0),
 	descent = v(0, 0, 1), meadow = v(0, 0, 0), beach = v(4, 0, -2), sky_island = v(0, 80, -2),
-	hut_rain = v(0, 0, -14), tunnel_wind = v(22, 0, 0), forest = v(0, 0, 0),
+	hut_rain = v(0, 0, -14), tunnel_wind = v(22, 0, 0), forest = v(0, 0, 0), breath = v(0, 0, 0), biomes = v(0, 0, 0),
 	cavern = v(-10, -8, -10), cliff = v(0, 0, 0),
 }
 

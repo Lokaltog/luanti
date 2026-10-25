@@ -126,6 +126,7 @@ void scriptStep(Client *client, ISoundManager *sound, float dtime)
 // the scripts and their sounds; what the server said stays
 static void stopEnv()
 {
+	setScriptDebugText("");
 	if (s_env) {
 		s_env->shutdown();
 		s_env.reset();

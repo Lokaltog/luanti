@@ -55,6 +55,9 @@ enable_sound = true
 sound_volume = 1.0
 mute_sound = false
 afx_debug = true
+# the ambience's breathing is random: off, so runs compare (the breath
+# scenario turns it on)
+afx_ambience_variation = false
 afxscene_scenario = $SCEN
 afx_ambience_use_biomes = false
 enable_ipv6 = false

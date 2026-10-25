@@ -130,6 +130,9 @@ public:
 	 * @param pos In node-space.
 	 * @param vel In node-space.
 	 */
+	/// afx: the sound's brightness, 0..1 on the high frequencies of its
+	/// direct path (the ambience drifts the air's tone with it)
+	virtual void setSoundTone(sound_handle_t sound, f32 hf) {}
 	virtual void updateSoundPosVel(sound_handle_t sound, const v3f &pos,
 			const v3f &vel) = 0;
 

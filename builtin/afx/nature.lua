@@ -127,7 +127,8 @@ A.register_layer(function(ctx, wanted)
 	end
 	-- the ice talks most as it cools at dusk and in the night cold
 	local dusk = (ctx.tod > 0.72 and ctx.tod < 0.85) and 0.4 or (ctx.day < 0.5 and 0.7 or 1)
-	st.next_ice = ctx.now + L.rand(7, 26) * dusk
+	st.next_ice = ctx.now + A.var.interval("place", L.rand(7, 26) * dusk)
+	if not A.var.thin("place") then return end
 	local p
 	for _ = 1, 8 do
 		local q = ice[math.random(#ice)]
@@ -221,7 +222,8 @@ A.register_layer(function(ctx)
 	local st = ctx.st
 	if not st.next_flock then st.next_flock = ctx.now + L.rand(60, 180) end
 	if ctx.now < st.next_flock or #flocks > 0 then return end
-	st.next_flock = ctx.now + L.rand(120, 360)
+	st.next_flock = ctx.now + A.var.interval("life", L.rand(120, 360))
+	if not A.var.thin("life") then return end
 	-- across the sky, passing near overhead
 	local a = L.rand(0, 2 * math.pi)
 	local dir = {x = math.cos(a), y = 0, z = math.sin(a)}
