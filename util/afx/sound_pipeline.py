@@ -147,14 +147,16 @@ def cmd_normalize(args):
         after = []
         for f, x, l in zip(files, xs, ls):
             gain_db = target - l
-            if abs(gain_db) < 0.5:
-                after.append(l)
-                continue
             y = x * 10 ** (gain_db / 20)
             peak = np.abs(y).max()
             if peak > 0.97:  # keep headroom: the level table makes it up
                 y *= 0.97 / peak
                 gain_db += 20 * np.log10(0.97 / peak)
+            # within tolerance, or as close as its peak allows already: leave
+            # the file alone (every re-encode costs a generation)
+            if abs(gain_db) < 0.5:
+                after.append(l)
+                continue
             after.append(l + gain_db)
             print(f"  {os.path.basename(f):34} {l:6.1f} -> {l + gain_db:6.1f} LUFS ({gain_db:+.1f} dB)")
             if not dry:
@@ -184,7 +186,7 @@ def cmd_normalize(args):
             for grp in levels:
                 if grp in old:
                     levels[grp] = old[grp]
-            lines = lines[:4] + [f'\t["{g}"] = {levels[g]},' for g in sorted(levels)] + ["}"]
+            lines = lines[:5] + [f'\t["{g}"] = {levels[g]},' for g in sorted(levels)] + ["}"]
         open(out, "w").write("\n".join(lines) + "\n")
         print("wrote", out)
 

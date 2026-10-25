@@ -193,8 +193,8 @@ This means Mineclonia's existing rain gets muffled indoors with no game changes.
   - Rain dulls and masks the distance.
 - **HRTF** (`afx_hrtf`, live, a mixer checkbox). This resets the OpenAL Soft device with `ALC_HRTF_SOFT`, keeping the 6 aux sends. The engine only switches HRTF off again if it turned it on itself, so OpenAL Soft's own headphone auto-detection is left alone.
 - **Knock to find caves.**
-  - Punching stone, earth or wood probes straight into the wall from the struck face. If air turns up within 5 nodes, the open space behind is measured (BFS, cap 240).
-  - A hollow knock (`afx_knock_hollow`: real hits convolved with low cavity modes) plays at the face. Its level falls with wall thickness, and its pitch drops for bigger cavities.
+  - Punching stone (round 17: only stone; wood and earth are thin wherever you meet them) probes straight into the wall from the struck face. If air turns up within 5 nodes, the open space behind is measured (BFS, cap 240).
+  - A hollow knock (`afx_knock_hollow`; round 17: a real wooden tok slowed and dulled, over the old cavity take pitched to 0.88 and cut short, so it thuds instead of gonging) plays at the face. Its level falls with wall thickness, and its pitch drops for bigger cavities.
   - Air that connects back to your own room (a pillar) barely counts. `afx_knock.h`, tested.
 - **Music in the world.**
   - Note stones: 8 pentatonic notes, sing when stepped on, right-click for the next note, so you can build a stair that plays a scale.
@@ -442,3 +442,10 @@ Measured in the engine: snapshot 0.7–1.2 ms on the main thread, probe 0.0–0.
 - Stereo outdoor beds need `AL_EXT_STEREO_ANGLES`, and mono beds use `AL_EXT_SOURCE_RADIUS`. Both are in OpenAL Soft.
 - Echo distance is capped at about 35 nodes (the EFX echo delay limit is 0.207 s).
 - A Lua API for an explicit bus (`sound_play{bus=…}`) needs a protocol field and is deferred. Use the name prefixes for now.
+
+## Round 17: a knock, not a gong
+
+- **Hollow knock.** The old takes rang 80 Hz cavity modes for ~0.8 s (a gong), ~15 dB over the game's hit. New takes: a real tok/thunk (slowed 0.8, lowpassed 1.8 kHz) over the old take pitched 0.88 with a 85 ms body decay; -30 dB in 0.2-0.33 s, centroid ~600 Hz. Rock over a void sounds "drummy" (dull), solid rock rings: this is the physical direction too.
+- **Stone only.** Wood and earth are thin almost everywhere (plank walls, trunks, topsoil over stone), so hollowness there is noise. Built stone still counts: a roofed stone house knocks hollow from outside, which is right.
+- **Test scenario:** `knock` now mines `afxscene:rock` with a dull pick, so every swing plays the game's stone hit too (as in a real game).
+- **Pipeline:** `normalize` no longer drops the table's `return {` when it keeps hand-tuned levels, and leaves peak-limited files alone instead of re-encoding them every run.

@@ -24,6 +24,19 @@ core.register_node("afxscene:bedrock", {
 	groups = {stone = 1},
 	sounds = {footstep = {name = "default_hard_footstep", gain = 0.5}},
 })
+-- rock a pick chips at forever: each swing plays the game's stone hit and,
+-- over a cave, the hollow knock with it (as when mining in a real game)
+core.register_node("afxscene:rock", {
+	description = "Hard rock", tiles = {"[fill:16x16:#686870"},
+	groups = {stone = 1, cracky = 1},
+	sounds = {footstep = {name = "default_hard_footstep", gain = 0.5},
+		dig = {name = "default_dig_cracky", gain = 0.5}},
+})
+core.register_tool("afxscene:dull_pick", {
+	description = "Dull pick", inventory_image = "[fill:16x16:#a0a0a0",
+	tool_capabilities = {full_punch_interval = 0.6, max_drop_level = 0,
+		groupcaps = {cracky = {times = {[1] = 3600}, uses = 0, maxlevel = 3}}},
+})
 core.register_node("afxscene:glass", {
 	description = "Glass", drawtype = "glasslike", tiles = {"[fill:16x16:#c0e0ff40"},
 	use_texture_alpha = "blend", paramtype = "light", sunlight_propagates = true,
@@ -295,7 +308,7 @@ function BUILD.voices(b)
 end
 
 function BUILD.knock(b)
-	b.fill(v(MIN.x, -20, MIN.z), v(MAX.x, 20, MAX.z), "afxscene:bedrock")
+	b.fill(v(MIN.x, -20, MIN.z), v(MAX.x, 20, MAX.z), "afxscene:rock")
 	b.fill(v(-8, 0, -2), v(8, 2, 0), "air")          -- a tunnel running east-west
 	-- behind the north wall: solid at x < 0; at x > 0 a cave, 2 nodes in
 	b.fill(v(2, -3, 3), v(10, 5, 12), "air")
@@ -714,8 +727,10 @@ TIMELINE.voices = {
 
 -- (driven by AFX_XDO: hold the left mouse button from ~4 s to the end)
 TIMELINE.knock = {
-	{fn = function() P():set_pos(v(-4, 0, -1)); P():set_look_horizontal(0); P():set_look_vertical(0) end,
-		wait = 9, log = "punching solid rock"},
+	{fn = function()
+		P():set_pos(v(-4, 0, -1)); P():set_look_horizontal(0); P():set_look_vertical(0)
+		P():get_inventory():set_stack("main", 1, "afxscene:dull_pick")
+	end, wait = 9, log = "punching solid rock"},
 	{fn = function() P():set_pos(v(5, 0, -1)); P():set_look_horizontal(0) end,
 		wait = 9, log = "punching rock with a cave behind it"},
 	{fn = function() P():set_pos(v(-4, 0, -1)) end, wait = 6, log = "solid again"},

@@ -583,9 +583,10 @@ SoundSpec knockSound(Client *client, v3s16 node, v3s16 normal)
 		return last; // inside the node, or an edge: no face to knock on
 	ClientMap &map = client->getEnv().getClientMap();
 	const NodeDefManager *ndef = client->getNodeDefManager();
-	// Only solid walls knock: stone, earth, wood (not leaves or glass)
-	const Material struck = classifyNode(ndef->get(map.getNode(node)));
-	if (struck != Material::Stone && struck != Material::Earth && struck != Material::Wood)
+	// Only rock knocks hollow. Wood, earth and the rest are thin almost
+	// wherever you meet them (a plank wall, a trunk, topsoil over stone), so
+	// "hollow" there would be noise rather than news
+	if (classifyNode(ndef->get(map.getNode(node))) != Material::Stone)
 		return last;
 	auto open = [&](v3s16 p) {
 		bool ok = false;
@@ -616,10 +617,8 @@ SoundSpec knockSound(Client *client, v3s16 node, v3s16 normal)
 	const Knock k = knockProbe(open, node, -normal);
 	if (k.hollow < 0.08f)
 		return last;
-	// planks over a void ring higher and shorter than rock over a cavern
-	const float material_pitch = struck == Material::Wood ? 1.2f : 1.f;
 	last = SoundSpec("afx_knock_hollow", std::min(1.f, 0.25f + 0.75f * k.hollow) * 0.9f,
-			false, 0.f, k.pitch * material_pitch);
+			false, 0.f, k.pitch);
 	if (s_params.debug)
 		infostream << "afx knock " << node.X << "," << node.Y << "," << node.Z << " depth "
 				<< k.depth << " size " << k.size << " hollow " << k.hollow << std::endl;
