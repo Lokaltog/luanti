@@ -2829,6 +2829,16 @@ void Game::processPlayerInteraction(f32 dtime, bool show_hud)
 
 	if (runData.punching || wasKeyPressed(KeyType::DIG))
 		camera->setDigging(0); // dig animation
+	// afx: a swing of what's in your hand, heard as you make it (the ambience
+	// gives a blade or a tool its swish); at what it points at
+	// (unless the game gives the item a sound of its own for it)
+	if (wasKeyPressed(KeyType::DIG) && !(pointed.type == POINTEDTHING_NOTHING ?
+			selected_def.sound_use_air : selected_def.sound_use).exists()) {
+		v3s16 at = pointed.type == POINTEDTHING_NODE ? pointed.node_undersurface :
+				floatToInt(player->getPosition(), BS);
+		afx::scriptNode(pointed.type == POINTEDTHING_NOTHING ? "swing" :
+				pointed.type == POINTEDTHING_OBJECT ? "swing_hit" : "swing_node", at, tool_item.name);
+	}
 
 	input->clearWasKeyPressed();
 	input->clearWasKeyReleased();
@@ -3551,6 +3561,8 @@ void Game::updateFrame(ProfilerGraph *graph, RunStats *stats, f32 dtime,
 		// Update wielded tool
 		ItemStack selected_item, hand_item;
 		ItemStack &tool_item = player->getWieldedItem(&selected_item, &hand_item);
+		// afx: taking something in hand
+		afx::scriptNode("wield", floatToInt(player->getPosition(), BS), selected_item.name);
 
 		bool skip_anim = client->consumeSkipNextWieldAnimation();
 		camera->wield(tool_item, !skip_anim);

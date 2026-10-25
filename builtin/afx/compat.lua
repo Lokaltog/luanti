@@ -236,7 +236,17 @@ local function node_event(what, pos, name)
 		fn(pos, node, player)
 	end
 end
-function core.afx_on_node(what, pos, name) node_event(what, pos, name) end
+-- fn(what, pos, item): your own actions as you make them ("swing" at
+-- nothing, "swing_hit" an object, "swing_node", "wield" a new item)
+local action_cbs = {}
+function afx.register_on_action(fn) action_cbs[#action_cbs + 1] = fn end
+function core.afx_on_node(what, pos, name)
+	if what == "dig" or what == "punch" then
+		node_event(what, pos, name)
+	else
+		for _, fn in ipairs(action_cbs) do fn(what, pos, name) end
+	end
+end
 afx.register_on_data("node", function(data)
 	local what, x, y, z, name = data:match("^(%a+) (%S+) (%S+) (%S+) (%S+)")
 	if not name then return end

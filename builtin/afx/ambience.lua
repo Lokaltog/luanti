@@ -71,7 +71,7 @@ local CATEGORY = {
 	{"^afx_draft", "drafts"},
 	{"^afx_note_", "music"}, {"^afx_dry_score_", "music"},
 	{"^afx_dry_rush", "body"}, {"^afx_leaf_rustle", "body"}, {"^afx_dry_tick", "body"},
-	{"^afx_dry_seashell", "body"},
+	{"^afx_dry_seashell", "body"}, {"^afx_whizz", "body"},
 }
 local cat_cache = {}
 function afx_ambience.category(name)
