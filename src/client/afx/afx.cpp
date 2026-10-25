@@ -786,8 +786,47 @@ static void sendState(Client *client, ISoundManager *sound, float dtime)
 	client->sendAfxState(os.str());
 }
 
+namespace {
+struct Motion { v3f pos, vel; float age = 0.f; bool valid = false; u32 frame = 0; };
+}
+static u32 s_frame_no = 1; // a second sound on the same object, the same frame
+static std::unordered_map<u16, Motion> s_motion;
+static float s_motion_sweep = 0.f;
+
+v3f soundVelocity(u16 object_id, v3f pos, float dtime)
+{
+	Motion &m = s_motion[object_id];
+	m.age = 0.f;
+	if (m.valid && m.frame == s_frame_no)
+		return m.vel;
+	m.frame = s_frame_no;
+	if (!m.valid || dtime <= 0.f) {
+		m.pos = pos;
+		m.valid = true;
+		return m.vel;
+	}
+	v3f raw = (pos - m.pos) / dtime;
+	m.pos = pos;
+	if (raw.getLengthSQ() > 60.f * 60.f) // a teleport, not a motion
+		raw = m.vel;
+	// about a tenth of a second: the interpolated motion's own steps go, a
+	// real change of speed comes through
+	const float k = 1.f - std::exp(-dtime / 0.1f);
+	m.vel += (raw - m.vel) * k;
+	return m.vel;
+}
+
 void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 {
+	s_frame_no++;
+	// forget objects nobody asked about for a while
+	if ((s_motion_sweep += dtime) > 5.f) {
+		for (auto it = s_motion.begin(); it != s_motion.end();) {
+			it->second.age += s_motion_sweep;
+			it = it->second.age > 10.f ? s_motion.erase(it) : std::next(it);
+		}
+		s_motion_sweep = 0.f;
+	}
 	if (!sound)
 		return;
 	if (s_params_dirty.exchange(false))

@@ -4,6 +4,7 @@
 
 #include "client.h"
 #include "client/afx/afx_script.h"
+#include "client/afx/afx.h"
 
 #include "chatmessage.h"
 #include "client/clientevent.h"
@@ -771,8 +772,10 @@ void Client::step(float dtime)
 			ClientActiveObject *cao = m_env.getActiveObject(object_id);
 			if (!cao)
 				continue;
-			m_sound->updateSoundPosVel(client_id, cao->getPosition() * (1.0f/BS),
-					cao->getVelocity() * (1.0f/BS));
+			// afx: velocity from the drawn motion (smooth Doppler)
+			const v3f pos = cao->getPosition() * (1.0f/BS);
+			m_sound->updateSoundPosVel(client_id, pos, afx::params().enabled ?
+					afx::soundVelocity(object_id, pos, dtime) : cao->getVelocity() * (1.0f/BS));
 		}
 	}
 

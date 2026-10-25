@@ -94,7 +94,8 @@ void scriptStep(Client *client, ISoundManager *sound, float dtime)
 			it = s_ctx.sounds.erase(it);
 			continue;
 		}
-		sound->updateSoundPosVel(it->first, o->getPosition() / BS, o->getVelocity() / BS);
+		const v3f pos = o->getPosition() / BS;
+		sound->updateSoundPosVel(it->first, pos, soundVelocity(it->second.object, pos, dtime));
 		++it;
 	}
 	s_env->step(dtime);

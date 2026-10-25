@@ -60,6 +60,12 @@ void drawDebugView2D(Client *client, video::IVideoDriver *driver);
 /// The latest snapshot and where it was taken from
 std::shared_ptr<const VoxelSnapshot> debugSnapshot(v3f *ear);
 
+/// A moving object's velocity for its sounds (node space): from how its
+/// drawn position actually moves, smoothed, rather than the velocity the
+/// server last sent, which steps (and the Doppler shift with it). Call once
+/// per frame per object with its current position.
+v3f soundVelocity(u16 object_id, v3f pos_nodes, float dtime);
+
 /// Build a snapshot (exposed for tools/tests that have a Client).
 std::shared_ptr<VoxelSnapshot> buildSnapshot(Client *client, v3s16 center, s16 radius);
 

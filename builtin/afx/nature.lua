@@ -183,3 +183,60 @@ A.register_tick(function(player, dtime)
 		st.exert = st.exert - 0.2
 	end
 end)
+
+--[[ A flock passes over: now and then on a fair day, out in the open, a
+little flock crosses the sky, chirping and beating its wings as it goes,
+from one side of you to the other. A moving source, so it's heard moving:
+the engine rings it, the wind carries it. ]]
+
+local FLOCK_BIRDS = {"afx_bird_goldfinch", "afx_bird_bluebird", "afx_bird_lark"}
+local flocks = {}
+
+core.register_globalstep(function(dtime)
+	for i = #flocks, 1, -1 do
+		local f = flocks[i]
+		f.t = f.t + dtime
+		f.pos = vector.add(f.pos, vector.multiply(f.vel, dtime))
+		if f.t >= f.next_wing then
+			f.next_wing = f.t + L.rand(0.18, 0.32)
+			A.play("afx_leaf_rustle", {pos = vector.offset(f.pos, L.rand(-1.5, 1.5), L.rand(-1, 1), L.rand(-1.5, 1.5)),
+				to_player = f.pname, gain = L.rand(0.05, 0.09), pitch = L.rand(1.9, 2.4),
+				max_hear_distance = 48}, true)
+		end
+		if f.t >= f.next_call then
+			f.next_call = f.t + L.rand(0.4, 1.4)
+			A.play(f.bird, {pos = vector.offset(f.pos, L.rand(-2, 2), 0, L.rand(-2, 2)), to_player = f.pname,
+				gain = L.rand(0.12, 0.25), pitch = L.rand(1.0, 1.15), max_hear_distance = 64}, true)
+		end
+		if f.t > f.life then table.remove(flocks, i) end
+	end
+end)
+
+A.register_layer(function(ctx)
+	if ctx.dimension ~= "overworld" or ctx.underground or ctx.indoors then return end
+	if (ctx.rain or 0) > 0 or (ctx.snow or 0) > 0 or ctx.day < 0.8 then return end
+	if not (ctx.under_sky or (ctx.exposure or 0) > 0.5) then return end
+	local p = ctx.place or ctx.st.last_place
+	if not p or math.max(p.meadow, p.forest, p.coast) < 0.3 then return end
+	local st = ctx.st
+	if not st.next_flock then st.next_flock = ctx.now + L.rand(60, 180) end
+	if ctx.now < st.next_flock or #flocks > 0 then return end
+	st.next_flock = ctx.now + L.rand(120, 360)
+	-- across the sky, passing near overhead
+	local a = L.rand(0, 2 * math.pi)
+	local dir = {x = math.cos(a), y = 0, z = math.sin(a)}
+	local speed = L.rand(7, 10)
+	local half = 40
+	local side = L.rand(-8, 8)
+	local start = vector.offset(ctx.ppos, -dir.x * half - dir.z * side, L.rand(12, 20),
+		-dir.z * half + dir.x * side)
+	flocks[#flocks + 1] = {pos = start, vel = vector.multiply(dir, speed), t = 0,
+		life = 2 * half / speed, next_wing = 0, next_call = L.rand(0.5, 1.5),
+		bird = L.pick(FLOCK_BIRDS), pname = ctx.pname}
+end)
+
+-- for test scenes: a flock now
+function A.flock_now()
+	local st = L.player_state(core.get_connected_players()[1]:get_player_name())
+	st.next_flock = 0
+end
