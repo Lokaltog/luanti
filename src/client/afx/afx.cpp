@@ -3,6 +3,7 @@
 
 #include "afx.h"
 #include "afx_script.h"
+#include "client/fx/fx.h"
 #include "afx_knock.h"
 #include "afx_mood.h"
 #include "afx_score.h"
@@ -805,6 +806,11 @@ void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 	s_was_enabled = true;
 
 	updateMood(client, sound, ear, dtime, p);
+	{
+		// the picture shares the mood (the fx renderer's grade)
+		const Mood &m = s_mood.smoother.current();
+		fx::setMood(p.mood > 0.f ? m.tension : 0.f, p.mood > 0.f ? m.cozy : 0.f);
+	}
 	sendState(client, sound, dtime);
 	updateFlyBys(client, sound, ear, dtime);
 	scriptStep(client, sound, dtime);

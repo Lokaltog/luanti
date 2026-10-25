@@ -177,6 +177,19 @@ void updateFrame(Client *client, Camera *camera, float dtime);
 
 const FrameLights &frameLights();
 
+/*
+	Events from the audio (afx), so picture and sound share a clock
+*/
+
+/// A brief light where something happened: lightning, a blast. Lights the
+/// world around it while it lasts; `sky` > 0 also flashes the whole view
+/// (that much: 1 out in the open, less from a doorway).
+enum class FlashKind : u8 { Lightning, Blast };
+void addFlash(FlashKind kind, v3f pos_nodes, float strength, float sky);
+/// The mood the audio is in (afx_mood.h): tension greys and darkens the
+/// picture a little, cozy warms it. 0..1 each, smoothed by the caller.
+void setMood(float tension, float cozy);
+
 std::unique_ptr<IShaderConstantSetter> createConstantSetter();
 std::unique_ptr<IShaderUniformSetterFactory> createUniformSetterFactory();
 

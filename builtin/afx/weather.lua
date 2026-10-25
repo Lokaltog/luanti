@@ -258,9 +258,26 @@ end)
 
 -- `game_crack`: the game plays its own thunder at the strike (VoxeLibre's
 -- lightning mod); then only the far roll is ours.
+-- How much of the sky the player sees: out in the open all of it, from a
+-- doorway or a window a little (the engine's open path to the outdoors)
+local function sky_seen()
+	local h = core.afx_hearing()
+	if not h then return 0.5 end
+	return math.max(h.sky or 0, math.min(1, (h.outdoor or 0) * 1.5), 0.03)
+end
+
 local function on_strike(pos, game_crack)
 	if not pos then return end
 	if A.rattle then A.rattle(pos, 1.3) end
+	-- the flash, now; the thunder after it, as late as the distance (the
+	-- engine delays it): picture and sound from the same moment
+	local p0 = core.get_connected_players()[1]
+	local d0 = p0 and vector.distance(p0:get_pos(), pos) or 100
+	-- (by day it's a pale blink; at night it lights the world)
+	local tod = core.get_timeofday()
+	local day = math.max(0, math.min(1, (0.32 - math.abs(tod - 0.5)) / 0.05))
+	core.afx_flash("lightning", pos, math.max(0.25, math.min(1, 1.2 - d0 / 600)),
+		sky_seen() * (0.3 + 0.7 * (1 - day)))
 	for _, player in ipairs(core.get_connected_players()) do
 		local d = vector.distance(player:get_pos(), pos)
 		local pname = player:get_player_name()
@@ -325,7 +342,12 @@ A.rattle = rattle
 core.afx.register_on_data("blast", function(data)
 	local x, y, z, k = data:match("^(%S+) (%S+) (%S+) (%S+)")
 	if not k then return end
-	rattle({x = tonumber(x), y = tonumber(y), z = tonumber(z)}, tonumber(k) or 1)
+	local pos = {x = tonumber(x), y = tonumber(y), z = tonumber(z)}
+	rattle(pos, tonumber(k) or 1)
+	local p0 = core.get_connected_players()[1]
+	local d0 = p0 and vector.distance(p0:get_pos(), pos) or 30
+	local near = math.min(1, 24 / math.max(1, d0)) * math.min(1.5, tonumber(k) or 1)
+	if near > 0.05 then core.afx_flash("blast", pos, near, 0.25 * near * sky_seen()) end
 end)
 
 -- a gust rising (the server's weather): "peak"

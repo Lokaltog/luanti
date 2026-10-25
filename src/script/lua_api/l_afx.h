@@ -52,6 +52,9 @@ private:
 	static int l_afx_server(lua_State *L);
 	// afx_reload(): load the scripts again from disk at the next step
 	static int l_afx_reload(lua_State *L);
+	// afx_flash("lightning"|"blast", pos, strength, sky): the picture's side
+	// of an event the ambience hears (fx renderer)
+	static int l_afx_flash(lua_State *L);
 
 public:
 	static void Initialize(lua_State *L, int top);

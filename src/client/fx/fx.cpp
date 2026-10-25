@@ -582,6 +582,44 @@ void collectBlockLights(const MeshMakeData *data, std::vector<Light> &out)
 
 static FrameLights s_frame;
 
+struct Flash {
+	FlashKind kind;
+	v3f pos;          // nodes
+	float strength, sky;
+	float t = 0.f;
+};
+static std::vector<Flash> s_flashes;
+static float s_mood_tension = 0.f, s_mood_cozy = 0.f;
+static float s_sky_flash = 0.f; // this frame's exposure bump
+
+void addFlash(FlashKind kind, v3f pos_nodes, float strength, float sky)
+{
+	if (s_flashes.size() < 8)
+		s_flashes.push_back({kind, pos_nodes, strength, sky});
+}
+
+void setMood(float tension, float cozy)
+{
+	s_mood_tension = std::clamp(tension, 0.f, 1.f);
+	s_mood_cozy = std::clamp(cozy, 0.f, 1.f);
+}
+
+// How bright a flash is `t` seconds in: lightning strikes, dims and strikes
+// again; a blast is one short burst
+static float flashEnvelope(const Flash &f)
+{
+	if (f.kind == FlashKind::Blast)
+		return f.t < 0.03f ? f.t / 0.03f : std::exp(-(f.t - 0.03f) / 0.09f);
+	float e = std::exp(-f.t / 0.07f);
+	if (f.t > 0.16f)
+		e += 0.75f * std::exp(-(f.t - 0.16f) / 0.12f);
+	if (f.t > 0.42f)
+		e += 0.35f * std::exp(-(f.t - 0.42f) / 0.2f);
+	return std::min(1.f, e);
+}
+
+static float flashDuration(const Flash &f) { return f.kind == FlashKind::Blast ? 0.6f : 1.4f; }
+
 const FrameLights &frameLights()
 {
 	return s_frame;
@@ -597,6 +635,17 @@ void updateFrame(Client *client, Camera *camera, float dtime)
 {
 	const Params &prm = s_params;
 	s_frame.count = 0;
+	// flashes age whether or not anything draws them
+	s_sky_flash = 0.f;
+	for (auto it = s_flashes.begin(); it != s_flashes.end();) {
+		it->t += dtime;
+		if (it->t > flashDuration(*it)) {
+			it = s_flashes.erase(it);
+			continue;
+		}
+		s_sky_flash = std::max(s_sky_flash, flashEnvelope(*it) * it->sky * it->strength);
+		++it;
+	}
 	if (!prm.enabled)
 		return;
 
@@ -661,7 +710,8 @@ void updateFrame(Client *client, Camera *camera, float dtime)
 		}
 	}
 
-	const int max_world = MAX_LIGHTS - 1; // keep one slot for the held light
+	// keep one slot for the held light, and the flashes'
+	const int max_world = MAX_LIGHTS - 1 - (int)s_flashes.size();
 	if ((int)cands.size() > max_world) {
 		std::nth_element(cands.begin(), cands.begin() + max_world, cands.end(),
 				[] (const Candidate &a, const Candidate &b) { return a.d2 < b.d2; });
@@ -694,6 +744,18 @@ void updateFrame(Client *client, Camera *camera, float dtime)
 		const v3s16 seed_pos(l.pos.X, l.pos.Y, l.pos.Z);
 		push(l.pos * BS, (l.level + 1.5f + l.extent) * BS, l.color, l.flicker,
 				hashSeed(seed_pos), 1.f + 0.5f * std::log2((float)l.count));
+	}
+
+	// Flashes: lightning lights up a wide circle, cold; a blast a smaller
+	// one, hot
+	for (const Flash &f : s_flashes) {
+		const float e = flashEnvelope(f) * f.strength;
+		if (e < 0.02f || s_frame.count >= MAX_LIGHTS - 1)
+			continue;
+		const bool bolt = f.kind == FlashKind::Lightning;
+		push(f.pos * BS, (bolt ? 48.f : 14.f) * BS,
+				bolt ? video::SColor(255, 200, 215, 255) : video::SColor(255, 255, 170, 90),
+				0.f, 0.f, (bolt ? 6.f : 4.f) * e);
 	}
 
 	// Held light: a torch in hand lights the camera's surroundings.
@@ -802,8 +864,13 @@ public:
 			m_bloom_threshold.set(&p.bloom_threshold, services);
 			m_bloom_knee.set(&p.bloom_knee, services);
 			m_bloom_intensity.set(&p.bloom_intensity, services);
-			m_exposure.set(&p.exposure, services);
-			m_grade_saturation.set(&p.grade_saturation, services);
+			// the audio's mood and a sky-wide flash ride on the grade
+			const float exposure = p.exposure * (1.f + 2.5f * s_sky_flash) *
+					(1.f - 0.08f * s_mood_tension) * (1.f + 0.03f * s_mood_cozy);
+			const float saturation = p.grade_saturation * (1.f - 0.15f * s_mood_tension) *
+					(1.f + 0.06f * s_mood_cozy) * (1.f - 0.5f * std::min(1.f, s_sky_flash));
+			m_exposure.set(&exposure, services);
+			m_grade_saturation.set(&saturation, services);
 			m_grade_contrast.set(&p.grade_contrast, services);
 		}
 		// shared by node surfaces and post passes

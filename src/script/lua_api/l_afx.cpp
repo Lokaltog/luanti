@@ -9,6 +9,7 @@
 #include "cpp_api/s_node.h"
 #include "client/afx/afx.h"
 #include "client/afx/afx_script.h"
+#include "client/fx/fx.h"
 #include "chatmessage.h"
 #include "client/client.h"
 #include "client/clientenvironment.h"
@@ -567,6 +568,17 @@ int ModApiAfx::l_afx_server(lua_State *L)
 	return 1;
 }
 
+int ModApiAfx::l_afx_flash(lua_State *L)
+{
+	const std::string kind = luaL_checkstring(L, 1);
+	const v3f pos = read_v3f(L, 2);
+	const float strength = luaL_optnumber(L, 3, 1.0);
+	const float sky = luaL_optnumber(L, 4, 0.0);
+	fx::addFlash(kind == "blast" ? fx::FlashKind::Blast : fx::FlashKind::Lightning, pos,
+			strength, sky);
+	return 0;
+}
+
 int ModApiAfx::l_afx_reload(lua_State *L)
 {
 	afx::scriptReload();
@@ -576,6 +588,7 @@ int ModApiAfx::l_afx_reload(lua_State *L)
 void ModApiAfx::Initialize(lua_State *L, int top)
 {
 	API_FCT(afx_reload);
+	API_FCT(afx_flash);
 	API_FCT(get_builtin_path);
 	API_FCT(get_current_modname);
 	API_FCT(get_modpath);
