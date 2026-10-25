@@ -48,4 +48,5 @@ private:
 	bool pushHook(lua_State *L, const char *name);
 	bool call(lua_State *L, int nargs, int nresults, const char *what);
 	int m_errors = 0;
+	u64 m_last_error_ms = 0;
 };

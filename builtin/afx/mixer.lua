@@ -24,6 +24,11 @@ local ENGINE = {
 	{"afx_doppler", "Doppler", 2, 0.5},
 }
 
+-- what the mixer may set: its own sliders, nothing else
+local ENGINE_KEYS, LAYER_KEYS = {}, {}
+for _, e in ipairs(ENGINE) do ENGINE_KEYS[e[1]] = e[3] end
+for _, l in ipairs(A.LAYERS) do LAYER_KEYS[l[1]] = true end
+
 local function get(key, default)
 	return tonumber(core.settings:get(key) or "") or default
 end
@@ -95,15 +100,17 @@ core.register_on_player_receive_fields(function(player, formname, fields)
 		if k == "afx_scroll" then
 			if ev.type == "CHG" or ev.type == "VAL" then scroll_at[name] = ev.value end
 		elseif ev.type == "CHG" or ev.type == "VAL" then
-			if k:sub(1, 2) == "e_" then
-				local key, val = k:sub(3), string.format("%.2f", ev.value / 100)
+			if k:sub(1, 2) == "e_" and ENGINE_KEYS[k:sub(3)] then
+				local key = k:sub(3)
+				local val = string.format("%.2f", math.max(0, math.min(ENGINE_KEYS[key], ev.value / 100)))
 				if core.settings:get(key) ~= val then
 					core.settings:set(key, val)
 					changed = true
 				end
-			elseif k:sub(1, 2) == "v_" then
-				if math.abs(A.volume(k:sub(3)) - ev.value / 100) > 0.001 then
-					A.set_volume(k:sub(3), ev.value / 100)
+			elseif k:sub(1, 2) == "v_" and LAYER_KEYS[k:sub(3)] then
+				local v = math.max(0, math.min(2, ev.value / 100))
+				if math.abs(A.volume(k:sub(3)) - v) > 0.001 then
+					A.set_volume(k:sub(3), v)
 					changed = true
 				end
 			end

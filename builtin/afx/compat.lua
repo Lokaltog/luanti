@@ -37,6 +37,20 @@ end
 function core.hash_node_position(p)
 	return (p.z + 32768) * 65536 * 65536 + (p.y + 32768) * 65536 + p.x + 32768
 end
+-- A position as a string key. (Not the hash in a string: LuaJIT prints
+-- 14 digits and the hash has 15, so neighbours would share a key.)
+function afx.poskey(p)
+	return math.floor(p.x + 0.5) .. "," .. math.floor(p.y + 0.5) .. "," .. math.floor(p.z + 0.5)
+end
+
+-- Numbers from the server, checked: a number, not NaN or infinite, in range
+function afx.num(v, lo, hi, default)
+	v = tonumber(v)
+	if not v or v ~= v or v == math.huge or v == -math.huge then return default end
+	return math.max(lo, math.min(hi, v))
+end
+local function num(v, lo, hi, default) return afx.num(v, lo, hi, default) end
+local LIMIT = 31000
 
 --[[ What the server told us ]]
 
@@ -45,28 +59,48 @@ end
 afx.world = {}
 afx.game = {mods = {}, flags = {}}
 
+-- (the bridge sends all of it each time: what it leaves out is gone)
 function core.afx_on_world(kv)
+	local w = {}
 	for k, v in kv:gmatch("([%w_]+)=(%S+)") do
-		afx.world[k] = tonumber(v) or v
+		local n = tonumber(v)
+		if n and n == n and n ~= math.huge and n ~= -math.huge then
+			w[k] = n
+		elseif not n then
+			w[k] = v
+		end
 	end
+	afx.world = w
 end
 
 afx.register_on_data("game", function(data)
 	local g = core.parse_json(data)
 	if type(g) ~= "table" then return end
-	afx.game = g
-	g.mods, g.flags = g.mods or {}, g.flags or {}
+	if type(g.mods) ~= "table" then g.mods = {} end
+	if type(g.flags) ~= "table" then g.flags = {} end
+	if type(g.id) ~= "string" then g.id = "?" end
+	g.water_level = num(g.water_level, -LIMIT, LIMIT, 1)
 	local set = {}
-	for _, m in ipairs(g.mods) do set[m] = true end
+	for _, m in ipairs(g.mods) do
+		if type(m) == "string" then set[m] = true end
+	end
 	g.mod_set = set
+	afx.game = g
 end)
 
 afx.register_on_data("entities", function(data)
 	local t = core.parse_json(data)
 	if type(t) ~= "table" then return end
 	for name, def in pairs(t) do
-		def.name = name
-		core.registered_entities[name] = def
+		if type(name) == "string" and type(def) == "table" then
+			def.name = name
+			if type(def.sounds) ~= "table" then def.sounds = nil end
+			if type(def.sounds_child) ~= "table" then def.sounds_child = nil end
+			if type(def.visual_size) ~= "table" or not tonumber(def.visual_size.x) then
+				def.visual_size = nil
+			end
+			core.registered_entities[name] = def
+		end
 	end
 end)
 
@@ -122,7 +156,7 @@ function player:get_wielded_item()
 	return {get_name = function() return name end}
 end
 function player:get_acoustics() return core.afx_hearing() end
-function player:set_afx_world() end -- the engine hears the server directly
+function player:set_afx_world() end -- (the server's word comes in afx.world)
 function player:get_meta()
 	if not meta_cache then
 		meta_cache = {
@@ -227,9 +261,12 @@ end
 -- knows of digs a mod or a scene makes): the same one once
 local recent = {}
 local function node_event(what, pos, name)
-	local key = what .. core.hash_node_position(pos)
+	local key = what .. afx.poskey(pos)
 	if time - (recent[key] or -10) < 1.5 then return end
 	recent[key] = time
+	if math.random() < 0.05 then
+		for k, t in pairs(recent) do if time - t > 5 then recent[k] = nil end end
+	end
 	local node = {name = name, param1 = 0, param2 = 0}
 	for _, fn in ipairs(what == "dig" and dig_cbs or what == "punch" and punch_cbs or {}) do
 		fn(pos, node, player)
@@ -249,10 +286,9 @@ end
 afx.register_on_data("node", function(data)
 	local what, x, y, z, name = data:match("^(%a+) (%S+) (%S+) (%S+) (%S+)")
 	if not name then return end
-	node_event(what, {x = tonumber(x), y = tonumber(y), z = tonumber(z)}, name)
-	if math.random() < 0.02 then
-		for k, t in pairs(recent) do if time - t > 5 then recent[k] = nil end end
-	end
+	x, y, z = num(x, -LIMIT, LIMIT), num(y, -LIMIT, LIMIT), num(z, -LIMIT, LIMIT)
+	if not (x and y and z) or (what ~= "dig" and what ~= "punch") then return end
+	node_event(what, {x = x, y = y, z = z}, name)
 end)
 
 --[[ The step ]]

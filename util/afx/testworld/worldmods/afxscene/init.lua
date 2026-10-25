@@ -940,3 +940,18 @@ core.register_on_joinplayer(function(player)
 		end)
 	end)
 end)
+
+-- Test: turn afx off for a while and on again (afxscene_toggle_afx_at = s)
+do
+	local at = tonumber(core.settings:get("afxscene_toggle_afx_at") or "")
+	if at then
+		core.after(at, function()
+			core.log("action", "afxscene: afx off")
+			core.settings:set_bool("afx_enable", false)
+			core.after(8, function()
+				core.log("action", "afxscene: afx on")
+				core.settings:set_bool("afx_enable", true)
+			end)
+		end)
+	end
+end

@@ -125,6 +125,7 @@ private:
 	std::vector<ALuint> m_conv_retired;
 	int m_conv_index = -1, m_conv_want = -1;
 	ALuint m_conv_want_buffer = 0;
+	ALuint m_conv_failed_buffer = 0; // a response the effect wouldn't take
 	float m_conv_share = 0.f, m_conv_want_share = 0.f;
 	void stepConvolution(const afx::Acoustics &env, float dt);
 	// the cavity under a hollow floor: a short, low, boomy ring

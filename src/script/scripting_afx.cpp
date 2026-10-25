@@ -11,6 +11,7 @@
 #include "lua_api/l_util.h"
 #include "lua_api/l_settings.h"
 #include "log.h"
+#include "porting.h"
 
 AfxScripting::AfxScripting(Client *client, ModVFS *vfs) :
 	ScriptApiBase(ScriptingType::Client)
@@ -61,6 +62,11 @@ bool AfxScripting::call(lua_State *L, int nargs, int nresults, const char *what)
 		const char *msg = lua_tostring(L, -1);
 		errorstream << "afx: Lua error in " << what << ": " << (msg ? msg : "?") << std::endl;
 		lua_settop(L, base - 1);
+		// a rare error now and then is forgiven; a run of them stops it
+		const u64 now = porting::getTimeMs();
+		if (now - m_last_error_ms > 60000)
+			m_errors = 0;
+		m_last_error_ms = now;
 		if (++m_errors == 21)
 			errorstream << "afx: too many errors, the ambience scripts stop" << std::endl;
 		return false;

@@ -710,8 +710,11 @@ void updateFrame(Client *client, Camera *camera, float dtime)
 		}
 	}
 
-	// keep one slot for the held light, and the flashes'
-	const int max_world = MAX_LIGHTS - 1 - (int)s_flashes.size();
+	// keep one slot for the held light, and the flashes' that show
+	int bright = 0;
+	for (const Flash &f : s_flashes)
+		bright += flashEnvelope(f) * f.strength >= 0.02f ? 1 : 0;
+	const int max_world = MAX_LIGHTS - 1 - bright;
 	if ((int)cands.size() > max_world) {
 		std::nth_element(cands.begin(), cands.begin() + max_world, cands.end(),
 				[] (const Candidate &a, const Candidate &b) { return a.d2 < b.d2; });
@@ -746,8 +749,7 @@ void updateFrame(Client *client, Camera *camera, float dtime)
 				hashSeed(seed_pos), 1.f + 0.5f * std::log2((float)l.count));
 	}
 
-	// Flashes: lightning lights up a wide circle, cold; a blast a smaller
-	// one, hot
+	// Flashes: lightning tints a wide circle cold, a blast a smaller one hot
 	for (const Flash &f : s_flashes) {
 		const float e = flashEnvelope(f) * f.strength;
 		if (e < 0.02f || s_frame.count >= MAX_LIGHTS - 1)

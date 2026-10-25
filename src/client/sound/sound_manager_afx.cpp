@@ -158,6 +158,8 @@ void OpenALSoundManager::deactivateAcoustics()
 	m_afx_active = false;
 	m_afx_snap.reset();
 	m_afx_smoother = afx::Smoother();
+	// (and one that says so, after any still on its way)
+	send(sound_manager_messages_to_proxy::ReportAcoustics{afx::Report()});
 }
 
 afx::Occlusion OpenALSoundManager::computeOcclusion(const PlayingSound &snd)
@@ -534,7 +536,7 @@ void OpenALSoundManager::stepRecordedSpace(const afx::Acoustics &env, f32 dtime)
 		m_efx->setRecordedSpace(-1, 0, 0.0f);
 		return;
 	}
-	// how well the held one fits now
+	// how well it fits: the best fit's own, halved while the held one isn't it
 	afx::SpaceChoice held = c;
 	if (c.index != m_ir_held)
 		held.confidence *= 0.5f;

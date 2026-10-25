@@ -227,6 +227,47 @@ static float passCost(u8 cell, int axis, bool &solid, float &hf)
 	return mp.pass * k;
 }
 
+/// Open cells connected to `c` in the plane across `axis`, within 3 nodes
+/// (so at most 49): what the path could pass, as the path search sees it.
+static int crossSection(const VoxelSnapshot &snap, v3s16 c, int axis)
+{
+	auto passable = [&](v3s16 q) {
+		if (!snap.contains(q))
+			return false;
+		const u8 cell = snap.at(q);
+		if (cell & CELL_UNLOADED)
+			return false;
+		return !cellBlocks(cell, axis) || materialPorous(cellMaterial(cell));
+	};
+	if (!passable(c))
+		return 1;
+	v3s16 queue[49];
+	bool seen[7][7] = {};
+	int head = 0, tail = 0;
+	auto uv = [&](v3s16 q, int &u, int &v) {
+		const v3s16 d = q - c;
+		u = (axis == 0 ? d.Y : d.X) + 3;
+		v = (axis == 2 ? d.Y : d.Z) + 3;
+	};
+	queue[tail++] = c;
+	seen[3][3] = true;
+	while (head < tail) {
+		const v3s16 q = queue[head++];
+		for (int k = 0; k < 6; k++) {
+			if (k / 2 == axis)
+				continue; // stay in the plane
+			const v3s16 n = q + NEIGHBORS[k];
+			int u, v;
+			uv(n, u, v);
+			if (u < 0 || u > 6 || v < 0 || v > 6 || seen[u][v] || !passable(n))
+				continue;
+			seen[u][v] = true;
+			queue[tail++] = n;
+		}
+	}
+	return tail;
+}
+
 static void findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear,
 		PathResult &open, PathResult &wall)
 {
@@ -331,24 +372,26 @@ static void findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear,
 		}
 		res.steps = (float)path.size();
 		if (!path.empty()) {
+			// The doorway: the narrowest cross-section over the last steps
+			// before the sky (under a porch the first sky cell is out past
+			// the eaves, and the cells there are wide open; the door in the
+			// wall is the narrow one). Measured by a flood fill across the
+			// step, through what the path itself passes (air, leaves,
+			// fences, water), so a window two cells off doesn't count.
 			res.exit = path[0];
-			res.inner = path.size() > 1 ? path[1] : path[0];
-			// how wide the way is where it gets out: open cells around the
-			// last step inside, across the direction of that step
-			const v3s16 step = res.exit - res.inner;
-			const int axis = step.X != 0 ? 0 : step.Y != 0 ? 1 : 2;
-			int open_cells = 0;
-			for (int a = -2; a <= 2; a++)
-			for (int b = -2; b <= 2; b++) {
-				v3s16 q = res.inner;
-				if (axis == 0) { q.Y += a; q.Z += b; }
-				else if (axis == 1) { q.X += a; q.Z += b; }
-				else { q.X += a; q.Y += b; }
-				if (snap.contains(q) && !(snap.at(q) & CELL_UNLOADED) &&
-						!cellBlocks(snap.at(q), axis))
-					open_cells++;
+			res.inner = path.size() > 1 ? path[1] : start;
+			res.width = 1 << 30;
+			const size_t last = std::min<size_t>(path.size() - 1, 6);
+			for (size_t k = 1; k <= std::max<size_t>(last, 1); k++) {
+				const v3s16 cell = k < path.size() ? path[k] : start;
+				const v3s16 step = path[k - 1] - cell;
+				const int axis = step.X != 0 ? 0 : step.Y != 0 ? 1 : 2;
+				const int w = crossSection(snap, cell, axis);
+				if (w < res.width) {
+					res.width = w;
+					res.inner = cell;
+				}
 			}
-			res.width = open_cells;
 			size_t k = path.size() > 5 ? path.size() - 5 : 0;
 			v3f d = intToFloat(path[k], 1.f) - ear;
 			if (d.getLengthSQ() > 1e-4f)

@@ -96,7 +96,7 @@ A.register_layer(function(ctx, wanted)
 			s.quiet_until = ctx.now + L.rand(5, 12)
 		end
 		if ctx.now >= s.quiet_until and d >= 6 then
-			wanted["ck" .. core.hash_node_position(s.pos)] = {sound = "afx_cricket", pos = s.pos,
+			wanted["ck" .. core.afx.poskey(s.pos)] = {sound = "afx_cricket", pos = s.pos,
 				gain = 0.1, range = 20, fade = d < 8 and 0.08 or 0.3}
 		end
 	end

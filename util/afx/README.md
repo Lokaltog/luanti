@@ -398,6 +398,35 @@ The sound thread adds each source's applied mix to its report while the view is 
   - Turning afx off keeps what the server said, for when it comes back on.
   - The mood leaves the picture when afx is off.
 
+### Review fixes (three independent reviewers: the client runtime, the engine audio and visuals, the Lua and the bridge)
+
+- **afx off and on again:**
+  - The server only treats a client as afx while it's reporting (5 s, as `get_acoustics` does), so with afx off the bridge falls back to plain sounds for its content.
+  - Events that arrive while afx is off are dropped, not replayed in a burst when it comes back; only what was said before the very first start waits.
+  - The tuning view, `hearing()` and the report don't show stale state, and the mood leaves the picture.
+  - `/afx` turns afx back on when it's off.
+- **What a server sends is checked:** every number is parsed, kept finite and clamped (wind 0..3, rain 0..1, gust 0..2, play gain 0..2, pitch 0.25..4, range 0..128, positions in the world).
+  - Tables are type-checked, and channel names are limited to `[A-Za-z0-9_]`.
+  - The world state is replaced by each message, so a value the server stops sending is gone.
+  - The mixer only sets its own sliders' settings, with their ranges.
+  - Wind chimes ring at most 6 chimes × 4 notes a second.
+  - Lua errors decay: a rare one is forgiven, and a run of 20 stops the scripts and their sounds, with a chat line saying so.
+- **Sounds:**
+  - Emitters on objects notice when their sound went with the object, or when the object they want changes (`afx_sound_alive`).
+  - A fade with no step stops the sound.
+  - Local sound lookup checks `.0`–`.9`.
+  - A recorded space the effect won't take isn't retried every apply.
+- **Doorway:** the narrowest connected cross-section over the last steps before the sky, flood-filled through what the path passes. A porch, a window two cells off, or standing in the doorway no longer fool it. It's tested with a door, a crack, an X-facing door with the ear in it, and a porch.
+- **Motion:** `soundVelocity` works by the clock, not the caller's step, and starts over for an object it hasn't followed for a quarter second, so a mob that groans now and then has no Doppler blip.
+- **Port regressions found:**
+  - Cats purr again: a cat that's settled by you, since tameness lives on the server.
+  - Clocks in item frames tick again: the frame shows the item as its texture.
+  - Discoveries work on servers without the bridge, kept per server.
+  - Position keys no longer collide: LuaJIT prints 14 digits of a 15-digit hash, so neighbouring nodes shared keys.
+  - The wield callback runs only when the item changes.
+- **Hygiene:** pending AL errors are reported rather than swallowed, the limiter's header is included on every platform, and the comments now match what the code does (flashes tint, they don't add light).
+- **Test:** `afxscene_toggle_afx_at = s` turns afx off for 8 s mid-scenario.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

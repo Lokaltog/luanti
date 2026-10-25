@@ -362,6 +362,12 @@ int ModApiAfx::l_sound_fade(lua_State *L)
 	const float step = luaL_checknumber(L, 2), gain = luaL_checknumber(L, 3);
 	if (!sound || !afx::scriptContext().sounds.count(h))
 		return 0;
+	if (step <= 0.f && gain <= 0.f) {
+		// (the manager ignores a fade with no step: stop it outright)
+		sound->stopSound(h);
+		forget(h);
+		return 0;
+	}
 	sound->fadeSound(h, step, gain);
 	// faded out: the manager stops it at the end; it's no longer ours
 	if (gain <= 0.f)
@@ -391,6 +397,15 @@ int ModApiAfx::l_afx_sound_move(lua_State *L)
 	const v3f vel = lua_istable(L, 3) ? read_v3f(L, 3) : v3f();
 	sound->updateSoundPosVel(h, pos, vel);
 	return 0;
+}
+
+// afx_sound_alive(handle): still ours and going (an object's sound goes
+// when the object does)
+int ModApiAfx::l_afx_sound_alive(lua_State *L)
+{
+	lua_pushboolean(L, lua_isnumber(L, 1) &&
+			afx::scriptContext().sounds.count((sound_handle_t)lua_tointeger(L, 1)) != 0);
+	return 1;
 }
 
 int ModApiAfx::l_afx_has_sound(lua_State *L)
@@ -610,6 +625,7 @@ void ModApiAfx::Initialize(lua_State *L, int top)
 	API_FCT(sound_stop);
 	API_FCT(afx_sound_move);
 	API_FCT(afx_has_sound);
+	API_FCT(afx_sound_alive);
 	API_FCT(afx_player);
 	API_FCT(afx_objects);
 	API_FCT(afx_hearing);

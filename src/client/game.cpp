@@ -3561,8 +3561,12 @@ void Game::updateFrame(ProfilerGraph *graph, RunStats *stats, f32 dtime,
 		// Update wielded tool
 		ItemStack selected_item, hand_item;
 		ItemStack &tool_item = player->getWieldedItem(&selected_item, &hand_item);
-		// afx: taking something in hand
-		afx::scriptNode("wield", floatToInt(player->getPosition(), BS), selected_item.name);
+		// afx: taking something in hand (only when it's something else)
+		static std::string afx_last_wield;
+		if (selected_item.name != afx_last_wield) {
+			afx_last_wield = selected_item.name;
+			afx::scriptNode("wield", floatToInt(player->getPosition(), BS), selected_item.name);
+		}
 
 		bool skip_anim = client->consumeSkipNextWieldAnimation();
 		camera->wield(tool_item, !skip_anim);

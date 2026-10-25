@@ -3,6 +3,13 @@
 
 #include "efx.h"
 
+// (for ALC_OUTPUT_LIMITER_SOFT; al_helpers.h leaves it out on some platforms)
+#if __has_include(<AL/alext.h>)
+	#include <AL/alext.h>
+#elif __has_include(<alext.h>)
+	#include <alext.h>
+#endif
+
 #include <algorithm>
 #include <cmath>
 
@@ -433,6 +440,7 @@ void EfxRig::applyRemote(const afx::RemoteSpace &r, const ListenerFrame &frame)
 	f.late_delay = 0.03f;
 	f.pan = frame.toLocal(r.dir) * 0.6f;
 	updateFar();
+	warn_if_al_error("afx: applyRemote");
 }
 
 void EfxRig::updateFar()
@@ -468,6 +476,8 @@ void EfxRig::setRecordedSpace(int index, ALuint ir_buffer, float share)
 {
 	if (!m_conv_effect)
 		return;
+	if (ir_buffer && ir_buffer == m_conv_failed_buffer)
+		ir_buffer = 0;
 	m_conv_want = ir_buffer ? index : -1;
 	m_conv_want_buffer = ir_buffer;
 	m_conv_want_share = m_conv_want >= 0 ? clampf(share, 0.f, 1.f) : 0.f;
@@ -479,7 +489,7 @@ void EfxRig::stepConvolution(const afx::Acoustics &env, float dt)
 		return;
 	// slots given up earlier go once no source sends to them
 	for (size_t i = 0; i < m_conv_retired.size();) {
-		alGetError();
+		warn_if_al_error("afx: before the recorded-space slots"); // (and clear it)
 		alDeleteAuxiliaryEffectSlots(1, &m_conv_retired[i]);
 		if (alGetError() == AL_NO_ERROR) {
 			m_conv_retired[i] = m_conv_retired.back();
@@ -503,7 +513,7 @@ void EfxRig::stepConvolution(const afx::Acoustics &env, float dt)
 		m_conv_slot = 0;
 		m_conv_index = -1;
 		if (m_conv_want >= 0) {
-			alGetError();
+			warn_if_al_error("afx: before the recorded-space slots"); // (and clear it)
 			ALuint slot = 0;
 			alGenAuxiliaryEffectSlots(1, &slot);
 			alAuxiliaryEffectSlotf(slot, AL_EFFECTSLOT_GAIN, 0.f);
@@ -516,6 +526,8 @@ void EfxRig::stepConvolution(const afx::Acoustics &env, float dt)
 			} else {
 				warningstream << "afx: can't load recorded space " << m_conv_want << std::endl;
 				alDeleteAuxiliaryEffectSlots(1, &slot);
+				// not again for this buffer (it'd fail 30 times a second)
+				m_conv_failed_buffer = m_conv_want_buffer;
 				m_conv_want = -1;
 			}
 		}

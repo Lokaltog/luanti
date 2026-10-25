@@ -10,13 +10,13 @@ local L = A.lib
 -- Wind strength over minutes (slow swells and gusts), before this spot's
 -- exposure shapes it
 function A.wind_now()
-	return tonumber(core.afx.world.wind_raw) or 0.8
+	return core.afx.num(core.afx.world.wind_raw, 0, 3, 0.8)
 end
 
 -- Where the wind blows (a unit vector toward where it blows)
 function A.wind_dir()
 	local w = core.afx.world
-	local x, z = tonumber(w.wind_dir_x) or 1, tonumber(w.wind_dir_z) or 0
+	local x, z = core.afx.num(w.wind_dir_x, -1, 1, 1), core.afx.num(w.wind_dir_z, -1, 1, 0)
 	local l = math.sqrt(x * x + z * z)
 	if l < 1e-3 then return {x = 1, y = 0, z = 0} end
 	return {x = x / l, y = 0, z = z / l}
@@ -179,7 +179,7 @@ local function rain_layer(ctx, wanted)
 		local n = core.get_node_or_nil(op.exit)
 		if roofed and n and n.name == "air" then
 			got_gutter = true
-			wanted["gutter" .. core.hash_node_position(vector.round(op.exit))] = {sound = "afx_gutter",
+			wanted["gutter" .. core.afx.poskey(op.exit)] = {sound = "afx_gutter",
 				pos = op.exit, gain = 0.35 * gutter, range = 14}
 		elseif raining and n and n.name == "air" then
 			-- no eave: the rain itself, coming down just outside the door, on
@@ -225,7 +225,7 @@ local function rain_layer(ctx, wanted)
 							end
 						end
 						if roofed and not got_gutter then
-							local key = "gutter" .. core.hash_node_position(p)
+							local key = "gutter" .. core.afx.poskey(p)
 							got_gutter = true
 							wanted[key] = {sound = "afx_gutter", pos = p, gain = 0.35 * gutter, range = 14}
 						end
@@ -247,7 +247,7 @@ A.register_layer(function(ctx, wanted)
 	-- tell the engine, so distant sounds travel with the weather (a test
 	-- scenario on the server can fix the wind)
 	local d = A.wind_dir()
-	local w = tonumber(core.afx.world.wind_fixed) or ctx.wind
+	local w = core.afx.num(core.afx.world.wind_fixed, 0, 3, nil) or ctx.wind
 	local fd = ctx.rain_front_dir or {x = 0, z = 0}
 	core.afx_set_world({wind_x = d.x, wind_z = d.z, wind = w,
 		rain = math.min(1, ctx.rain + 0.5 * ctx.snow),
@@ -301,8 +301,10 @@ A.thunder_at = on_strike
 -- from the server: "x y z crack" (crack 1: the game plays its own at the strike)
 core.afx.register_on_data("strike", function(data)
 	local x, y, z, crack = data:match("^(%S+) (%S+) (%S+) ?(%S*)")
-	if not z then return end
-	on_strike({x = tonumber(x), y = tonumber(y), z = tonumber(z)}, crack == "1")
+	local N = core.afx.num
+	x, y, z = N(x, -31000, 31000), N(y, -31000, 31000), N(z, -31000, 31000)
+	if not (x and y and z) then return end
+	on_strike({x = x, y = y, z = z}, crack == "1")
 end)
 
 --[[ Windows rattle when a big sound arrives: thunder, a blast ]]
@@ -341,18 +343,20 @@ A.rattle = rattle
 -- explosions, wherever the game sets them off: "x y z loudness"
 core.afx.register_on_data("blast", function(data)
 	local x, y, z, k = data:match("^(%S+) (%S+) (%S+) (%S+)")
-	if not k then return end
-	local pos = {x = tonumber(x), y = tonumber(y), z = tonumber(z)}
-	rattle(pos, tonumber(k) or 1)
+	local N = core.afx.num
+	x, y, z, k = N(x, -31000, 31000), N(y, -31000, 31000), N(z, -31000, 31000), N(k, 0, 1.5, 1)
+	if not (x and y and z) then return end
+	local pos = {x = x, y = y, z = z}
+	rattle(pos, k)
 	local p0 = core.get_connected_players()[1]
 	local d0 = p0 and vector.distance(p0:get_pos(), pos) or 30
-	local near = math.min(1, 24 / math.max(1, d0)) * math.min(1.5, tonumber(k) or 1)
+	local near = math.min(1, 24 / math.max(1, d0)) * k
 	if near > 0.05 then core.afx_flash("blast", pos, near, 0.25 * near * sky_seen()) end
 end)
 
 -- a gust rising (the server's weather): "peak"
 core.afx.register_on_data("gust", function(data)
-	if A.on_gust then A.on_gust(tonumber(data) or 1) end
+	if A.on_gust then A.on_gust(core.afx.num(data, 0, 2, 1)) end
 end)
 
 --[[ Drafts: gaps in walls whistle when the wind is up ]]
@@ -431,7 +435,7 @@ A.register_layer(function(ctx, wanted)
 	for i = 1, math.min(2, #gaps) do
 		local g = gaps[i]
 		-- a pinhole whistles higher and thinner than a window
-		wanted["draft" .. core.hash_node_position(g.pos)] = {sound = "afx_draft", pos = g.pos,
+		wanted["draft" .. core.afx.poskey(g.pos)] = {sound = "afx_draft", pos = g.pos,
 			gain = math.min(0.7, (wind - 0.85) * 1.2) * (g.narrow and 0.8 or 0.6),
 			fade = 0.4, range = 14, pitch = g.narrow and 1.3 or 1.0}
 	end

@@ -60,8 +60,9 @@ local function kinds(ctx)
 end
 
 A.register_layer(function(ctx)
-	-- what's been found is kept per world: wait to know which
-	if not core.afx.game.id then return end
+	-- what's been found is kept per world: wait to know which (a server
+	-- without the bridge never says: then it's per server)
+	if not core.afx.game.id and core.get_gametime() < 15 then return end
 	local st = ctx.st
 	local now = ctx.now
 	if now < (st.next_discovery or 0) then return end

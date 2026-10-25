@@ -1886,7 +1886,9 @@ int ObjectRef::l_set_afx_world(lua_State *L)
 	NO_MAP_LOCK_REQUIRED;
 	ObjectRef *ref = checkObject<ObjectRef>(L, 1);
 	RemotePlayer *player = getplayer(ref);
-	if (!player || player->afx_state_time == 0 || !lua_istable(L, 2))
+	// (a client that stopped reporting has afx off: nothing for it)
+	if (!player || player->afx_state_time == 0 ||
+			porting::getTimeMs() - player->afx_state_time > 5000 || !lua_istable(L, 2))
 		return 0;
 	std::ostringstream os;
 	lua_pushnil(L);
@@ -1922,8 +1924,11 @@ int ObjectRef::l_send_afx_data(lua_State *L)
 	std::string channel = luaL_checkstring(L, 2);
 	size_t len = 0;
 	const char *data = luaL_checklstring(L, 3, &len);
-	if (!player || player->afx_state_time == 0 || channel.empty() ||
-			channel.find(' ') != std::string::npos) {
+	bool channel_ok = !channel.empty() && channel.size() <= 32;
+	for (char c : channel)
+		channel_ok = channel_ok && (std::isalnum((unsigned char)c) || c == '_');
+	if (!player || player->afx_state_time == 0 ||
+			porting::getTimeMs() - player->afx_state_time > 5000 || !channel_ok) {
 		lua_pushboolean(L, false);
 		return 1;
 	}

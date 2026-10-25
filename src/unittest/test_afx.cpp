@@ -834,4 +834,35 @@ void TestAfx::testOpening()
 	UASSERT(crack.has_opening > 0.5f && crack.opening_size == 1);
 	// out under the sky: none
 	UASSERT(openField().probe(v3f(0.3f, 1.6f, 0.2f)).has_opening == 0.f);
+
+	// standing in the doorway itself, a door facing +X: the doorway is the
+	// cell you're in, two cells across
+	{
+		World w = openField();
+		w.fill({-4, 0, -4}, {4, 5, 4}, Material::Wood);
+		w.fill({-3, 0, -3}, {3, 4, 3}, Material::Air);
+		w.fill({4, 0, 0}, {4, 1, 0}, Material::Air);
+		w.markSky();
+		Acoustics a = w.probe(v3f(4.f, 1.f, 0));
+		infostream << "opening x-door: out " << a.outdoor_gain << " path " << a.outdoor_path << " inner " << a.opening_inner.X << "," << a.opening_inner.Y
+				<< "," << a.opening_inner.Z << " size " << a.opening_size << std::endl;
+		UASSERT(a.has_opening > 0.5f);
+		UASSERT(a.opening_inner.X >= 3 && a.opening_inner.X <= 4 && a.opening_size <= 3);
+	}
+	// a porch: a roof out over the door, open on three sides; the doorway is
+	// still the door, not the porch
+	{
+		World w = openField();
+		w.fill({-4, 0, -4}, {4, 5, 4}, Material::Wood);
+		w.fill({-3, 0, -3}, {3, 4, 3}, Material::Air);
+		w.fill({0, 0, -4}, {0, 1, -4}, Material::Air);
+		w.fill({-3, 4, -8}, {3, 4, -5}, Material::Wood); // the porch roof
+		w.markSky();
+		Acoustics a = w.probe(v3f(0, 1.6f, 0));
+		infostream << "opening porch: inner " << a.opening_inner.X << "," << a.opening_inner.Y
+				<< "," << a.opening_inner.Z << " exit z " << a.opening.Z << " size "
+				<< a.opening_size << std::endl;
+		UASSERT(a.has_opening > 0.5f);
+		UASSERT(a.opening_inner.Z == -4 && a.opening_size <= 3);
+	}
 }

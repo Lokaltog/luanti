@@ -143,12 +143,12 @@ local function pick(t) return t[rng:next(1, #t)] end
 --[[ Weather: from the server (afx_ambience's bridge), at the player ]]
 
 function afx_ambience.rain_at()
-	return tonumber(afx.world.raining) or 0
+	return afx.num(afx.world.raining, 0, 1, 0)
 end
 
 -- Snowfall 0..1 here
 function afx_ambience.snow_at()
-	return tonumber(afx.world.snowing) or 0
+	return afx.num(afx.world.snowing, 0, 1, 0)
 end
 
 --[[ What the game already plays: don't double it ]]
@@ -255,7 +255,13 @@ local function reconcile(pname, st, wanted)
 		local w = wanted[key]
 		-- the same key somewhere else now (roof rain over another room):
 		-- let the old one fade where it was and start again over there
-		if w and w.pos and e.pos and vector.distance(w.pos, e.pos) > 1.5 then
+		local w_obj = w and w.object and (type(w.object) == "table" and w.object._id or w.object)
+		if not core.afx_sound_alive(e.handle) then
+			-- its object went away (the engine let the sound go): start over
+			st.emitters[key] = nil
+		elseif w and w.pos and e.pos and vector.distance(w.pos, e.pos) > 1.5 or
+				w and w_obj ~= e.object then
+			-- the same key somewhere else now, or on another object
 			core.sound_fade(e.handle, e.fade, 0)
 			st.emitters[key] = nil
 		elseif not w then
@@ -277,7 +283,8 @@ local function reconcile(pname, st, wanted)
 			})
 			if handle then
 				core.sound_fade(handle, w.fade or FADE, w.gain)
-				st.emitters[key] = {handle = handle, gain = w.gain, fade = w.fade or FADE, pos = w.pos}
+				st.emitters[key] = {handle = handle, gain = w.gain, fade = w.fade or FADE, pos = w.pos,
+					object = w.object and (type(w.object) == "table" and w.object._id or w.object)}
 			end
 		end
 	end
@@ -736,7 +743,8 @@ end)
 
 -- (the server knows the game's dimensions)
 local function dimension()
-	return afx.world.dimension or "overworld"
+	local d = afx.world.dimension
+	return type(d) == "string" and d or "overworld"
 end
 
 --[[ Main loop ]]
@@ -863,8 +871,16 @@ end)
 afx.register_on_data("play", function(data)
 	local t = core.parse_json(data)
 	if type(t) ~= "table" or type(t.name) ~= "string" then return end
-	afx_ambience.play(t.name, {pos = t.pos, gain = t.gain, pitch = t.pitch,
-		max_hear_distance = t.max_hear_distance}, true)
+	local pos
+	if type(t.pos) == "table" then
+		local x, y, z = afx.num(t.pos.x, -31000, 31000), afx.num(t.pos.y, -31000, 31000),
+				afx.num(t.pos.z, -31000, 31000)
+		if not (x and y and z) then return end
+		pos = {x = x, y = y, z = z}
+	end
+	afx_ambience.play(t.name, {pos = pos, gain = afx.num(t.gain, 0, 2, 1),
+		pitch = afx.num(t.pitch, 0.25, 4, 1),
+		max_hear_distance = afx.num(t.max_hear_distance, 0, 128, 32)}, true)
 end)
 
 -- Test hooks: they let the server reach into this client (its state, its

@@ -41,12 +41,11 @@ end
 local function clock_nearby(ctx)
 	for _, obj in ipairs(core.get_objects_inside_radius(ctx.ppos, 8)) do
 		local ent = obj:get_luaentity()
-		if ent and ent.name and ent.name:find("frame") then
-			-- item frames keep their item in a field; games name it differently
-			for _, k in ipairs({"_item", "item", "_itemstring"}) do
-				local v = ent[k]
-				if type(v) == "string" and v:find("clock") then return obj end
-			end
+		if ent and ent.name and (ent.name:find("frame") or ent.name:find("item_entity")) then
+			-- what a frame holds is drawn as an item: its name is the texture
+			-- (wielditem visual) or in the mesh's
+			local shows = (obj._texture or "") .. " " .. (obj._mesh or "")
+			if shows:find("clock") then return obj end
 		end
 	end
 	for _, p in ipairs(find(ctx, 8, {"group:clock"})) do return p end
@@ -68,17 +67,24 @@ local function home_layer(ctx, wanted)
 	end
 end
 
+-- A cat close by that's been sitting still a while purrs. (Whether it's
+-- tamed lives on the server; the client sees it settle by you.)
+local still_since = {} -- object id -> when it last moved
 local function cats(ctx, wanted)
+	local now = ctx.now
 	for _, obj in ipairs(core.get_objects_inside_radius(ctx.ppos, 4)) do
-		local ent = obj:get_luaentity()
-		if ent and ent.name and (ent.name:find(":cat") or ent.name:find("kitten")) then
-			-- a tamed or sitting cat close by purrs
-			-- (mcl_mobs sets owner = "" on wild ones)
-			if ent.tamed or (ent.owner and ent.owner ~= "") or ent.order == "sit" or ent._sitting then
+		local name = obj._name or ""
+		if name:find(":cat") or name:find("kitten") or name:find("ocelot") then
+			local v = obj:get_velocity()
+			if vector.length(v) > 0.2 or not still_since[obj._id] then still_since[obj._id] = now end
+			if now - still_since[obj._id] > 4 then
 				wanted.purr = {sound = "afx_purr", object = obj, gain = 0.5, range = 6}
 				return
 			end
 		end
+	end
+	if math.random() < 0.02 then
+		for id, t in pairs(still_since) do if now - t > 120 then still_since[id] = nil end end
 	end
 end
 
@@ -239,10 +245,12 @@ A.register_layer(function(ctx, wanted)
 	local wind = ctx.wind or 0.8
 	local lo, hi = vector.offset(ctx.ppos, -16, -6, -16), vector.offset(ctx.ppos, 16, 10, 16)
 	-- chimes: the stronger the wind, the more notes, a little louder
-	for _, p in ipairs(core.find_nodes_in_area(lo, hi, {"afx_ambience:wind_chime"})) do
+	local chimes = core.find_nodes_in_area(lo, hi, {"afx_ambience:wind_chime"})
+	for i = 1, math.min(#chimes, 6) do
+		local p = chimes[i]
 		if exposed(p) then
 			-- a breeze stirs it now and then; a gust sets it ringing
-			local notes = math.floor(math.max(0, (wind - 0.9) * 5) + math.random() * 0.55)
+			local notes = math.min(4, math.floor(math.max(0, (wind - 0.9) * 5) + math.random() * 0.55))
 			for _ = 1, notes do
 				core.after(L.rand(0, 1), function()
 					afx_ambience.play("afx_bowl", {pos = p, to_player = ctx.pname,

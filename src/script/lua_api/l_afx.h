@@ -35,6 +35,7 @@ private:
 	static int l_sound_stop(lua_State *L);
 	static int l_afx_sound_move(lua_State *L);
 	static int l_afx_has_sound(lua_State *L);
+	static int l_afx_sound_alive(lua_State *L);
 
 	// The player, the objects around, what the engine hears
 	static int l_afx_player(lua_State *L);

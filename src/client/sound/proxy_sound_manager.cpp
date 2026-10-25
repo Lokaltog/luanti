@@ -160,6 +160,9 @@ void ProxySoundManager::printPlayingSounds()
 void ProxySoundManager::setAcoustics(std::shared_ptr<const afx::VoxelSnapshot> snap,
 		const afx::Params &params)
 {
+	// afx off: what it last heard is no longer true
+	if (!snap)
+		m_acoustic_report = afx::Report();
 	send(sound_manager_messages_to_mgr::SetAcoustics{std::move(snap), params});
 }
 

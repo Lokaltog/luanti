@@ -787,38 +787,44 @@ static void sendState(Client *client, ISoundManager *sound, float dtime)
 }
 
 namespace {
-struct Motion { v3f pos, vel; float age = 0.f; bool valid = false; u32 frame = 0; };
+struct Motion { v3f pos, vel; float age = 0.f; bool valid = false; u64 t_us = 0; };
 }
-static u32 s_frame_no = 1; // a second sound on the same object, the same frame
 static std::unordered_map<u16, Motion> s_motion;
 static float s_motion_sweep = 0.f;
 
-v3f soundVelocity(u16 object_id, v3f pos, float dtime)
+v3f soundVelocity(u16 object_id, v3f pos, float)
 {
+	// by the clock, not by the caller's dtime: the client's step and the
+	// ambience's both ask, at different points of a frame
+	const u64 now = porting::getTimeUs();
 	Motion &m = s_motion[object_id];
 	m.age = 0.f;
-	if (m.valid && m.frame == s_frame_no)
-		return m.vel;
-	m.frame = s_frame_no;
-	if (!m.valid || dtime <= 0.f) {
-		m.pos = pos;
+	const float dt = m.valid ? (now - m.t_us) / 1e6f : 0.f;
+	if (m.valid && dt < 0.004f)
+		return m.vel; // asked again this frame
+	// not asked about for a while (a mob that groans now and then): where it
+	// was then says nothing about its speed now
+	if (!m.valid || dt > 0.25f) {
+		m = Motion();
 		m.valid = true;
+		m.pos = pos;
+		m.t_us = now;
 		return m.vel;
 	}
-	v3f raw = (pos - m.pos) / dtime;
+	v3f raw = (pos - m.pos) / dt;
 	m.pos = pos;
+	m.t_us = now;
 	if (raw.getLengthSQ() > 60.f * 60.f) // a teleport, not a motion
 		raw = m.vel;
 	// about a tenth of a second: the interpolated motion's own steps go, a
 	// real change of speed comes through
-	const float k = 1.f - std::exp(-dtime / 0.1f);
+	const float k = 1.f - std::exp(-dt / 0.1f);
 	m.vel += (raw - m.vel) * k;
 	return m.vel;
 }
 
 void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 {
-	s_frame_no++;
 	// forget objects nobody asked about for a while
 	if ((s_motion_sweep += dtime) > 5.f) {
 		for (auto it = s_motion.begin(); it != s_motion.end();) {
@@ -836,6 +842,7 @@ void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 		if (s_was_enabled) {
 			scriptStop(); // the ambience goes quiet with it
 			fx::setMood(0.f, 0.f);
+			s_debug_snap.reset(); // (the tuning view draws nothing stale)
 			sound->setAcoustics(nullptr, p); // tells the sound thread to detach
 			driveBed(sound, s_mood.dread, 0.f);
 			driveBed(sound, s_mood.cozy, 0.f);

@@ -210,10 +210,10 @@ struct Acoustics {
 	v3f outdoor_dir;           // node space, unit; zero when standing under the sky
 	float outdoor_focus = 0.f; // 0 wide/ambient .. 1 a single opening
 	// Where the open path gets out: the first cell under the sky (just
-	// outside a door), the last one before it (the doorway itself), and how
-	// many open cells the doorway has around it in its plane (1 a crack, 2
-	// a door, more a wide opening). has_opening 0 when there's none (or
-	// you're out under the sky).
+	// outside a door, or past a porch), the doorway (the narrowest
+	// cross-section over the last steps before it), and that cross-section
+	// in open cells (1 a crack, 2 a door, up to 49 a wide opening).
+	// has_opening 0 when there's none (or you're out under the sky).
 	float has_opening = 0.f;
 	v3f opening;               // node space
 	v3f opening_inner;         // node space
@@ -255,8 +255,6 @@ struct Acoustics {
 	float water_depth = 0.f;   // nodes of water above the ear (0 in air)
 };
 
-/// The sound thread's smoothed state, reported back for the debug HUD and for
-/// other client systems (the fx renderer can key exposure and fog on it).
 /// One playing sound as the tuning view shows it
 struct DebugSource {
 	std::string name;
@@ -270,6 +268,8 @@ struct DebugSource {
 			remote = 0.f, neighbor = 0.f, hollow = 0.f;
 };
 
+/// The sound thread's smoothed state, reported back for the debug HUD and for
+/// other client systems (the fx renderer can key exposure and fog on it).
 struct Report {
 	bool valid = false;
 	Acoustics now;    // smoothed values currently applied

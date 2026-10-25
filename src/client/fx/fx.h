@@ -181,9 +181,10 @@ const FrameLights &frameLights();
 	Events from the audio (afx), so picture and sound share a clock
 */
 
-/// A brief light where something happened: lightning, a blast. Lights the
-/// world around it while it lasts; `sky` > 0 also flashes the whole view
-/// (that much: 1 out in the open, less from a doorway).
+/// A brief light where something happened: lightning, a blast. It tints the
+/// lights around it while it lasts (the light list only colours the light
+/// that's there, it doesn't add any); `sky` > 0 also brightens the whole
+/// view (that much: 1 out in the open, less from a doorway).
 enum class FlashKind : u8 { Lightning, Blast };
 void addFlash(FlashKind kind, v3f pos_nodes, float strength, float sky);
 /// The mood the audio is in (afx_mood.h): tension greys and darkens the

@@ -227,7 +227,9 @@ core.register_globalstep(function(dtime)
 		if player.get_acoustics and player:get_acoustics() then
 			if not sent[name] then
 				if player:send_afx_data("game", game_json) then
-					player:send_afx_data("entities", entities_json)
+					if not player:send_afx_data("entities", entities_json) then
+						core.log("warning", "afx_ambience: couldn't send the creature table to " .. name)
+					end
 					sent[name] = true
 				end
 			end

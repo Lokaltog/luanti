@@ -66,7 +66,8 @@ bool soundExistsLocally(const std::string &name)
 	bool found = false;
 	for (const std::string &dir : {porting::path_share + DIR_DELIM + "sounds" + DIR_DELIM + "afx",
 			porting::path_share + DIR_DELIM + "sounds", porting::path_user + DIR_DELIM + "sounds"}) {
-		for (const char *ext : {".ogg", ".0.ogg", ".1.ogg"}) {
+		for (const char *ext : {".ogg", ".0.ogg", ".1.ogg", ".2.ogg", ".3.ogg", ".4.ogg", ".5.ogg",
+				".6.ogg", ".7.ogg", ".8.ogg", ".9.ogg"}) {
 			if (fs::PathExists(dir + DIR_DELIM + name + ext)) {
 				found = true;
 				break;
