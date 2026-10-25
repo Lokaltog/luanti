@@ -46,6 +46,9 @@ constexpr sound_handle_t SOUND_HANDLE_T_MAX = std::numeric_limits<sound_handle_t
 
 /// afx fork: is there a sound file by this name with the client (its own
 /// sounds, a sound pack), whatever the server sent? Cached.
+/// afx: a sound the engine ships itself (share/sounds/afx/afx_*): it wins
+/// over a server's media of the same name
+bool engineOwnsSound(const std::string &name);
 bool soundExistsLocally(const std::string &name);
 
 class ISoundManager

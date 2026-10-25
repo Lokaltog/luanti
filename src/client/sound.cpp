@@ -55,6 +55,20 @@ void SoundFallbackPathProvider::addThePaths(const std::string &name,
 			DIR_DELIM + name, paths);
 }
 
+bool engineOwnsSound(const std::string &name)
+{
+	if (name.rfind("afx_", 0) != 0)
+		return false;
+	const std::string dir = porting::path_share + DIR_DELIM + "sounds" + DIR_DELIM + "afx" +
+			DIR_DELIM + name;
+	for (const char *ext : {".ogg", ".0.ogg", ".1.ogg", ".2.ogg", ".3.ogg", ".4.ogg", ".5.ogg",
+			".6.ogg", ".7.ogg", ".8.ogg", ".9.ogg"}) {
+		if (fs::PathExists(dir + ext))
+			return true;
+	}
+	return false;
+}
+
 bool soundExistsLocally(const std::string &name)
 {
 	static std::unordered_map<std::string, bool> cache;

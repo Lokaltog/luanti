@@ -894,6 +894,13 @@ bool Client::loadMedia(const std::string &data, const std::string &filename,
 		".ogg", NULL
 	};
 	name = removeStringEnd(filename, sound_ext);
+	if (!name.empty() && engineOwnsSound(name)) {
+		// afx: the engine's own ambience sounds (share/sounds/afx) win over a
+		// server's copy, which is usually an old afx_ambience mod's
+		infostream << "afx: ignoring server media \"" << filename
+				<< "\", the engine's own sounds/afx/" << name << " plays" << std::endl;
+		return true;
+	}
 	if (!name.empty()) {
 		TRACESTREAM(<< "Client: Attempting to load sound file \""
 				<< filename << "\"" << std::endl);
