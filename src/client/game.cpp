@@ -399,7 +399,7 @@ Game::Game() :
 
 Game::~Game()
 {
-	afx::scriptStop(); // its sounds and scripts go before the client
+	afx::scriptShutdown(); // its sounds and scripts go before the client
 	delete client;
 	soundmaker.reset();
 	sound_manager.reset();

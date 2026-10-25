@@ -113,7 +113,6 @@ function player:get_pos() return vector.copy(P.pos or vector.zero()) end
 function player:get_velocity() return vector.copy(P.velocity or vector.zero()) end
 function player:get_hp() return P.hp or 20 end
 function player:get_breath() return P.breath or 10 end
-function player:get_look_horizontal() return P.yaw and math.rad(P.yaw) or 0 end
 function player:get_properties()
 	return {hp_max = P.hp_max or 20, breath_max = (P.breath_max or 0) > 0 and P.breath_max or 10,
 		eye_height = P.eye_height or 1.6}

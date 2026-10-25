@@ -289,7 +289,7 @@ int ModApiAfx::l_sound_play(lua_State *L)
 		getfloatfield(L, 1, "gain", spec.gain);
 		getfloatfield(L, 1, "pitch", spec.pitch);
 	}
-	if (spec.name.empty())
+	if (spec.name.empty() || !afx::soundAvailable(sound, spec.name))
 		return 0;
 	bool positional = false;
 	v3f pos, vel;
@@ -537,7 +537,12 @@ int ModApiAfx::l_afx_storage_get(lua_State *L)
 
 int ModApiAfx::l_afx_storage_set(lua_State *L)
 {
-	afx::storageSet(storageKey(L, 1), lua_isstring(L, 2) ? lua_tostring(L, 2) : "");
+	std::string v = lua_isstring(L, 2) ? lua_tostring(L, 2) : "";
+	// one line per entry in the file
+	for (char &c : v)
+		if (c == '\n' || c == '\r')
+			c = ' ';
+	afx::storageSet(storageKey(L, 1), v);
 	return 0;
 }
 

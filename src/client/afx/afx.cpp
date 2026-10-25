@@ -835,6 +835,7 @@ void update(Client *client, ISoundManager *sound, v3f ear, float dtime)
 	if (!p.enabled) {
 		if (s_was_enabled) {
 			scriptStop(); // the ambience goes quiet with it
+			fx::setMood(0.f, 0.f);
 			sound->setAcoustics(nullptr, p); // tells the sound thread to detach
 			driveBed(sound, s_mood.dread, 0.f);
 			driveBed(sound, s_mood.cozy, 0.f);

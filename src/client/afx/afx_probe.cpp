@@ -344,7 +344,8 @@ static void findSky(const VoxelSnapshot &snap, v3s16 start, v3f ear,
 				if (axis == 0) { q.Y += a; q.Z += b; }
 				else if (axis == 1) { q.X += a; q.Z += b; }
 				else { q.X += a; q.Y += b; }
-				if (snap.contains(q) && !cellBlocks(snap.at(q), axis))
+				if (snap.contains(q) && !(snap.at(q) & CELL_UNLOADED) &&
+						!cellBlocks(snap.at(q), axis))
 					open_cells++;
 			}
 			res.width = open_cells;

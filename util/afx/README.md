@@ -376,6 +376,28 @@ The pre-refactor build (8559225) and this one ran the same 26 scenarios side by 
 
 The sound thread adds each source's applied mix to its report while the view is on; the rays are cast again on the main thread from the snapshot it built.
 
+## Round 16: what owning the ambience on the client makes possible
+
+- **`/afx_reload`:** the engine reloads `builtin/afx` from disk at the next step. The scripts' sounds stop, and what the server said (the game, its creatures, the latest weather) is told again. The command is the engine's own, so it works when the scripts are broken.
+- **The probe's way out, used:** the path search reports where the open path gets out. That's the doorway (`opening_inner`), the first cell under the sky (`opening`), and how many open cells the doorway has across it (1 a crack, 2 a door). These come in the hearing table as `has_opening`, `opening_*`, `inner_*` and `opening_size`.
+  - Gutters play at the real doorway when there's an overhang outside it.
+  - Without one, rain patters on the ground just outside the door, by what it is.
+  - Drafts whistle first at the crack the engine hears the outdoors through.
+  - The tuning view draws the doorway as a box sized by its width.
+- **What the ambience costs:** measured at about 1 ms a second in total, with a frame peak around 1 ms. It's shown in `/afx_report`. Moving the scans into the snapshot isn't worth it at this cost.
+- **Your hands, heard as you act** (`hands.lua`): a blade, tool or pick swished through the air or into something, lower for heavier ones, and a soft rustle when you take something new in hand. Items the game gives a swing sound of its own are left to it. The engine calls `afx_on_node` with `swing`, `swing_hit`, `swing_node` and `wield`; the scripts register for them with `core.afx.register_on_action`.
+- **Picture and sound share a clock** (the fx renderer's side):
+  - `fx::addFlash`: lightning flashes the moment its strike arrives, and the engine delays the thunder by the distance. A blast flashes hot. Both tint the fx lights around them and lift the exposure by how much sky you see (`core.afx_flash`); by day lightning is a pale blink.
+  - `fx::setMood`: the audio's tension greys and darkens the grade a little, and cozy warms it.
+- **Smooth moving sounds:** sounds on objects take their velocity from how the object is actually drawn moving, smoothed over a tenth of a second (`afx::soundVelocity`), not from the velocity the server last sent. The Doppler shift no longer steps. This covers the server's attached sounds and the ambience's own.
+- **A flock passes over:** now and then on a fair day, out in the open, a little flock crosses the sky, chirping and beating its wings, heard moving from one side to the other.
+- **Hardening:**
+  - The server's test hooks (`@poke`, `@chat`, `@fields`) only work with `afx_debug` on, since they reach into the client's state and settings; `@poke` only sets `next_*` timers.
+  - Storage values are kept to one line.
+  - No sound handle is made for a sound that isn't there.
+  - Turning afx off keeps what the server said, for when it comes back on.
+  - The mood leaves the picture when afx is off.
+
 ## Testing
 
 - `bin/luanti --run-unittests --test-module TestAfx` runs the probe on synthetic worlds: field, stone cave, wooden hut, tunnel mouth, cliff echo, occluders, water, plus the smoother.

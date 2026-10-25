@@ -121,6 +121,13 @@ static void stopEnv()
 
 void scriptStop()
 {
+	// (what the server said stays: it said it once, and afx may come back on)
+	stopEnv();
+	s_reload = false;
+}
+
+void scriptShutdown()
+{
 	stopEnv();
 	s_once.clear();
 	s_last_world.clear();
@@ -140,7 +147,9 @@ void scriptWorld(const std::string &state)
 		s_last_world = state;
 	}
 	if (!s_env) {
-		if (!s_tried && s_pending.size() < 64)
+		// (data that comes again anyway is cached above; the rest waits)
+		if (!s_tried && s_pending.size() < 64 && !state.empty() && state[0] == '@' &&
+				state.compare(0, 6, "@game ") != 0 && state.compare(0, 10, "@entities ") != 0)
 			s_pending.push_back(state);
 		return;
 	}

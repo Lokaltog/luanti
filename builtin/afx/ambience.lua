@@ -867,19 +867,26 @@ afx.register_on_data("play", function(data)
 		max_hear_distance = t.max_hear_distance}, true)
 end)
 
--- "field value": set a field of the player's state (test scenarios)
+-- Test hooks: they let the server reach into this client (its state, its
+-- commands, its settings through the mixer), so only with afx_debug on
+local function testing() return core.settings:get_bool("afx_debug") == true end
+
+-- "field value": set a timer of the player's state (test scenarios)
 afx.register_on_data("poke", function(data)
-	local k, v = data:match("^(%S+) (.*)$")
+	if not testing() then return end
+	local k, v = data:match("^(next_[%w_]+) (%-?[%d%.]+)$")
 	if not k then return end
 	local p = core.get_connected_players()[1]
-	if p then player_state(p:get_player_name())[k] = tonumber(v) or v end
+	if p then player_state(p:get_player_name())[k] = tonumber(v) end
 end)
 
 -- a command or a formspec's fields, as if typed or clicked (test scenarios)
 afx.register_on_data("chat", function(line)
+	if not testing() then return end
 	core.log("action", "afx: client command " .. line .. " -> " .. tostring(core.afx_on_chat(line)))
 end)
 afx.register_on_data("fields", function(data)
+	if not testing() then return end
 	local t = core.parse_json(data)
 	if type(t) ~= "table" then return end
 	core.afx_on_formspec(t.formname, t.fields or {})

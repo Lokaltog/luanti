@@ -38,8 +38,11 @@ ScriptContext &scriptContext();
 /// Call every frame (from afx::update): starts the environment once the
 /// game is up, then steps it.
 void scriptStep(Client *client, ISoundManager *sound, float dtime);
-/// Before the client goes away.
+/// afx turned off: the scripts and their sounds stop (what the server told
+/// them is kept for when it comes back on).
 void scriptStop();
+/// The game ends: all of it goes.
+void scriptShutdown();
 /// Load the scripts from disk again at the next step (/afx_reload): their
 /// sounds stop, what the server told them is told again.
 void scriptReload();
